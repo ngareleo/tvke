@@ -1,14 +1,14 @@
 import { type RefObject, useCallback, useEffect, useRef, useState } from "react";
 import { graphql, useMutation } from "react-relay";
 
-import type { VideoPlayerStartTranscodeMutation } from "../relay/__generated__/VideoPlayerStartTranscodeMutation.graphql.js";
+import type { useVideoPlaybackStartTranscodeMutation } from "../relay/__generated__/useVideoPlaybackStartTranscodeMutation.graphql.js";
 import { BufferManager } from "../services/BufferManager.js";
 import { StreamingService } from "../services/StreamingService.js";
 import type { Resolution } from "../types.js";
 import { DISPLAY_TO_GQL, RESOLUTION_MIME_TYPE } from "../types.js";
 
 const START_TRANSCODE_MUTATION = graphql`
-  mutation VideoPlayerStartTranscodeMutation($videoId: ID!, $resolution: Resolution!) {
+  mutation useVideoPlaybackStartTranscodeMutation($videoId: ID!, $resolution: Resolution!) {
     startTranscode(videoId: $videoId, resolution: $resolution) {
       id
       status
@@ -31,7 +31,8 @@ export function useVideoPlayback(
   videoId: string,
   onJobCreated?: (jobId: string | null) => void
 ): UseVideoPlaybackResult {
-  const [startTranscode] = useMutation<VideoPlayerStartTranscodeMutation>(START_TRANSCODE_MUTATION);
+  const [startTranscode] =
+    useMutation<useVideoPlaybackStartTranscodeMutation>(START_TRANSCODE_MUTATION);
 
   const streamingRef = useRef<StreamingService | null>(null);
   const bufferRef = useRef<BufferManager | null>(null);
