@@ -2,8 +2,8 @@ import React, { type FC, Suspense } from "react";
 import { graphql, useLazyLoadQuery } from "react-relay";
 import { useNavigate, useParams } from "react-router-dom";
 
-import { PlayerSidebar } from "../components/PlayerSidebarAsync.js";
-import { VideoPlayer } from "../components/VideoPlayerAsync.js";
+import { PlayerSidebarAsync } from "../components/PlayerSidebarAsync.js";
+import { VideoPlayerAsync } from "../components/VideoPlayerAsync.js";
 import type { PlayerPageQuery } from "../relay/__generated__/PlayerPageQuery.graphql.js";
 
 const VIDEO_QUERY = graphql`
@@ -145,9 +145,9 @@ const PlayerContent: FC<{ videoId: string }> = ({ videoId }) => {
       >
         <div style={{ flex: 1, display: "flex", minHeight: 0 }}>
           <div style={{ flex: 1, position: "relative", background: "#000" }}>
-            <VideoPlayer video={data.video} />
+            <VideoPlayerAsync video={data.video} />
           </div>
-          <PlayerSidebar video={data.video} />
+          <PlayerSidebarAsync video={data.video} />
         </div>
       </Suspense>
     </div>

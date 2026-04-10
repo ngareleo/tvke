@@ -22,7 +22,7 @@ import {
   isVideoDetailsPanelPlayEvent,
   type VideoDetailsPanelPlayData,
 } from "../components/VideoDetailsPanel.events.js";
-import { VideoDetailsPanel } from "../components/VideoDetailsPanelAsync.js";
+import { VideoDetailsPanelAsync } from "../components/VideoDetailsPanelAsync.js";
 import type { ProfilesPageContentQuery } from "../relay/__generated__/ProfilesPageContentQuery.graphql.js";
 
 const PROFILES_QUERY = graphql`
@@ -124,7 +124,7 @@ export const ProfilesPageContent: FC = () => {
           {/* Right — details panel (lazy chunk; Suspense hides the flash while the JS loads) */}
           {selectedVideoKey && (
             <Suspense fallback={null}>
-              <VideoDetailsPanel
+              <VideoDetailsPanelAsync
                 video={selectedVideoKey}
                 onClose={() => setSelectedVideoId(null)}
               />

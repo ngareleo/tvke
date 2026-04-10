@@ -50,6 +50,7 @@
     "playwright": "^1.59.1",
     "relay-compiler": "^20.1.1",
     "relay-test-utils": "^20.1.1",
+    "rollup-plugin-visualizer": "^7.0.1",
     "storybook": "^10.3.5",
     "storybook-react-rsbuild": "^3.3.2",
     "typescript": "^5.5.0",
