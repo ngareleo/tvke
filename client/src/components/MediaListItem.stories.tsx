@@ -1,4 +1,5 @@
 import { graphql } from "react-relay";
+import { expect, within } from "storybook/test";
 import type { Meta, StoryObj } from "storybook-react-rsbuild";
 
 import type { MediaListItemStoryQuery } from "../relay/__generated__/MediaListItemStoryQuery.graphql.js";
@@ -46,6 +47,10 @@ type Story = StoryObj<typeof MediaListItem>;
 
 export const Default4K: Story = {
   args: { isSelected: false },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(canvas.getByText("Interstellar")).toBeInTheDocument();
+  },
 };
 
 export const Selected: Story = {

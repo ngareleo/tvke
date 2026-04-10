@@ -1,7 +1,9 @@
 import { graphql } from "react-relay";
+import { expect, within } from "storybook/test";
 import type { Meta, StoryObj } from "storybook-react-rsbuild";
 
 import type { VideoPlayerStoryQuery } from "../relay/__generated__/VideoPlayerStoryQuery.graphql.js";
+import { withNovaEventing } from "../storybook/withNovaEventing.js";
 import { VideoPlayer } from "./VideoPlayer.js";
 
 /**
@@ -41,13 +43,20 @@ const meta: Meta<typeof VideoPlayer> = {
       },
     },
   },
+  decorators: [withNovaEventing],
 };
 
 export default meta;
 type Story = StoryObj<typeof VideoPlayer>;
 
 /** Default idle state before any playback has started. */
-export const Idle: Story = {};
+export const Idle: Story = {
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(canvas.getByRole("button", { name: /play/i })).toBeInTheDocument();
+    await expect(canvasElement.querySelector("video")).toBeInTheDocument();
+  },
+};
 
 /** Capped at 1080p — used when the source is not 4K. */
 export const Capped1080p: Story = {

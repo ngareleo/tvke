@@ -1,3 +1,4 @@
+import { expect, within } from "storybook/test";
 import type { Meta, StoryObj } from "storybook-react-rsbuild";
 
 import { AppHeader } from "./AppHeader.js";
@@ -19,6 +20,10 @@ type Story = StoryObj<typeof AppHeader>;
 
 export const ProfilesActive: Story = {
   parameters: { router: { initialEntries: ["/"] } },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(canvas.getByText("Profiles")).toBeInTheDocument();
+  },
 };
 
 export const SetupActive: Story = {

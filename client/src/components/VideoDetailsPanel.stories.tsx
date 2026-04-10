@@ -1,4 +1,5 @@
 import { graphql } from "react-relay";
+import { expect, within } from "storybook/test";
 import type { Meta, StoryObj } from "storybook-react-rsbuild";
 
 import type { VideoDetailsPanelStoryQuery } from "../relay/__generated__/VideoDetailsPanelStoryQuery.graphql.js";
@@ -49,6 +50,10 @@ type Story = StoryObj<typeof VideoDetailsPanel>;
 
 export const Movie4K: Story = {
   args: { onClose: () => {} },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(canvas.getByText("Interstellar")).toBeInTheDocument();
+  },
 };
 
 export const Movie1080p: Story = {

@@ -1,7 +1,9 @@
 import { graphql } from "react-relay";
+import { expect, within } from "storybook/test";
 import type { Meta, StoryObj } from "storybook-react-rsbuild";
 
 import type { LibraryGridStoryQuery } from "../relay/__generated__/LibraryGridStoryQuery.graphql.js";
+import { withLayout } from "../storybook/withLayout.js";
 import { LibraryGrid } from "./LibraryGrid.js";
 
 /**
@@ -45,19 +47,18 @@ const meta: Meta<typeof LibraryGrid> = {
       },
     },
   },
-  decorators: [
-    (Story) => (
-      <div style={{ padding: 16 }}>
-        <Story />
-      </div>
-    ),
-  ],
+  decorators: [withLayout({ padding: 16 })],
 };
 
 export default meta;
 type Story = StoryObj<typeof LibraryGrid>;
 
-export const Default: Story = {};
+export const Default: Story = {
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(canvas.getByText("Video Title 1")).toBeInTheDocument();
+  },
+};
 
 export const SingleVideo: Story = {
   parameters: {

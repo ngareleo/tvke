@@ -1,4 +1,5 @@
 import { graphql } from "react-relay";
+import { expect, within } from "storybook/test";
 import type { Meta, StoryObj } from "storybook-react-rsbuild";
 
 import type { MediaListStoryQuery } from "../relay/__generated__/MediaListStoryQuery.graphql.js";
@@ -61,6 +62,10 @@ type Story = StoryObj<typeof MediaList>;
 
 export const Default: Story = {
   args: { selectedVideoId: null },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(canvas.getByText("Movies Collection")).toBeInTheDocument();
+  },
 };
 
 export const WithSelection: Story = {

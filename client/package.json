@@ -12,7 +12,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "storybook": "storybook dev -p 6006",
-    "build-storybook": "storybook build"
+    "build-storybook": "storybook build",
+    "test-storybook": "vitest run --config vitest.storybook.config.ts"
   },
   "dependencies": {
     "@chakra-ui/react": "^3.2.0",

@@ -1,4 +1,5 @@
 import { graphql } from "react-relay";
+import { expect, within } from "storybook/test";
 import type { Meta, StoryObj } from "storybook-react-rsbuild";
 
 import type { LibraryRailStoryQuery } from "../relay/__generated__/LibraryRailStoryQuery.graphql.js";
@@ -46,6 +47,10 @@ type Story = StoryObj<typeof LibraryRail>;
 
 export const NoneSelected: Story = {
   args: { selectedLibraryId: null },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(canvas.getByRole("button", { name: "Movies" })).toBeInTheDocument();
+  },
 };
 
 export const MoviesSelected: Story = {

@@ -1,4 +1,5 @@
 import { graphql } from "react-relay";
+import { expect, within } from "storybook/test";
 import type { Meta, StoryObj } from "storybook-react-rsbuild";
 
 import type { MediaGridItemStoryQuery } from "../relay/__generated__/MediaGridItemStoryQuery.graphql.js";
@@ -44,7 +45,12 @@ const meta: Meta<typeof MediaGridItem> = {
 export default meta;
 type Story = StoryObj<typeof MediaGridItem>;
 
-export const Movie4K: Story = {};
+export const Movie4K: Story = {
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(canvas.getByText("Interstellar")).toBeInTheDocument();
+  },
+};
 
 export const Movie1080p: Story = {
   parameters: {

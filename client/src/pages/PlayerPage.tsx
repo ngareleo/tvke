@@ -1,15 +1,17 @@
-import { Box, Spinner } from "@chakra-ui/react";
 import React, { type FC, Suspense } from "react";
 import { graphql, useLazyLoadQuery } from "react-relay";
-import { useParams } from "react-router-dom";
+import { useNavigate, useParams } from "react-router-dom";
 
+import { PlayerSidebar } from "../components/PlayerSidebar.js";
 import { VideoPlayer } from "../components/VideoPlayer.js";
-import type { PlayerPageQuery } from "../relay/__generated__/PlayerPageQuery.graphql";
+import type { PlayerPageQuery } from "../relay/__generated__/PlayerPageQuery.graphql.js";
 
 const VIDEO_QUERY = graphql`
   query PlayerPageQuery($id: ID!) {
     video(id: $id) {
+      title
       ...VideoPlayer_video
+      ...PlayerSidebar_video
     }
   }
 `;
@@ -31,35 +33,150 @@ function resolveVideoId(param: string): string {
 }
 
 const PlayerContent: FC<{ videoId: string }> = ({ videoId }) => {
+  const navigate = useNavigate();
   const data = useLazyLoadQuery<PlayerPageQuery>(VIDEO_QUERY, { id: videoId });
 
   if (!data.video) {
-    return <Box p={8}>Video not found.</Box>;
+    return <div style={{ padding: 32, color: "#f0f0f5" }}>Video not found.</div>;
   }
 
   return (
-    <Box>
-      <VideoPlayer video={data.video} />
-    </Box>
+    <div
+      style={{
+        position: "fixed",
+        inset: 0,
+        display: "flex",
+        flexDirection: "column",
+        background: "#0a0a0f",
+        fontFamily: "'Inter', -apple-system, BlinkMacSystemFont, sans-serif",
+      }}
+    >
+      {/* Header */}
+      <div
+        style={{
+          height: 60,
+          background: "#141420",
+          borderBottom: "1px solid #2a2a40",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          padding: "0 24px",
+          flexShrink: 0,
+          zIndex: 10,
+        }}
+      >
+        {/* Left: back button + title */}
+        <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+          <button
+            onClick={() => navigate(-1)}
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 8,
+              background: "none",
+              border: "none",
+              color: "#8888a0",
+              cursor: "pointer",
+              padding: "8px 12px",
+              borderRadius: 8,
+              fontSize: 14,
+              fontWeight: 500,
+            }}
+            aria-label="Go back"
+          >
+            <svg
+              viewBox="0 0 20 20"
+              style={{ width: 20, height: 20, fill: "currentColor" }}
+              aria-hidden="true"
+            >
+              <path
+                fillRule="evenodd"
+                d="M12.707 5.293a1 1 0 010 1.414L9.414 10l3.293 3.293a1 1 0 01-1.414 1.414l-4-4a1 1 0 010-1.414l4-4a1 1 0 011.414 0z"
+                clipRule="evenodd"
+              />
+            </svg>
+            Back
+          </button>
+          <span
+            style={{
+              fontSize: 16,
+              fontWeight: 600,
+              color: "#f0f0f5",
+              maxWidth: 400,
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              whiteSpace: "nowrap",
+            }}
+          >
+            {data.video.title}
+          </span>
+        </div>
+
+        {/* Right: nav tabs */}
+        <nav style={{ display: "flex", gap: 8 }}>
+          <span
+            style={{
+              color: "#0a0a0f",
+              background: "#d4a84b",
+              padding: "8px 16px",
+              borderRadius: 8,
+              fontSize: 14,
+              fontWeight: 500,
+            }}
+          >
+            Player
+          </span>
+        </nav>
+      </div>
+
+      {/* Body: video area + sidebar */}
+      <div style={{ flex: 1, display: "flex", minHeight: 0 }}>
+        {/* Video area */}
+        <div style={{ flex: 1, position: "relative", background: "#000" }}>
+          <VideoPlayer video={data.video} />
+        </div>
+
+        {/* Sidebar */}
+        <PlayerSidebar video={data.video} />
+      </div>
+    </div>
   );
 };
 
 export const PlayerPage: FC = () => {
   const { videoId } = useParams<{ videoId: string }>();
 
-  if (!videoId) return <Box p={8}>Invalid video ID.</Box>;
+  if (!videoId) {
+    return <div style={{ padding: 32, color: "#f0f0f5" }}>Invalid video ID.</div>;
+  }
 
   return (
-    <Box maxW="1600px" mx="auto">
-      <Suspense
-        fallback={
-          <Box display="flex" justifyContent="center" pt={20}>
-            <Spinner size="xl" />
-          </Box>
-        }
-      >
-        <PlayerContent videoId={resolveVideoId(videoId)} />
-      </Suspense>
-    </Box>
+    <Suspense
+      fallback={
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            background: "#0a0a0f",
+          }}
+        >
+          <div
+            style={{
+              width: 48,
+              height: 48,
+              border: "3px solid #2a2a40",
+              borderTopColor: "#d4a84b",
+              borderRadius: "50%",
+              animation: "spin 0.8s linear infinite",
+            }}
+          />
+        </div>
+      }
+    >
+      <PlayerContent videoId={resolveVideoId(videoId)} />
+    </Suspense>
   );
 };

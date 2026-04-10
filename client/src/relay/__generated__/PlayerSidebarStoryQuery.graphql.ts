@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<07f62067eeb4855aaf33d6a04abbd18f>>
+ * @generated SignedSource<<782e3198747292a075ce21afce33cda1>>
  * @lightSyntaxTransform
  * @nogrep
  */
@@ -10,18 +10,17 @@
 
 import { ConcreteRequest } from 'relay-runtime';
 import { FragmentRefs } from "relay-runtime";
-export type PlayerPageQuery$variables = {
-  id: string;
+export type PlayerSidebarStoryQuery$variables = {
+  videoId: string;
 };
-export type PlayerPageQuery$data = {
+export type PlayerSidebarStoryQuery$data = {
   readonly video: {
-    readonly title: string;
-    readonly " $fragmentSpreads": FragmentRefs<"PlayerSidebar_video" | "VideoPlayer_video">;
+    readonly " $fragmentSpreads": FragmentRefs<"PlayerSidebar_video">;
   } | null | undefined;
 };
-export type PlayerPageQuery = {
-  response: PlayerPageQuery$data;
-  variables: PlayerPageQuery$variables;
+export type PlayerSidebarStoryQuery = {
+  response: PlayerSidebarStoryQuery$data;
+  variables: PlayerSidebarStoryQuery$variables;
 };
 
 const node: ConcreteRequest = (function(){
@@ -29,29 +28,22 @@ var v0 = [
   {
     "defaultValue": null,
     "kind": "LocalArgument",
-    "name": "id"
+    "name": "videoId"
   }
 ],
 v1 = [
   {
     "kind": "Variable",
     "name": "id",
-    "variableName": "id"
+    "variableName": "videoId"
   }
-],
-v2 = {
-  "alias": null,
-  "args": null,
-  "kind": "ScalarField",
-  "name": "title",
-  "storageKey": null
-};
+];
 return {
   "fragment": {
     "argumentDefinitions": (v0/*: any*/),
     "kind": "Fragment",
     "metadata": null,
-    "name": "PlayerPageQuery",
+    "name": "PlayerSidebarStoryQuery",
     "selections": [
       {
         "alias": null,
@@ -61,12 +53,6 @@ return {
         "name": "video",
         "plural": false,
         "selections": [
-          (v2/*: any*/),
-          {
-            "args": null,
-            "kind": "FragmentSpread",
-            "name": "VideoPlayer_video"
-          },
           {
             "args": null,
             "kind": "FragmentSpread",
@@ -83,7 +69,7 @@ return {
   "operation": {
     "argumentDefinitions": (v0/*: any*/),
     "kind": "Operation",
-    "name": "PlayerPageQuery",
+    "name": "PlayerSidebarStoryQuery",
     "selections": [
       {
         "alias": null,
@@ -93,12 +79,18 @@ return {
         "name": "video",
         "plural": false,
         "selections": [
-          (v2/*: any*/),
           {
             "alias": null,
             "args": null,
             "kind": "ScalarField",
-            "name": "id",
+            "name": "title",
+            "storageKey": null
+          },
+          {
+            "alias": null,
+            "args": null,
+            "kind": "ScalarField",
+            "name": "durationSeconds",
             "storageKey": null
           },
           {
@@ -123,7 +115,7 @@ return {
             "alias": null,
             "args": null,
             "kind": "ScalarField",
-            "name": "durationSeconds",
+            "name": "id",
             "storageKey": null
           }
         ],
@@ -132,16 +124,55 @@ return {
     ]
   },
   "params": {
-    "cacheID": "5d11ae7ffa33824460a315656704b070",
+    "cacheID": "2701300830be33da0c64849f8de40abe",
     "id": null,
-    "metadata": {},
-    "name": "PlayerPageQuery",
+    "metadata": {
+      "relayTestingSelectionTypeInfo": {
+        "video": {
+          "enumValues": null,
+          "nullable": true,
+          "plural": false,
+          "type": "Video"
+        },
+        "video.durationSeconds": {
+          "enumValues": null,
+          "nullable": false,
+          "plural": false,
+          "type": "Float"
+        },
+        "video.id": {
+          "enumValues": null,
+          "nullable": false,
+          "plural": false,
+          "type": "ID"
+        },
+        "video.title": {
+          "enumValues": null,
+          "nullable": false,
+          "plural": false,
+          "type": "String"
+        },
+        "video.videoStream": {
+          "enumValues": null,
+          "nullable": true,
+          "plural": false,
+          "type": "VideoStreamInfo"
+        },
+        "video.videoStream.height": {
+          "enumValues": null,
+          "nullable": false,
+          "plural": false,
+          "type": "Int"
+        }
+      }
+    },
+    "name": "PlayerSidebarStoryQuery",
     "operationKind": "query",
-    "text": "query PlayerPageQuery(\n  $id: ID!\n) {\n  video(id: $id) {\n    title\n    ...VideoPlayer_video\n    ...PlayerSidebar_video\n    id\n  }\n}\n\nfragment ControlBar_video on Video {\n  title\n  durationSeconds\n  videoStream {\n    height\n  }\n}\n\nfragment PlayerSidebar_video on Video {\n  title\n  durationSeconds\n  videoStream {\n    height\n  }\n}\n\nfragment VideoPlayer_video on Video {\n  id\n  videoStream {\n    height\n  }\n  ...ControlBar_video\n}\n"
+    "text": "query PlayerSidebarStoryQuery(\n  $videoId: ID!\n) {\n  video(id: $videoId) {\n    ...PlayerSidebar_video\n    id\n  }\n}\n\nfragment PlayerSidebar_video on Video {\n  title\n  durationSeconds\n  videoStream {\n    height\n  }\n}\n"
   }
 };
 })();
 
-(node as any).hash = "bf2b09c484e44a8406a170aff357b601";
+(node as any).hash = "f098a513aa9699e0659439ed39111afc";
 
 export default node;
