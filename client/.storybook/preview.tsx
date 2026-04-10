@@ -1,4 +1,4 @@
-import type { Preview } from "@storybook/react-vite";
+import type { Preview } from "storybook-react-rsbuild";
 import { ChakraProvider, defaultSystem } from "@chakra-ui/react";
 import React, { Suspense } from "react";
 import { MemoryRouter } from "react-router-dom";

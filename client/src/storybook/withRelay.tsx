@@ -23,11 +23,11 @@
  *     },
  *   }
  */
-import type { Decorator, StoryContext } from "@storybook/react-vite";
 import React from "react";
 import type { GraphQLTaggedNode } from "react-relay";
 import { RelayEnvironmentProvider, useLazyLoadQuery } from "react-relay";
 import { createMockEnvironment, MockPayloadGenerator } from "relay-test-utils";
+import type { Decorator, StoryContext } from "storybook-react-rsbuild";
 
 interface RelayParameters {
   query: GraphQLTaggedNode;

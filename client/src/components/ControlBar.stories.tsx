@@ -1,6 +1,6 @@
-import type { Meta, StoryObj } from "@storybook/react-vite";
 import { useRef } from "react";
 import { graphql } from "react-relay";
+import type { Meta, StoryObj } from "storybook-react-rsbuild";
 
 import type { ControlBar_video$key } from "../relay/__generated__/ControlBar_video.graphql.js";
 import type { ControlBarStoryQuery } from "../relay/__generated__/ControlBarStoryQuery.graphql.js";

@@ -1,5 +1,5 @@
-import type { Meta, StoryObj } from "@storybook/react-vite";
 import { graphql } from "react-relay";
+import type { Meta, StoryObj } from "storybook-react-rsbuild";
 
 import type { VideoCardStoryQuery } from "../relay/__generated__/VideoCardStoryQuery.graphql.js";
 import { VideoCard } from "./VideoCard.js";

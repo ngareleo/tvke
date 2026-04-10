@@ -1,5 +1,5 @@
-import type { Meta, StoryObj } from "@storybook/react-vite";
 import { graphql } from "react-relay";
+import type { Meta, StoryObj } from "storybook-react-rsbuild";
 
 import type { LibraryGridStoryQuery } from "../relay/__generated__/LibraryGridStoryQuery.graphql.js";
 import { LibraryGrid } from "./LibraryGrid.js";
