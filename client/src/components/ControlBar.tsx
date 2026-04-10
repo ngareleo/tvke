@@ -3,12 +3,12 @@ import { useNovaEventing } from "@nova/react";
 import { type FC, type MouseEvent, type RefObject } from "react";
 import { graphql, useFragment } from "react-relay";
 
-import { CONTROL_BAR_ORIGINATOR, ControlBarEventTypes } from "../events.js";
 import { useVideoSync } from "../hooks/useVideoSync.js";
 import type { ControlBar_video$key } from "../relay/__generated__/ControlBar_video.graphql.js";
 import type { Resolution } from "../types.js";
 import { ALL_RESOLUTIONS, RESOLUTION_ORDER } from "../types.js";
 import { formatDuration, maxResolutionForHeight } from "../utils/formatters.js";
+import { CONTROL_BAR_ORIGINATOR, ControlBarEventTypes } from "./ControlBar.events.js";
 
 const VIDEO_FRAGMENT = graphql`
   fragment ControlBar_video on Video {

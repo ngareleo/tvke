@@ -1,4 +1,6 @@
-import type { Resolution } from "./types.js";
+import type { EventWrapper } from "@nova/types";
+
+import type { Resolution } from "../types.js";
 
 export const CONTROL_BAR_ORIGINATOR = "ControlBar";
 
@@ -11,4 +13,8 @@ export type ControlBarEventType = (typeof ControlBarEventTypes)[keyof typeof Con
 
 export interface ResolutionChangedData {
   resolution: Resolution;
+}
+
+export function isControlBarEvent(wrapper: EventWrapper): boolean {
+  return wrapper.event.originator === CONTROL_BAR_ORIGINATOR;
 }

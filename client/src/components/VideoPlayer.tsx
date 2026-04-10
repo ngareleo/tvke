@@ -1,16 +1,20 @@
 import { Box, Text } from "@chakra-ui/react";
-import { mapEventMetadata, NovaEventingProvider } from "@nova/react";
+import { NovaEventingInterceptor } from "@nova/react";
 import type { EventWrapper } from "@nova/types";
-import { type FC, useCallback, useMemo, useRef, useState } from "react";
+import { type FC, useCallback, useRef, useState } from "react";
 import { graphql, useFragment } from "react-relay";
 
-import { ControlBarEventTypes, type ResolutionChangedData } from "../events.js";
 import type { JobProgress } from "../hooks/useJobSubscription.js";
 import { useJobSubscription } from "../hooks/useJobSubscription.js";
 import { useVideoPlayback } from "../hooks/useVideoPlayback.js";
 import type { VideoPlayer_video$key } from "../relay/__generated__/VideoPlayer_video.graphql.js";
 import type { Resolution } from "../types.js";
 import { maxResolutionForHeight } from "../utils/formatters.js";
+import {
+  ControlBarEventTypes,
+  isControlBarEvent,
+  type ResolutionChangedData,
+} from "./ControlBar.events.js";
 import { ControlBar } from "./ControlBar.js";
 
 const VIDEO_FRAGMENT = graphql`
@@ -57,19 +61,22 @@ export const VideoPlayer: FC<Props> = ({ video }) => {
     startPlayback(resolution);
   }, [resolution, startPlayback]);
 
-  const eventing = useMemo(
-    () => ({
-      bubble: async (wrapper: EventWrapper): Promise<void> => {
-        const { event } = wrapper;
-        if (event.originator !== "ControlBar") return;
-        if (event.type === ControlBarEventTypes.PLAY_REQUESTED) {
+  const interceptor = useCallback(
+    async (wrapper: EventWrapper, _forwardEvent: (e: EventWrapper) => Promise<void>) => {
+      if (isControlBarEvent(wrapper)) {
+        if (wrapper.event.type === ControlBarEventTypes.PLAY_REQUESTED) {
           handlePlay();
-        } else if (event.type === ControlBarEventTypes.RESOLUTION_CHANGED && event.data) {
-          const { resolution: res } = event.data() as ResolutionChangedData;
+        } else if (
+          wrapper.event.type === ControlBarEventTypes.RESOLUTION_CHANGED &&
+          wrapper.event.data
+        ) {
+          const { resolution: res } = wrapper.event.data() as ResolutionChangedData;
           handleResolutionChange(res);
         }
-      },
-    }),
+        return undefined; // consumed — stop bubbling
+      }
+      return wrapper; // unrecognised event — forward up
+    },
     [handlePlay, handleResolutionChange]
   );
 
@@ -111,9 +118,9 @@ export const VideoPlayer: FC<Props> = ({ video }) => {
         </Box>
       )}
 
-      <NovaEventingProvider eventing={eventing} reactEventMapper={mapEventMetadata}>
+      <NovaEventingInterceptor interceptor={interceptor}>
         <ControlBar video={data} videoRef={videoRef} resolution={resolution} status={status} />
-      </NovaEventingProvider>
+      </NovaEventingInterceptor>
     </Box>
   );
 };
