@@ -8,7 +8,7 @@ import type { ControlBar_video$key } from "../relay/__generated__/ControlBar_vid
 import type { Resolution } from "../types.js";
 import { ALL_RESOLUTIONS, RESOLUTION_ORDER } from "../types.js";
 import { formatDuration, maxResolutionForHeight } from "../utils/formatters.js";
-import { CONTROL_BAR_ORIGINATOR, ControlBarEventTypes } from "./ControlBar.events.js";
+import { createPlayRequestedEvent, createResolutionChangedEvent } from "./ControlBar.events.js";
 
 const VIDEO_FRAGMENT = graphql`
   fragment ControlBar_video on Video {
@@ -38,10 +38,7 @@ export const ControlBar: FC<Props> = ({ video, videoRef, resolution, status }) =
     const el = videoRef.current;
     if (!el) return;
     if (status === "idle") {
-      void bubble({
-        reactEvent,
-        event: { originator: CONTROL_BAR_ORIGINATOR, type: ControlBarEventTypes.PLAY_REQUESTED },
-      });
+      void bubble({ reactEvent, event: createPlayRequestedEvent() });
       return;
     }
     if (el.paused) void el.play();
@@ -55,14 +52,7 @@ export const ControlBar: FC<Props> = ({ video, videoRef, resolution, status }) =
   };
 
   const handleResolutionClick = (reactEvent: MouseEvent, r: Resolution) => {
-    void bubble({
-      reactEvent,
-      event: {
-        originator: CONTROL_BAR_ORIGINATOR,
-        type: ControlBarEventTypes.RESOLUTION_CHANGED,
-        data: () => ({ resolution: r }),
-      },
-    });
+    void bubble({ reactEvent, event: createResolutionChangedEvent(r) });
   };
 
   const availableResolutions = ALL_RESOLUTIONS.filter(

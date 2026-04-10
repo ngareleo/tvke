@@ -11,8 +11,8 @@ import type { VideoPlayer_video$key } from "../relay/__generated__/VideoPlayer_v
 import type { Resolution } from "../types.js";
 import { maxResolutionForHeight } from "../utils/formatters.js";
 import {
-  ControlBarEventTypes,
-  isControlBarEvent,
+  isPlayRequestedEvent,
+  isResolutionChangedEvent,
   type ResolutionChangedData,
 } from "./ControlBar.events.js";
 import { ControlBar } from "./ControlBar.js";
@@ -63,19 +63,13 @@ export const VideoPlayer: FC<Props> = ({ video }) => {
 
   const interceptor = useCallback(
     async (wrapper: EventWrapper, _forwardEvent: (e: EventWrapper) => Promise<void>) => {
-      if (isControlBarEvent(wrapper)) {
-        if (wrapper.event.type === ControlBarEventTypes.PLAY_REQUESTED) {
-          handlePlay();
-        } else if (
-          wrapper.event.type === ControlBarEventTypes.RESOLUTION_CHANGED &&
-          wrapper.event.data
-        ) {
-          const { resolution: res } = wrapper.event.data() as ResolutionChangedData;
-          handleResolutionChange(res);
-        }
-        return undefined; // consumed — stop bubbling
+      if (isPlayRequestedEvent(wrapper)) {
+        handlePlay();
+      } else if (isResolutionChangedEvent(wrapper) && wrapper.event.data) {
+        const { resolution: res } = wrapper.event.data() as ResolutionChangedData;
+        handleResolutionChange(res);
       }
-      return wrapper; // unrecognised event — forward up
+      return wrapper; // always forward — let events continue to the root provider
     },
     [handlePlay, handleResolutionChange]
   );

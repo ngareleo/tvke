@@ -1,7 +1,5 @@
-import { useEffect, useRef } from "react";
-import { requestSubscription, useRelayEnvironment } from "react-relay";
-import { graphql } from "react-relay";
-import type { Disposable } from "relay-runtime";
+import { useMemo, useRef } from "react";
+import { graphql, useSubscription } from "react-relay";
 
 import type { useJobSubscriptionQuery } from "../relay/__generated__/useJobSubscriptionQuery.graphql.js";
 
@@ -30,30 +28,22 @@ export function useJobSubscription(
   jobId: string | null,
   onProgress: (progress: JobProgress) => void
 ): void {
-  const environment = useRelayEnvironment();
   const onProgressRef = useRef(onProgress);
   onProgressRef.current = onProgress;
 
-  useEffect(() => {
-    if (!jobId) return;
-
-    let disposed = false;
-    const subscription: Disposable = requestSubscription<useJobSubscriptionQuery>(environment, {
+  const config = useMemo(
+    () => ({
       subscription: JOB_SUBSCRIPTION,
-      variables: { jobId },
-      onNext: (response) => {
-        if (disposed) return;
+      variables: { jobId: jobId ?? "" },
+      onNext: (response: useJobSubscriptionQuery["response"] | null | undefined) => {
+        if (!jobId) return;
         const job = response?.transcodeJobUpdated;
         if (job) onProgressRef.current(job);
       },
-      onError: () => {
-        // Subscription errors are non-fatal — streaming continues independently.
-      },
-    });
+      onError: () => {},
+    }),
+    [jobId]
+  );
 
-    return () => {
-      disposed = true;
-      subscription.dispose();
-    };
-  }, [jobId, environment]);
+  useSubscription<useJobSubscriptionQuery>(config);
 }
