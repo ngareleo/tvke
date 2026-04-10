@@ -20,7 +20,7 @@ interface Props {
   library: LibraryGrid_library$key;
 }
 
-export function LibraryGrid({ library }: Props) {
+export function LibraryGrid({ library }: Props): JSX.Element {
   const data = useFragment(LIBRARY_FRAGMENT, library);
 
   return (

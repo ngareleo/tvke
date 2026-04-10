@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<15ba3f80c693e93eac7bb1e3258ff5a8>>
+ * @generated SignedSource<<63548553840a3ccc93acf3c23e6efaff>>
  * @lightSyntaxTransform
  * @nogrep
  */
@@ -138,12 +138,12 @@ return {
     ]
   },
   "params": {
-    "cacheID": "e37ed208c9b43b463e5e50c5fe47e966",
+    "cacheID": "2fa4cf1dead94ad08ccd49f449697e47",
     "id": null,
     "metadata": {},
     "name": "PlayerPageQuery",
     "operationKind": "query",
-    "text": "query PlayerPageQuery(\n  $id: ID!\n) {\n  video(id: $id) {\n    id\n    title\n    durationSeconds\n    videoStream {\n      height\n    }\n    ...VideoPlayer_video\n  }\n}\n\nfragment VideoPlayer_video on Video {\n  id\n  title\n  durationSeconds\n  videoStream {\n    height\n  }\n}\n"
+    "text": "query PlayerPageQuery(\n  $id: ID!\n) {\n  video(id: $id) {\n    id\n    title\n    durationSeconds\n    videoStream {\n      height\n    }\n    ...VideoPlayer_video\n  }\n}\n\nfragment ControlBar_video on Video {\n  title\n  durationSeconds\n  videoStream {\n    height\n  }\n}\n\nfragment VideoPlayer_video on Video {\n  id\n  videoStream {\n    height\n  }\n  ...ControlBar_video\n}\n"
   }
 };
 })();

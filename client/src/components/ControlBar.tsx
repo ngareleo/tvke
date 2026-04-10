@@ -1,36 +1,59 @@
-import { RefObject } from "react";
+import type { RefObject } from "react";
 import { Box, Text, IconButton, Slider, Badge, Stack } from "@chakra-ui/react";
+import { useFragment, graphql } from "react-relay";
+import type { ControlBar_video$key } from "../relay/__generated__/ControlBar_video.graphql.js";
 import type { Resolution } from "../types.js";
 import { ALL_RESOLUTIONS, RESOLUTION_ORDER } from "../types.js";
-import { formatDuration } from "../utils/formatters.js";
+import { formatDuration, maxResolutionForHeight } from "../utils/formatters.js";
 import { useVideoSync } from "../hooks/useVideoSync.js";
 
+const VIDEO_FRAGMENT = graphql`
+  fragment ControlBar_video on Video {
+    title
+    durationSeconds
+    videoStream {
+      height
+    }
+  }
+`;
+
 interface Props {
+  video: ControlBar_video$key;
   videoRef: RefObject<HTMLVideoElement | null>;
-  title: string;
-  durationSeconds: number;
   resolution: Resolution;
-  maxResolution: Resolution;
   status: "idle" | "loading" | "playing";
   onPlay: () => void;
   onResolutionChange: (res: Resolution) => void;
 }
 
-export function ControlBar({ videoRef, title, durationSeconds, resolution, maxResolution, status, onPlay, onResolutionChange }: Props) {
+export function ControlBar({
+  video,
+  videoRef,
+  resolution,
+  status,
+  onPlay,
+  onResolutionChange,
+}: Props): JSX.Element {
+  const data = useFragment(VIDEO_FRAGMENT, video);
   const { currentTime, isPlaying } = useVideoSync(videoRef);
 
+  const maxResolution = maxResolutionForHeight(data.videoStream?.height);
+
   const togglePlayPause = () => {
-    const video = videoRef.current;
-    if (!video) return;
-    if (status === "idle") { onPlay(); return; }
-    if (video.paused) video.play();
-    else video.pause();
+    const el = videoRef.current;
+    if (!el) return;
+    if (status === "idle") {
+      onPlay();
+      return;
+    }
+    if (el.paused) void el.play();
+    else el.pause();
   };
 
   const handleSeek = (value: number[]) => {
-    const video = videoRef.current;
-    if (!video) return;
-    video.currentTime = value[0];
+    const el = videoRef.current;
+    if (!el) return;
+    el.currentTime = value[0];
   };
 
   const availableResolutions = ALL_RESOLUTIONS.filter(
@@ -42,7 +65,7 @@ export function ControlBar({ videoRef, title, durationSeconds, resolution, maxRe
       <Slider.Root
         value={[currentTime]}
         min={0}
-        max={durationSeconds || 1}
+        max={data.durationSeconds || 1}
         step={1}
         onValueChange={({ value }) => handleSeek(value)}
         mb={3}
@@ -66,12 +89,20 @@ export function ControlBar({ videoRef, title, durationSeconds, resolution, maxRe
             {isPlaying ? "⏸" : "▶"}
           </IconButton>
           <Text color="gray.300" fontSize="sm">
-            {formatDuration(currentTime)} / {formatDuration(durationSeconds)}
+            {formatDuration(currentTime)} / {formatDuration(data.durationSeconds)}
           </Text>
         </Stack>
 
-        <Text color="white" fontSize="sm" fontWeight="medium" flex={1} textAlign="center" px={4} lineClamp={1}>
-          {title}
+        <Text
+          color="white"
+          fontSize="sm"
+          fontWeight="medium"
+          flex={1}
+          textAlign="center"
+          px={4}
+          lineClamp={1}
+        >
+          {data.title}
         </Text>
 
         <Stack direction="row" gap={1}>

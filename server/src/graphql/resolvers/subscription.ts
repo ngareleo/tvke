@@ -1,27 +1,14 @@
-import { fromGlobalId, toGlobalId } from "../relay.js";
+import { fromGlobalId } from "../relay.js";
 import { getJob } from "../../services/jobStore.js";
-import { internalResolutionToGql, internalStatusToGql } from "../mappers.js";
-import type { ActiveJob } from "../../types.js";
-
-function formatJob(job: ActiveJob) {
-  return {
-    id: toGlobalId("TranscodeJob", job.id),
-    resolution: internalResolutionToGql(job.resolution),
-    status: internalStatusToGql(job.status),
-    totalSegments: job.total_segments,
-    completedSegments: job.completed_segments,
-    startTimeSeconds: job.start_time_seconds,
-    endTimeSeconds: job.end_time_seconds,
-    createdAt: job.created_at,
-    error: job.error,
-    _raw: job,
-  };
-}
+import { presentJob, type GQLTranscodeJob } from "../presenters.js";
 
 export const subscriptionResolvers = {
   Subscription: {
     transcodeJobUpdated: {
-      subscribe(_: unknown, { jobId }: { jobId: string }) {
+      subscribe(
+        _: unknown,
+        { jobId }: { jobId: string }
+      ): AsyncIterable<{ transcodeJobUpdated: GQLTranscodeJob | null }> {
         const { id: localId } = fromGlobalId(jobId);
         const job = getJob(localId);
         if (!job) throw new Error(`Job not found: ${jobId}`);
@@ -40,10 +27,14 @@ export const subscriptionResolvers = {
             job.subscribers.add(controller);
 
             return {
-              async next() {
-                if (done) return { value: undefined, done: true };
+              async next(): Promise<
+                IteratorResult<{ transcodeJobUpdated: GQLTranscodeJob | null }>
+              > {
+                if (done) return { value: undefined as never, done: true };
 
-                await new Promise<void>((r) => { resolve = r; });
+                await new Promise<void>((r) => {
+                  resolve = r;
+                });
 
                 const current = getJob(localId);
                 if (!current || current.status === "complete" || current.status === "error") {
@@ -52,20 +43,23 @@ export const subscriptionResolvers = {
                 }
 
                 return {
-                  value: { transcodeJobUpdated: current ? formatJob(current) : null },
+                  value: { transcodeJobUpdated: current ? presentJob(current) : null },
                   done: false,
                 };
               },
-              async return() {
+              async return(): Promise<
+                IteratorResult<{ transcodeJobUpdated: GQLTranscodeJob | null }>
+              > {
                 done = true;
                 job.subscribers.delete(controller);
-                return { value: undefined, done: true };
+                return { value: undefined as never, done: true };
               },
             };
           },
         };
       },
-      resolve(payload: { transcodeJobUpdated: ReturnType<typeof formatJob> | null }) {
+
+      resolve(payload: { transcodeJobUpdated: GQLTranscodeJob | null }): GQLTranscodeJob | null {
         return payload.transcodeJobUpdated;
       },
     },

@@ -19,7 +19,7 @@ interface Props {
   video: VideoCard_video$key;
 }
 
-export function VideoCard({ video }: Props) {
+export function VideoCard({ video }: Props): JSX.Element {
   const data = useFragment(VIDEO_FRAGMENT, video);
   const navigate = useNavigate();
   const label = resolutionLabel(data.videoStream?.height);
@@ -35,7 +35,15 @@ export function VideoCard({ video }: Props) {
       onClick={() => navigate(`/play/${data.id}`)}
       p={3}
     >
-      <Box bg="gray.700" borderRadius="sm" mb={2} h="100px" display="flex" alignItems="center" justifyContent="center">
+      <Box
+        bg="gray.700"
+        borderRadius="sm"
+        mb={2}
+        h="100px"
+        display="flex"
+        alignItems="center"
+        justifyContent="center"
+      >
         <Text fontSize="2xl">▶</Text>
       </Box>
 
@@ -44,8 +52,14 @@ export function VideoCard({ video }: Props) {
       </Text>
 
       <Box display="flex" justifyContent="space-between" alignItems="center" mt={1}>
-        <Text fontSize="xs" color="gray.400">{formatDuration(data.durationSeconds)}</Text>
-        {label && <Badge size="sm" colorPalette="blue">{label}</Badge>}
+        <Text fontSize="xs" color="gray.400">
+          {formatDuration(data.durationSeconds)}
+        </Text>
+        {label && (
+          <Badge size="sm" colorPalette="blue">
+            {label}
+          </Badge>
+        )}
       </Box>
     </Box>
   );

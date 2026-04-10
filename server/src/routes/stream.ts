@@ -1,4 +1,5 @@
-import { readFile } from "fs/promises";
+import { readFile, access } from "fs/promises";
+import { join } from "path";
 import { getJob } from "../services/jobStore.js";
 import { getJobById } from "../db/queries/jobs.js";
 import { getSegmentsByJob } from "../db/queries/segments.js";
@@ -9,6 +10,11 @@ function writeLengthPrefixed(controller: ReadableStreamDefaultController, data: 
   view.setUint32(0, data.byteLength, false); // big-endian
   controller.enqueue(header);
   controller.enqueue(data);
+}
+
+/** Derive the expected on-disk path for a segment by index. */
+function segmentPath(segmentDir: string, index: number): string {
+  return join(segmentDir, `segment_${String(index).padStart(4, "0")}.m4s`);
 }
 
 export async function handleStream(req: Request): Promise<Response> {
@@ -22,11 +28,14 @@ export async function handleStream(req: Request): Promise<Response> {
   }
 
   // Try in-memory store first, fall back to DB for completed jobs
-  let job = getJob(jobId);
-  if (!job) {
+  const memJob = getJob(jobId);
+  if (!memJob) {
     const dbJob = getJobById(jobId);
     if (!dbJob) return new Response("Job not found", { status: 404 });
-    if (dbJob.status === "error") return new Response(`Job failed: ${dbJob.error}`, { status: 500 });
+    if (dbJob.status === "error")
+      return new Response(`Job failed: ${dbJob.error}`, { status: 500 });
+    // Note: if job is complete in DB but not in memory, chunker.startTranscodeJob should
+    // have restored it. If it reaches here, we'll still try to stream below.
   }
 
   const stream = new ReadableStream({
@@ -34,7 +43,11 @@ export async function handleStream(req: Request): Promise<Response> {
       // Re-acquire job reference inside the stream (may have updated)
       const activeJob = getJob(jobId);
 
-      // Wait for init segment
+      console.log(
+        `[stream] ${jobId.slice(0, 8)} — start (from=${fromIndex}, status=${activeJob?.status ?? "not-in-memory"}, segments=${activeJob?.segments.filter(Boolean).length ?? 0})`
+      );
+
+      // Wait for init segment (up to 10 s)
       let attempts = 0;
       while (!activeJob?.initSegmentPath && attempts < 100) {
         await Bun.sleep(100);
@@ -42,13 +55,31 @@ export async function handleStream(req: Request): Promise<Response> {
       }
 
       if (!activeJob?.initSegmentPath) {
-        controller.error(new Error("Init segment not ready"));
-        return;
+        // Last resort: check DB + filesystem
+        const dbJob = getJobById(jobId);
+        const fsInitPath = dbJob ? join(dbJob.segment_dir, "init.mp4") : null;
+        const initExists = fsInitPath
+          ? await access(fsInitPath)
+              .then(() => true)
+              .catch(() => false)
+          : false;
+        if (!initExists) {
+          console.error(`[stream] ${jobId.slice(0, 8)} — init segment never became ready`);
+          controller.error(new Error("Init segment not ready"));
+          return;
+        }
+        // Use DB path directly
+        if (activeJob) activeJob.initSegmentPath = fsInitPath!;
       }
+
+      const initPath =
+        activeJob?.initSegmentPath ??
+        (getJobById(jobId) ? join(getJobById(jobId)!.segment_dir, "init.mp4") : null);
 
       // Send init segment first
       try {
-        const initBytes = await readFile(activeJob.initSegmentPath);
+        const initBytes = await readFile(initPath!);
+        console.log(`[stream] ${jobId.slice(0, 8)} — sending init (${initBytes.byteLength} bytes)`);
         writeLengthPrefixed(controller, new Uint8Array(initBytes));
       } catch (err) {
         controller.error(err);
@@ -56,39 +87,77 @@ export async function handleStream(req: Request): Promise<Response> {
       }
 
       let index = fromIndex;
+      let sentCount = 0;
 
       // Stream segments as they become available
       while (true) {
         const currentJob = getJob(jobId);
 
         if (!currentJob) {
-          // Job removed from store — serve from DB
+          // Job evicted from memory — serve remaining segments from DB
           const dbSegments = getSegmentsByJob(jobId);
-          for (let i = index; i < dbSegments.length; i++) {
-            const segBytes = await readFile(dbSegments[i].path);
+          const remaining = dbSegments.filter((s) => s.segment_index >= index);
+          console.log(
+            `[stream] ${jobId.slice(0, 8)} — serving ${remaining.length} segments from DB`
+          );
+          for (const seg of remaining) {
+            const segBytes = await readFile(seg.path);
             writeLengthPrefixed(controller, new Uint8Array(segBytes));
+            sentCount++;
           }
           break;
         }
 
-        if (index < currentJob.segments.length && currentJob.segments[index]) {
+        // Resolve path: prefer in-memory array, fall back to expected filesystem path
+        let path: string | null = currentJob.segments[index] ?? null;
+        if (!path) {
+          // The watcher may have missed this segment (timing race). Check disk directly.
+          const expectedPath = segmentPath(currentJob.segment_dir, index);
+          const exists = await access(expectedPath)
+            .then(() => true)
+            .catch(() => false);
+          if (exists) {
+            path = expectedPath;
+            currentJob.segments[index] = path; // patch the in-memory array
+          }
+        }
+
+        if (path) {
           try {
-            const segBytes = await readFile(currentJob.segments[index]);
+            const segBytes = await readFile(path);
             writeLengthPrefixed(controller, new Uint8Array(segBytes));
             index++;
-          } catch {
+            sentCount++;
+            if (sentCount % 20 === 0) {
+              console.log(`[stream] ${jobId.slice(0, 8)} — sent ${sentCount} segments`);
+            }
+          } catch (err) {
+            console.warn(
+              `[stream] ${jobId.slice(0, 8)} — readFile failed for segment ${index}:`,
+              (err as Error).message
+            );
             await Bun.sleep(50);
           }
         } else if (currentJob.status === "complete" || currentJob.status === "error") {
+          console.log(
+            `[stream] ${jobId.slice(0, 8)} — job ${currentJob.status} at segment ${index}/${currentJob.segments.filter(Boolean).length} → closing`
+          );
           break;
         } else {
+          // Segment not yet produced; wait for the encoder
           await Bun.sleep(100);
         }
 
         // Check if client disconnected
-        if (req.signal?.aborted) break;
+        if (req.signal?.aborted) {
+          console.log(
+            `[stream] ${jobId.slice(0, 8)} — client disconnected after ${sentCount} segments`
+          );
+          break;
+        }
       }
 
+      console.log(`[stream] ${jobId.slice(0, 8)} — done, sent ${sentCount} media segments`);
       controller.close();
     },
   });

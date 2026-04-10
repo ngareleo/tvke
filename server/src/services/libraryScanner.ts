@@ -18,10 +18,7 @@ function sha1(input: string): string {
 }
 
 function deriveTitle(filename: string): string {
-  return basename(filename, extname(filename))
-    .replace(/[._]/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
+  return basename(filename, extname(filename)).replace(/[._]/g, " ").replace(/\s+/g, " ").trim();
 }
 
 async function probeVideo(filePath: string): Promise<ffmpeg.FfprobeData> {

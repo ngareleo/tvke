@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<b95fc4e8df612770f1b9b2831be86d1d>>
+ * @generated SignedSource<<76ae9cd2bd3f284be1e09f14b7a220fc>>
  * @lightSyntaxTransform
  * @nogrep
  */
@@ -10,17 +10,17 @@
 
 import { ConcreteRequest } from 'relay-runtime';
 import { FragmentRefs } from "relay-runtime";
-export type LibraryPageQuery$variables = Record<PropertyKey, never>;
-export type LibraryPageQuery$data = {
+export type LibraryContentQuery$variables = Record<PropertyKey, never>;
+export type LibraryContentQuery$data = {
   readonly libraries: ReadonlyArray<{
     readonly id: string;
     readonly name: string;
     readonly " $fragmentSpreads": FragmentRefs<"LibraryGrid_library">;
   }>;
 };
-export type LibraryPageQuery = {
-  response: LibraryPageQuery$data;
-  variables: LibraryPageQuery$variables;
+export type LibraryContentQuery = {
+  response: LibraryContentQuery$data;
+  variables: LibraryContentQuery$variables;
 };
 
 const node: ConcreteRequest = (function(){
@@ -43,7 +43,7 @@ return {
     "argumentDefinitions": [],
     "kind": "Fragment",
     "metadata": null,
-    "name": "LibraryPageQuery",
+    "name": "LibraryContentQuery",
     "selections": [
       {
         "alias": null,
@@ -71,7 +71,7 @@ return {
   "operation": {
     "argumentDefinitions": [],
     "kind": "Operation",
-    "name": "LibraryPageQuery",
+    "name": "LibraryContentQuery",
     "selections": [
       {
         "alias": null,
@@ -161,16 +161,16 @@ return {
     ]
   },
   "params": {
-    "cacheID": "ee1b0c383f7504d30fdb626d3238d762",
+    "cacheID": "1d93d345e630466387b45ed3fdc4b23f",
     "id": null,
     "metadata": {},
-    "name": "LibraryPageQuery",
+    "name": "LibraryContentQuery",
     "operationKind": "query",
-    "text": "query LibraryPageQuery {\n  libraries {\n    id\n    name\n    ...LibraryGrid_library\n  }\n}\n\nfragment LibraryGrid_library on Library {\n  videos(first: 50) {\n    edges {\n      node {\n        id\n        ...VideoCard_video\n      }\n    }\n  }\n}\n\nfragment VideoCard_video on Video {\n  id\n  title\n  durationSeconds\n  videoStream {\n    height\n  }\n}\n"
+    "text": "query LibraryContentQuery {\n  libraries {\n    id\n    name\n    ...LibraryGrid_library\n  }\n}\n\nfragment LibraryGrid_library on Library {\n  videos(first: 50) {\n    edges {\n      node {\n        id\n        ...VideoCard_video\n      }\n    }\n  }\n}\n\nfragment VideoCard_video on Video {\n  id\n  title\n  durationSeconds\n  videoStream {\n    height\n  }\n}\n"
   }
 };
 })();
 
-(node as any).hash = "36304880b3614f8814b7a4aa74ec4a20";
+(node as any).hash = "10465ed4aa95b5f1b87c6692e2a09b84";
 
 export default node;

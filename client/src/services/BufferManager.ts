@@ -16,7 +16,11 @@ export class BufferManager {
   private isAppending = false;
   private streamDone = false;
 
-  constructor(videoEl: HTMLVideoElement, onPause: BufferPauseCallback, onResume: BufferResumeCallback) {
+  constructor(
+    videoEl: HTMLVideoElement,
+    onPause: BufferPauseCallback,
+    onResume: BufferResumeCallback
+  ) {
     this.videoEl = videoEl;
     this.onPause = onPause;
     this.onResume = onResume;
@@ -27,15 +31,19 @@ export class BufferManager {
       this.mediaSource = new MediaSource();
       this.videoEl.src = URL.createObjectURL(this.mediaSource);
 
-      this.mediaSource.addEventListener("sourceopen", () => {
-        try {
-          this.sourceBuffer = this.mediaSource!.addSourceBuffer(MIME_TYPE);
-          this.sourceBuffer.mode = "sequence";
-          resolve();
-        } catch (err) {
-          reject(err);
-        }
-      }, { once: true });
+      this.mediaSource.addEventListener(
+        "sourceopen",
+        () => {
+          try {
+            this.sourceBuffer = this.mediaSource!.addSourceBuffer(MIME_TYPE);
+            this.sourceBuffer.mode = "sequence";
+            resolve();
+          } catch (err) {
+            reject(err);
+          }
+        },
+        { once: true }
+      );
     });
   }
 
@@ -70,7 +78,7 @@ export class BufferManager {
   private waitForUpdateEnd(): Promise<void> {
     if (!this.sourceBuffer?.updating) return Promise.resolve();
     return new Promise((resolve) => {
-      this.sourceBuffer!.addEventListener("updateend", resolve, { once: true });
+      this.sourceBuffer!.addEventListener("updateend", () => resolve(), { once: true });
     });
   }
 

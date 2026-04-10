@@ -23,8 +23,8 @@ assertValidSchema(schema);
 export const yoga = createYoga({
   schema,
   graphqlEndpoint: "/graphql",
-  cors: {
-    origin: process.env.NODE_ENV === "production" ? false : "http://localhost:5173",
-    credentials: true,
-  },
+  cors:
+    process.env.NODE_ENV === "production"
+      ? false
+      : { origin: "http://localhost:5173", credentials: true },
 });

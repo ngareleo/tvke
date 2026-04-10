@@ -3,14 +3,16 @@ import type { LibraryRow } from "../../types.js";
 
 export function upsertLibrary(row: LibraryRow): void {
   const db = getDb();
-  db.prepare(`
+  db.prepare(
+    `
     INSERT INTO libraries (id, name, path, media_type, env)
     VALUES ($id, $name, $path, $media_type, $env)
     ON CONFLICT(path) DO UPDATE SET
       name       = excluded.name,
       media_type = excluded.media_type,
       env        = excluded.env
-  `).run({
+  `
+  ).run({
     $id: row.id,
     $name: row.name,
     $path: row.path,
@@ -24,7 +26,7 @@ export function getAllLibraries(): LibraryRow[] {
 }
 
 export function getLibraryById(id: string): LibraryRow | null {
-  return (getDb()
+  return getDb()
     .prepare("SELECT * FROM libraries WHERE id = $id")
-    .get({ $id: id }) as LibraryRow | null);
+    .get({ $id: id }) as LibraryRow | null;
 }

@@ -1,18 +1,19 @@
-import { fromGlobalId, toGlobalId } from "../relay.js";
+import { fromGlobalId } from "../relay.js";
 import { scanLibraries } from "../../services/libraryScanner.js";
 import { startTranscodeJob } from "../../services/chunker.js";
-import { gqlResolutionToInternal, internalResolutionToGql, internalStatusToGql, internalMediaTypeToGql } from "../mappers.js";
+import { gqlResolutionToInternal } from "../mappers.js";
+import {
+  presentLibrary,
+  presentJob,
+  type GQLLibrary,
+  type GQLTranscodeJob,
+} from "../presenters.js";
 
 export const mutationResolvers = {
   Mutation: {
-    async scanLibraries() {
+    async scanLibraries(): Promise<GQLLibrary[]> {
       const rows = await scanLibraries();
-      return rows.map((row) => ({
-        id: toGlobalId("Library", row.id),
-        name: row.name,
-        mediaType: internalMediaTypeToGql(row.media_type),
-        _raw: row,
-      }));
+      return rows.map(presentLibrary);
     },
 
     async startTranscode(
@@ -28,7 +29,7 @@ export const mutationResolvers = {
         startTimeSeconds?: number;
         endTimeSeconds?: number;
       }
-    ) {
+    ): Promise<GQLTranscodeJob> {
       const { id: localVideoId } = fromGlobalId(videoId);
       const internalResolution = gqlResolutionToInternal(resolution);
 
@@ -39,18 +40,7 @@ export const mutationResolvers = {
         endTimeSeconds
       );
 
-      return {
-        id: toGlobalId("TranscodeJob", job.id),
-        resolution: internalResolutionToGql(job.resolution),
-        status: internalStatusToGql(job.status),
-        totalSegments: job.total_segments,
-        completedSegments: job.completed_segments,
-        startTimeSeconds: job.start_time_seconds,
-        endTimeSeconds: job.end_time_seconds,
-        createdAt: job.created_at,
-        error: job.error,
-        _raw: job,
-      };
+      return presentJob(job);
     },
   },
 };

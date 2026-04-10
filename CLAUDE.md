@@ -157,6 +157,11 @@ Edit `mediaFiles.json` — add an entry with `name`, `path`, `mediaType` (`movie
 - The GraphQL schema is the single source of truth for types — import from relay-generated artifacts or `src/types.ts`, never redefine locally
 - Fragment naming: `<ComponentName>_<propName>` (e.g. `VideoCard_video`)
 
+**Storybook rule — every component must have a story:**
+- Stories live in `<ComponentName>.stories.tsx` alongside the component
+- Relay fragment components use `relay-test-utils` (`createMockEnvironment` + `MockPayloadGenerator`) with a story query (`<ComponentName>StoryQuery`) to provide mock data — run `bun relay` in `client/` after adding a story query
+- Stories test visual states, not behaviour; keep them simple and free of application logic
+
 ---
 
 ## Future Direction — Rust Server Rewrite
@@ -171,6 +176,35 @@ GraphQL and the binary stream endpoint are the stable contracts between server a
 - **WebSocket subscriptions** must use the `graphql-ws` subprotocol (not the legacy `subscriptions-transport-ws`)
 
 Do not couple the client to anything server-implementation-specific. All client↔server communication must go through the GraphQL endpoint or the `/stream/` binary endpoint.
+
+---
+
+## Code Quality Tooling
+
+**Linting:** ESLint v10 with `typescript-eslint` (both packages) and `eslint-plugin-react-hooks` (client only). Run via `bun run lint` in each package — this runs `tsc --noEmit && eslint src`. CI runs both.
+
+**Formatting:** Prettier v3. Config in root `.prettierrc.json`. Run `bun run format` (writes) or `bun run format:check` (CI-style check). Ignored paths in `.prettierignore`.
+
+**Pre-commit hooks:** Husky v9 + lint-staged. On every commit, staged `.ts`/`.tsx` files are auto-fixed with ESLint and Prettier before the commit lands. Config in root `package.json` under `"lint-staged"`.
+
+**ESLint config hierarchy:**
+- `eslint.config.js` (root) — shared base: `typescript-eslint/recommended`, `explicit-module-boundary-types`, `no-floating-promises`, `consistent-type-imports`, Prettier compat
+- `server/eslint.config.js` — extends root, sets `parserOptions.project`
+- `client/eslint.config.js` — extends root, adds `react-hooks` rules, relaxes `explicit-module-boundary-types` for `*.stories.*` files
+
+**Key enforced rules:**
+- All exported functions must have explicit return types (`@typescript-eslint/explicit-module-boundary-types`)
+- Floating promises must use `void` or be awaited (`@typescript-eslint/no-floating-promises`)
+- Type-only imports must use `import type` (`@typescript-eslint/consistent-type-imports`)
+- React hook rules enforced: `react-hooks/rules-of-hooks: error`, `react-hooks/exhaustive-deps: warn`
+
+---
+
+## Server Resolver Conventions
+
+- **Explicit return types** — all resolver functions must have a TypeScript return type annotation (`: GQLLibrary`, `: Promise<GQLTranscodeJob>`, etc.)
+- **Presenters, not inline formatting** — data mapping (global ID encoding, enum conversion, camelCase) lives in `server/src/graphql/presenters.ts`. Resolver files call `presentLibrary()`, `presentVideo()`, `presentJob()` — never call `toGlobalId` or mapper functions directly from resolvers
+- **Resolvers call services; services call DB** — resolver files (`resolvers/`) should not import from `db/queries/` directly. Business/service logic (like chunker, libraryScanner) is the bridge. For simple read-only cases the DB import in resolvers is acceptable but the formatting must still go through presenters
 
 ---
 

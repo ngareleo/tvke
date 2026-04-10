@@ -3,7 +3,8 @@ import type { VideoRow, VideoStreamRow } from "../../types.js";
 
 export function upsertVideo(row: VideoRow): void {
   const db = getDb();
-  db.prepare(`
+  db.prepare(
+    `
     INSERT INTO videos (id, library_id, path, filename, title, duration_seconds, file_size_bytes, bitrate, scanned_at)
     VALUES ($id, $library_id, $path, $filename, $title, $duration_seconds, $file_size_bytes, $bitrate, $scanned_at)
     ON CONFLICT(path) DO UPDATE SET
@@ -14,7 +15,8 @@ export function upsertVideo(row: VideoRow): void {
       file_size_bytes  = excluded.file_size_bytes,
       bitrate          = excluded.bitrate,
       scanned_at       = excluded.scanned_at
-  `).run({
+  `
+  ).run({
     $id: row.id,
     $library_id: row.library_id,
     $path: row.path,
@@ -49,14 +51,14 @@ export function replaceVideoStreams(videoId: string, streams: Omit<VideoStreamRo
 }
 
 export function getVideoById(id: string): VideoRow | null {
-  return (getDb()
-    .prepare("SELECT * FROM videos WHERE id = $id")
-    .get({ $id: id }) as VideoRow | null);
+  return getDb().prepare("SELECT * FROM videos WHERE id = $id").get({ $id: id }) as VideoRow | null;
 }
 
 export function getVideosByLibrary(libraryId: string, limit: number, offset: number): VideoRow[] {
   return getDb()
-    .prepare("SELECT * FROM videos WHERE library_id = $library_id ORDER BY title, filename LIMIT $limit OFFSET $offset")
+    .prepare(
+      "SELECT * FROM videos WHERE library_id = $library_id ORDER BY title, filename LIMIT $limit OFFSET $offset"
+    )
     .all({ $library_id: libraryId, $limit: limit, $offset: offset }) as VideoRow[];
 }
 

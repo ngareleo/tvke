@@ -47,46 +47,49 @@ export function useVideoPlayback(
       startTranscode({
         variables: {
           videoId,
-          resolution: DISPLAY_TO_GQL[res] as Parameters<StartTranscodeFn>[0]["variables"]["resolution"],
+          resolution: DISPLAY_TO_GQL[
+            res
+          ] as Parameters<StartTranscodeFn>[0]["variables"]["resolution"],
         },
-        onCompleted: async (response) => {
+        onCompleted: (response) => {
           const rawJobId = atob(response.startTranscode.id).replace("TranscodeJob:", "");
+          void (async () => {
+            const buffer = new BufferManager(
+              videoEl,
+              () => streamingRef.current?.pause(),
+              () => streamingRef.current?.resume()
+            );
+            bufferRef.current = buffer;
 
-          const buffer = new BufferManager(
-            videoEl,
-            () => streamingRef.current?.pause(),
-            () => streamingRef.current?.resume()
-          );
-          bufferRef.current = buffer;
+            try {
+              await buffer.init();
+            } catch (err) {
+              setError(`MSE init failed: ${(err as Error).message}`);
+              setStatus("idle");
+              return;
+            }
 
-          try {
-            await buffer.init();
-          } catch (err) {
-            setError(`MSE init failed: ${(err as Error).message}`);
-            setStatus("idle");
-            return;
-          }
+            const streaming = new StreamingService();
+            streamingRef.current = streaming;
 
-          const streaming = new StreamingService();
-          streamingRef.current = streaming;
-
-          streaming.start(
-            rawJobId,
-            0,
-            async (segData, isInit) => {
-              try {
-                await buffer.appendSegment(segData);
-                if (isInit) {
-                  videoEl.play().catch(() => {});
-                  setStatus("playing");
+            void streaming.start(
+              rawJobId,
+              0,
+              async (segData, isInit) => {
+                try {
+                  await buffer.appendSegment(segData);
+                  if (isInit) {
+                    videoEl.play().catch(() => {});
+                    setStatus("playing");
+                  }
+                } catch (err) {
+                  setError(`Buffer error: ${(err as Error).message}`);
                 }
-              } catch (err) {
-                setError(`Buffer error: ${(err as Error).message}`);
-              }
-            },
-            (err) => setError(err.message),
-            () => buffer.markStreamDone()
-          );
+              },
+              (err) => setError(err.message),
+              () => buffer.markStreamDone()
+            );
+          })();
         },
         onError: (err) => {
           setError(err.message);

@@ -24,11 +24,13 @@ const { upsertVideo } = await import("../db/queries/videos.js");
 const { toGlobalId } = await import("./relay.js");
 
 function gql(query: string, variables?: Record<string, unknown>) {
-  return yoga.fetch(new Request("http://localhost/graphql", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ query, variables }),
-  }));
+  return yoga.fetch(
+    new Request("http://localhost/graphql", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ query, variables }),
+    })
+  );
 }
 
 beforeAll(() => {
@@ -65,14 +67,14 @@ afterAll(() => {
 describe("GraphQL API", () => {
   test("introspection responds with the schema", async () => {
     const res = await gql("{ __schema { queryType { name } } }");
-    const body = await res.json() as { data: { __schema: { queryType: { name: string } } } };
+    const body = (await res.json()) as { data: { __schema: { queryType: { name: string } } } };
     expect(res.status).toBe(200);
     expect(body.data.__schema.queryType.name).toBe("Query");
   });
 
   test("libraries query returns seeded library", async () => {
     const res = await gql("{ libraries { id name } }");
-    const body = await res.json() as { data: { libraries: { id: string; name: string }[] } };
+    const body = (await res.json()) as { data: { libraries: { id: string; name: string }[] } };
     expect(res.status).toBe(200);
     expect(body.data.libraries).toHaveLength(1);
     expect(body.data.libraries[0].name).toBe("Test Library");
@@ -80,7 +82,7 @@ describe("GraphQL API", () => {
 
   test("library id is a valid Relay global ID", async () => {
     const res = await gql("{ libraries { id } }");
-    const body = await res.json() as { data: { libraries: { id: string }[] } };
+    const body = (await res.json()) as { data: { libraries: { id: string }[] } };
     const [lib] = body.data.libraries;
     const decoded = Buffer.from(lib.id, "base64").toString("utf8");
     expect(decoded).toBe("Library:lib1");
@@ -88,22 +90,22 @@ describe("GraphQL API", () => {
 
   test("node query resolves a Library by global ID", async () => {
     const globalId = toGlobalId("Library", "lib1");
-    const res = await gql(
-      `query ($id: ID!) { node(id: $id) { id ... on Library { name } } }`,
-      { id: globalId }
-    );
-    const body = await res.json() as { data: { node: { id: string; name: string } } };
+    const res = await gql(`query ($id: ID!) { node(id: $id) { id ... on Library { name } } }`, {
+      id: globalId,
+    });
+    const body = (await res.json()) as { data: { node: { id: string; name: string } } };
     expect(res.status).toBe(200);
     expect(body.data.node.name).toBe("Test Library");
   });
 
   test("video query returns a video by global ID", async () => {
     const globalId = toGlobalId("Video", "vid1");
-    const res = await gql(
-      `query ($id: ID!) { video(id: $id) { id title durationSeconds } }`,
-      { id: globalId }
-    );
-    const body = await res.json() as { data: { video: { id: string; title: string; durationSeconds: number } } };
+    const res = await gql(`query ($id: ID!) { video(id: $id) { id title durationSeconds } }`, {
+      id: globalId,
+    });
+    const body = (await res.json()) as {
+      data: { video: { id: string; title: string; durationSeconds: number } };
+    };
     expect(res.status).toBe(200);
     expect(body.data.video.title).toBe("Test Movie");
     expect(body.data.video.durationSeconds).toBe(120);
@@ -111,7 +113,7 @@ describe("GraphQL API", () => {
 
   test("unknown field returns a descriptive error in the response body", async () => {
     const res = await gql("{ nonexistentField }");
-    const body = await res.json() as { errors: { message: string }[] };
+    const body = (await res.json()) as { errors: { message: string }[] };
     // graphql-yoga follows GraphQL-over-HTTP: errors are 200 with `errors` array
     expect(res.status).toBe(200);
     expect(body.errors).toBeDefined();

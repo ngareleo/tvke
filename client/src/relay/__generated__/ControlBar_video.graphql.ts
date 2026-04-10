@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<fc1077d91d38da2f5ae4394618f82961>>
+ * @generated SignedSource<<b2be295af6c52a1e679837d3c4bf6c30>>
  * @lightSyntaxTransform
  * @nogrep
  */
@@ -10,30 +10,37 @@
 
 import { ReaderFragment } from 'relay-runtime';
 import { FragmentRefs } from "relay-runtime";
-export type VideoPlayer_video$data = {
-  readonly id: string;
+export type ControlBar_video$data = {
+  readonly durationSeconds: number;
+  readonly title: string;
   readonly videoStream: {
     readonly height: number;
   } | null | undefined;
-  readonly " $fragmentSpreads": FragmentRefs<"ControlBar_video">;
-  readonly " $fragmentType": "VideoPlayer_video";
+  readonly " $fragmentType": "ControlBar_video";
 };
-export type VideoPlayer_video$key = {
-  readonly " $data"?: VideoPlayer_video$data;
-  readonly " $fragmentSpreads": FragmentRefs<"VideoPlayer_video">;
+export type ControlBar_video$key = {
+  readonly " $data"?: ControlBar_video$data;
+  readonly " $fragmentSpreads": FragmentRefs<"ControlBar_video">;
 };
 
 const node: ReaderFragment = {
   "argumentDefinitions": [],
   "kind": "Fragment",
   "metadata": null,
-  "name": "VideoPlayer_video",
+  "name": "ControlBar_video",
   "selections": [
     {
       "alias": null,
       "args": null,
       "kind": "ScalarField",
-      "name": "id",
+      "name": "title",
+      "storageKey": null
+    },
+    {
+      "alias": null,
+      "args": null,
+      "kind": "ScalarField",
+      "name": "durationSeconds",
       "storageKey": null
     },
     {
@@ -53,17 +60,12 @@ const node: ReaderFragment = {
         }
       ],
       "storageKey": null
-    },
-    {
-      "args": null,
-      "kind": "FragmentSpread",
-      "name": "ControlBar_video"
     }
   ],
   "type": "Video",
   "abstractKey": null
 };
 
-(node as any).hash = "a1375741013d9867392b7803f8ff81ad";
+(node as any).hash = "168247599181915f14103b7ea52fc5da";
 
 export default node;

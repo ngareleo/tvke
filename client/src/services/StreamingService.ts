@@ -7,7 +7,13 @@ export class StreamingService {
   private paused = false;
   private resumeResolve: (() => void) | null = null;
 
-  async start(jobId: string, fromIndex: number, onSegment: SegmentCallback, onError: ErrorCallback, onDone: () => void): Promise<void> {
+  async start(
+    jobId: string,
+    fromIndex: number,
+    onSegment: SegmentCallback,
+    onError: ErrorCallback,
+    onDone: () => void
+  ): Promise<void> {
     this.abortController = new AbortController();
     let response: Response;
 
@@ -31,7 +37,9 @@ export class StreamingService {
     try {
       while (true) {
         if (this.paused) {
-          await new Promise<void>((resolve) => { this.resumeResolve = resolve; });
+          await new Promise<void>((resolve) => {
+            this.resumeResolve = resolve;
+          });
         }
 
         const { done, value } = await this.reader.read();

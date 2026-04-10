@@ -1,11 +1,11 @@
 import { Box, Heading, Text, Button } from "@chakra-ui/react";
 import { useLazyLoadQuery, useMutation, graphql } from "react-relay";
-import type { LibraryPageQuery } from "../relay/__generated__/LibraryPageQuery.graphql";
-import type { LibraryPageScanMutation } from "../relay/__generated__/LibraryPageScanMutation.graphql";
+import type { LibraryContentQuery } from "../relay/__generated__/LibraryContentQuery.graphql.js";
+import type { LibraryContentScanMutation } from "../relay/__generated__/LibraryContentScanMutation.graphql.js";
 import { LibraryGrid } from "../components/LibraryGrid.js";
 
 const LIBRARIES_QUERY = graphql`
-  query LibraryPageQuery {
+  query LibraryContentQuery {
     libraries {
       id
       name
@@ -15,7 +15,7 @@ const LIBRARIES_QUERY = graphql`
 `;
 
 const SCAN_MUTATION = graphql`
-  mutation LibraryPageScanMutation {
+  mutation LibraryContentScanMutation {
     scanLibraries {
       id
       name
@@ -23,9 +23,9 @@ const SCAN_MUTATION = graphql`
   }
 `;
 
-export function LibraryContent() {
-  const data = useLazyLoadQuery<LibraryPageQuery>(LIBRARIES_QUERY, {});
-  const [scan, isScanning] = useMutation<LibraryPageScanMutation>(SCAN_MUTATION);
+export function LibraryContent(): JSX.Element {
+  const data = useLazyLoadQuery<LibraryContentQuery>(LIBRARIES_QUERY, {});
+  const [scan, isScanning] = useMutation<LibraryContentScanMutation>(SCAN_MUTATION);
 
   const handleScan = () => {
     scan({ variables: {} });
@@ -45,7 +45,9 @@ export function LibraryContent() {
       ) : (
         data.libraries.map((lib) => (
           <Box key={lib.id} mb={10}>
-            <Heading size="md" mb={4}>{lib.name}</Heading>
+            <Heading size="md" mb={4}>
+              {lib.name}
+            </Heading>
             <LibraryGrid library={lib} />
           </Box>
         ))

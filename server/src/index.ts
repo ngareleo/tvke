@@ -2,8 +2,7 @@ import { mkdir } from "fs/promises";
 import { config } from "./config.js";
 import { getDb } from "./db/index.js";
 import { scanLibraries } from "./services/libraryScanner.js";
-import { updateJobStatus } from "./db/queries/jobs.js";
-import { getInterruptedJobs } from "./db/queries/jobs.js";
+import { restoreInterruptedJobs } from "./services/jobRestore.js";
 import { yoga } from "./routes/graphql.js";
 import { handleStream } from "./routes/stream.js";
 
@@ -15,12 +14,10 @@ async function bootstrap(): Promise<void> {
   getDb();
   console.log("[server] Database ready");
 
-  // Mark any jobs that were running when server last died as errored
-  const interrupted = getInterruptedJobs();
-  for (const job of interrupted) {
-    updateJobStatus(job.id, "error", { error: "Server restarted during transcode" });
-    console.warn(`[server] Marked interrupted job as error: ${job.id}`);
-  }
+  // Restore any jobs that were running when server last died.
+  // Jobs whose segment files still exist are restored to memory and marked
+  // complete; jobs with no output are marked as error.
+  await restoreInterruptedJobs();
 
   // Scan media libraries
   console.log("[server] Scanning media libraries...");
@@ -28,15 +25,18 @@ async function bootstrap(): Promise<void> {
   console.log("[server] Library scan complete");
 
   // Start HTTP server
-  const server = Bun.serve({
+  Bun.serve({
     port: config.port,
+    // Disable idle timeout — the /stream/:jobId endpoint is a long-lived
+    // chunked HTTP response and would be killed by the 10s default.
+    idleTimeout: 0,
 
     async fetch(req) {
       const url = new URL(req.url);
 
       // GraphQL endpoint (handles GET for introspection, POST for queries, WS for subscriptions)
       if (url.pathname === "/graphql" || url.pathname.startsWith("/graphql")) {
-        return yoga.handle(req, server);
+        return yoga.handle(req);
       }
 
       // Binary streaming endpoint
@@ -47,7 +47,9 @@ async function bootstrap(): Promise<void> {
       return new Response("Not Found", { status: 404 });
     },
 
-    websocket: yoga.websocketHandler as Parameters<typeof Bun.serve>[0]["websocket"],
+    // TODO: WebSocket subscriptions (graphql-ws) need a dedicated Bun WS upgrade
+    // handler. graphql-yoga v5 does not expose a Bun-compatible websocketHandler
+    // out of the box — subscriptions currently fall back to SSE.
   });
 
   console.log(`[server] Listening on http://localhost:${config.port}`);

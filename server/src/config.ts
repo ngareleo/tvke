@@ -1,6 +1,11 @@
 import { resolve } from "path";
 import { readFileSync } from "fs";
-import type { ResolutionProfile, Resolution, MediaFilesConfig, MediaLibraryEntry } from "./types.js";
+import type {
+  ResolutionProfile,
+  Resolution,
+  MediaFilesConfig,
+  MediaLibraryEntry,
+} from "./types.js";
 
 export interface AppConfig {
   port: number;
@@ -26,8 +31,7 @@ const prod: AppConfig = {
   mediaConfigPath: resolve(root, "mediaFiles.json"),
 };
 
-export const config: AppConfig =
-  process.env.NODE_ENV === "production" ? prod : dev;
+export const config: AppConfig = process.env.NODE_ENV === "production" ? prod : dev;
 
 export const RESOLUTION_PROFILES: Record<Resolution, ResolutionProfile> = {
   "240p": {

@@ -18,5 +18,10 @@ export const DISPLAY_TO_GQL: Record<Resolution, string> = {
 export const ALL_RESOLUTIONS: Resolution[] = ["240p", "360p", "480p", "720p", "1080p", "4k"];
 
 export const RESOLUTION_ORDER: Record<Resolution, number> = {
-  "240p": 0, "360p": 1, "480p": 2, "720p": 3, "1080p": 4, "4k": 5,
+  "240p": 0,
+  "360p": 1,
+  "480p": 2,
+  "720p": 3,
+  "1080p": 4,
+  "4k": 5,
 };

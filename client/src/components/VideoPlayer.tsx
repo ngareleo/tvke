@@ -11,11 +11,11 @@ import { useVideoPlayback } from "../hooks/useVideoPlayback.js";
 const VIDEO_FRAGMENT = graphql`
   fragment VideoPlayer_video on Video {
     id
-    title
-    durationSeconds
     videoStream {
       height
     }
+    # Spread the ControlBar fragment so ControlBar can fetch its own fields
+    ...ControlBar_video
   }
 `;
 
@@ -31,7 +31,7 @@ interface Props {
   video: VideoPlayer_video$key;
 }
 
-export function VideoPlayer({ video }: Props) {
+export function VideoPlayer({ video }: Props): JSX.Element {
   const data = useFragment(VIDEO_FRAGMENT, video);
   const [startTranscode] = useMutation<VideoPlayerStartTranscodeMutation>(START_TRANSCODE_MUTATION);
 
@@ -63,16 +63,16 @@ export function VideoPlayer({ video }: Props) {
 
       {error && (
         <Box position="absolute" top={4} left={4} right={4} bg="red.800" p={3} borderRadius="md">
-          <Text color="white" fontSize="sm">{error}</Text>
+          <Text color="white" fontSize="sm">
+            {error}
+          </Text>
         </Box>
       )}
 
       <ControlBar
+        video={data}
         videoRef={videoRef}
-        title={data.title}
-        durationSeconds={data.durationSeconds}
         resolution={resolution}
-        maxResolution={nativeMax}
         status={status}
         onPlay={handlePlay}
         onResolutionChange={handleResolutionChange}

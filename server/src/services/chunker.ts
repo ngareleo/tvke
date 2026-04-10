@@ -6,8 +6,9 @@ import ffmpegInstaller from "@ffmpeg-installer/ffmpeg";
 import ffprobeInstaller from "@ffprobe-installer/ffprobe";
 import { config, RESOLUTION_PROFILES } from "../config.js";
 import { getJob, setJob } from "./jobStore.js";
-import { insertJob, updateJobStatus } from "../db/queries/jobs.js";
-import { insertSegment } from "../db/queries/segments.js";
+import { FFmpegFile } from "./ffmpegFile.js";
+import { insertJob, updateJobStatus, getJobById } from "../db/queries/jobs.js";
+import { insertSegment, getSegmentsByJob } from "../db/queries/segments.js";
 import { getVideoById } from "../db/queries/videos.js";
 import type { Resolution, ActiveJob } from "../types.js";
 
@@ -31,11 +32,33 @@ export async function startTranscodeJob(
 
   const id = jobId(video.path, resolution, startTimeSeconds, endTimeSeconds);
 
-  // Return existing job if already running or complete
+  // Return existing in-memory job if already running or complete
   const existing = getJob(id);
   if (existing && existing.status !== "error") return existing;
 
-  const profile = RESOLUTION_PROFILES[resolution];
+  // Restore a completed job from a previous server session without re-encoding
+  const dbJob = getJobById(id);
+  if (dbJob && dbJob.status === "complete") {
+    const dbSegments = getSegmentsByJob(id);
+    if (dbSegments.length > 0) {
+      const segments: string[] = [];
+      for (const seg of dbSegments) {
+        segments[seg.segment_index] = seg.path;
+      }
+      const restored: ActiveJob = {
+        ...dbJob,
+        segments,
+        initSegmentPath: join(dbJob.segment_dir, "init.mp4"),
+        subscribers: new Set(),
+      };
+      setJob(restored);
+      console.log(
+        `[chunker] Restored completed job ${id.slice(0, 8)} from DB (${dbSegments.length} segments)`
+      );
+      return restored;
+    }
+  }
+
   const segmentDir = resolve(config.segmentDir, id);
   await mkdir(segmentDir, { recursive: true });
 
@@ -61,79 +84,75 @@ export async function startTranscodeJob(
   insertJob(job);
   setJob(job);
 
-  // Start transcoding asynchronously
-  runFfmpeg(job, video.path, profile, segmentDir, startTimeSeconds, endTimeSeconds);
+  // Probe the file then start transcoding asynchronously (fire-and-forget)
+  void runFfmpeg(job, video.path, resolution, segmentDir, startTimeSeconds, endTimeSeconds);
 
   return job;
 }
 
-function runFfmpeg(
+async function runFfmpeg(
   job: ActiveJob,
   inputPath: string,
-  profile: (typeof RESOLUTION_PROFILES)[Resolution],
+  resolution: Resolution,
   segmentDir: string,
   startTime?: number,
   endTime?: number
-): void {
+): Promise<void> {
   job.status = "running";
   updateJobStatus(job.id, "running");
 
-  const maxBitrate = `${Math.round(parseInt(profile.videoBitrate) * 1.2)}k`;
-  const bufSize = `${Math.round(parseInt(profile.videoBitrate) * 2)}k`;
-  const outputPattern = join(segmentDir, "segment_%04d.m4s");
+  const profile = RESOLUTION_PROFILES[resolution];
   const initPath = join(segmentDir, "init.mp4");
+  const segmentPattern = join(segmentDir, "segment_%04d.m4s");
+
+  // Probe the file to derive correct transcode parameters
+  const file = new FFmpegFile(inputPath);
+  try {
+    await file.probe();
+    console.log(`[chunker] Job ${job.id.slice(0, 8)} — source: ${file.summary()}`);
+  } catch (err) {
+    const msg = `ffprobe failed: ${(err as Error).message}`;
+    console.error(`[chunker] Job ${job.id.slice(0, 8)} — ${msg}`);
+    job.status = "error";
+    job.error = msg;
+    updateJobStatus(job.id, "error", { error: msg });
+    notifySubscribers(job);
+    return;
+  }
 
   let command = ffmpeg(inputPath);
 
   if (startTime !== undefined) command = command.seekInput(startTime);
   if (endTime !== undefined) command = command.duration(endTime - (startTime ?? 0));
 
-  command
-    .videoCodec("libx264")
-    .outputOptions([
-      `-profile:v high`,
-      `-level:v ${profile.h264Level}`,
-      `-b:v ${profile.videoBitrate}`,
-      `-maxrate ${maxBitrate}`,
-      `-bufsize ${bufSize}`,
-      `-vf scale=${profile.width}:${profile.height}`,
-      `-g 48`,
-      `-keyint_min 48`,
-      `-sc_threshold 0`,
-    ])
-    .audioCodec("aac")
-    .outputOptions([
-      `-b:a ${profile.audioBitrate}`,
-    ])
-    .outputOptions([
-      `-movflags frag_keyframe+empty_moov+default_base_moof`,
-      `-f segment`,
-      `-segment_time ${profile.segmentDuration}`,
-      `-segment_format mp4`,
-      `-reset_timestamps 1`,
-      `-segment_list ${join(segmentDir, "segments.txt")}`,
-      `-segment_list_flags +live`,
-    ])
-    .output(outputPattern)
+  // Register the inotify watch BEFORE calling .run() so the kernel queues events
+  // from the very first file ffmpeg writes (init.mp4 and segment_0000.m4s).
+  // Calling watchSegments after .on("start") risks missing early segment events.
+  void watchSegments(job, segmentDir, initPath);
+
+  file
+    .applyOutputOptions(command, profile, segmentPattern, segmentDir)
+    .output(join(segmentDir, "playlist.m3u8"))
     .on("start", (cmd) => {
-      console.log(`[chunker] Job ${job.id} started`);
-      // Generate init segment after first segment appears
-      watchSegments(job, segmentDir, initPath);
+      console.log(`[chunker] Job ${job.id.slice(0, 8)} started`);
+      console.log(`[chunker] cmd: ${cmd.slice(0, 120)}…`);
     })
     .on("error", (err) => {
-      console.error(`[chunker] Job ${job.id} error:`, err.message);
+      console.error(`[chunker] Job ${job.id.slice(0, 8)} error:`, err.message);
       job.status = "error";
       job.error = err.message;
       updateJobStatus(job.id, "error", { error: err.message });
       notifySubscribers(job);
     })
     .on("end", () => {
-      console.log(`[chunker] Job ${job.id} complete. ${job.segments.length} segments`);
+      console.log(
+        `[chunker] Job ${job.id.slice(0, 8)} complete. ${job.segments.filter(Boolean).length} segments`
+      );
       job.status = "complete";
-      job.total_segments = job.segments.length;
+      job.total_segments = job.segments.filter(Boolean).length;
       updateJobStatus(job.id, "complete", {
-        total_segments: job.segments.length,
-        completed_segments: job.segments.length,
+        total_segments: job.total_segments,
+        completed_segments: job.total_segments,
       });
       notifySubscribers(job);
     })
@@ -144,14 +163,25 @@ async function watchSegments(job: ActiveJob, segmentDir: string, initPath: strin
   const seenFiles = new Set<string>();
 
   try {
+    // Registering the watcher first ensures the kernel queues all file events
+    // from this point on — even if they arrive before for-await starts iterating.
     const watcher = watch(segmentDir);
+
     for await (const event of watcher) {
       if (job.status === "error") break;
 
       const filename = event.filename;
       if (!filename) continue;
 
-      // Track numbered segment files
+      // HLS fMP4 mode writes init.mp4 before any media segments
+      if (filename === "init.mp4" && !job.initSegmentPath) {
+        job.initSegmentPath = initPath;
+        console.log(`[chunker] Init segment ready for job ${job.id.slice(0, 8)}`);
+        notifySubscribers(job);
+        continue;
+      }
+
+      // Track numbered media segment files
       if (/^segment_\d{4}\.m4s$/.test(filename) && !seenFiles.has(filename)) {
         seenFiles.add(filename);
         const fullPath = join(segmentDir, filename);
@@ -162,11 +192,6 @@ async function watchSegments(job: ActiveJob, segmentDir: string, initPath: strin
 
           job.segments[index] = fullPath;
           job.completed_segments = job.segments.filter(Boolean).length;
-
-          // Extract init segment from the first .m4s if not yet done
-          if (index === 0 && !job.initSegmentPath) {
-            await extractInitSegment(fullPath, initPath, job);
-          }
 
           insertSegment({
             job_id: job.id,
@@ -179,34 +204,15 @@ async function watchSegments(job: ActiveJob, segmentDir: string, initPath: strin
           updateJobStatus(job.id, job.status, { completed_segments: job.completed_segments });
           notifySubscribers(job);
         } catch {
-          // File might not be fully written yet; it will be caught on next event
+          // File might not be fully written; stream.ts will fall back to the filesystem
         }
       }
 
       if (job.status === "complete") break;
     }
   } catch (err) {
-    console.warn(`[chunker] Watcher ended for job ${job.id}:`, (err as Error).message);
+    console.warn(`[chunker] Watcher ended for job ${job.id.slice(0, 8)}:`, (err as Error).message);
   }
-}
-
-async function extractInitSegment(firstSegmentPath: string, initPath: string, job: ActiveJob): Promise<void> {
-  return new Promise((resolve) => {
-    ffmpeg(firstSegmentPath)
-      .outputOptions([
-        "-c copy",
-        "-t 0",
-        "-movflags frag_keyframe+empty_moov",
-      ])
-      .output(initPath)
-      .on("end", () => {
-        job.initSegmentPath = initPath;
-        console.log(`[chunker] Init segment written for job ${job.id}`);
-        resolve();
-      })
-      .on("error", () => resolve()) // non-fatal
-      .run();
-  });
 }
 
 function notifySubscribers(job: ActiveJob): void {

@@ -22,10 +22,13 @@ function makeStream(chunks: Uint8Array[]): ReadableStream<Uint8Array> {
 
 // Mock fetch to return a stream of the given chunks
 function mockFetch(chunks: Uint8Array[]) {
-  vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
-    ok: true,
-    body: makeStream(chunks),
-  }));
+  vi.stubGlobal(
+    "fetch",
+    vi.fn().mockResolvedValue({
+      ok: true,
+      body: makeStream(chunks),
+    })
+  );
 }
 
 beforeEach(() => {
@@ -44,7 +47,9 @@ describe("StreamingService frame parser", () => {
       "job1",
       0,
       (data, isInit) => segments.push({ data, isInit }),
-      (err) => { throw err; },
+      (err) => {
+        throw err;
+      },
       () => {}
     );
 
@@ -66,7 +71,9 @@ describe("StreamingService frame parser", () => {
       "job1",
       0,
       (_, isInit) => initFlags.push(isInit),
-      (err) => { throw err; },
+      (err) => {
+        throw err;
+      },
       () => {}
     );
 
@@ -88,7 +95,9 @@ describe("StreamingService frame parser", () => {
       "job1",
       0,
       (data) => segments.push(data),
-      (err) => { throw err; },
+      (err) => {
+        throw err;
+      },
       () => {}
     );
 
@@ -111,7 +120,9 @@ describe("StreamingService frame parser", () => {
       "job1",
       0,
       (data) => payloads.push(new Uint8Array(data)),
-      (err) => { throw err; },
+      (err) => {
+        throw err;
+      },
       () => {}
     );
 
@@ -126,7 +137,17 @@ describe("StreamingService frame parser", () => {
     const service = new StreamingService();
     let done = false;
 
-    await service.start("job1", 0, () => {}, (err) => { throw err; }, () => { done = true; });
+    await service.start(
+      "job1",
+      0,
+      () => {},
+      (err) => {
+        throw err;
+      },
+      () => {
+        done = true;
+      }
+    );
 
     expect(done).toBe(true);
   });
@@ -136,7 +157,13 @@ describe("StreamingService frame parser", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     const service = new StreamingService();
-    await service.start("job42", 5, () => {}, () => {}, () => {});
+    await service.start(
+      "job42",
+      5,
+      () => {},
+      () => {},
+      () => {}
+    );
 
     const calledUrl = fetchMock.mock.calls[0][0] as string;
     expect(calledUrl).toBe("/stream/job42?from=5");
@@ -144,10 +171,10 @@ describe("StreamingService frame parser", () => {
 
   it("cancel() stops processing and does not call onError", async () => {
     // Infinite stream — never closes
-    let enqueueFn: ((chunk: Uint8Array) => void) | null = null;
+    let _enqueueFn: ((chunk: Uint8Array) => void) | null = null;
     const infiniteStream = new ReadableStream<Uint8Array>({
       start(controller) {
-        enqueueFn = (c) => controller.enqueue(c);
+        _enqueueFn = (c) => controller.enqueue(c);
       },
     });
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, body: infiniteStream }));
@@ -156,7 +183,13 @@ describe("StreamingService frame parser", () => {
     const errors: Error[] = [];
 
     // Start but don't await — it will hang until cancelled
-    const startPromise = service.start("job1", 0, () => {}, (e) => errors.push(e), () => {});
+    const startPromise = service.start(
+      "job1",
+      0,
+      () => {},
+      (e) => errors.push(e),
+      () => {}
+    );
     // Give the fetch a tick to begin
     await new Promise((r) => setTimeout(r, 0));
     service.cancel();

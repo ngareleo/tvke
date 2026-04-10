@@ -8,3 +8,6 @@ dist/
 
 # relay compiler artifacts are committed
 # (remove the line below if you want to gitignore them instead)
+
+*storybook.log
+storybook-static
