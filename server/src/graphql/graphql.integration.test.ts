@@ -10,7 +10,7 @@
  *
  * Run with: bun test src/graphql/graphql.integration.test.ts
  */
-import { describe, test, expect, beforeAll } from "bun:test";
+import { beforeAll, describe, expect, test } from "bun:test";
 
 // These imports must come AFTER DB_PATH is set (handled by the preload)
 const { yoga } = await import("../routes/graphql.js");

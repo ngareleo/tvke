@@ -1,5 +1,5 @@
-import { getDb } from "../index.js";
 import type { VideoRow, VideoStreamRow } from "../../types.js";
+import { getDb } from "../index.js";
 
 export function upsertVideo(row: VideoRow): void {
   const db = getDb();

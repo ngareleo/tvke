@@ -1,9 +1,10 @@
 import { Box, Spinner } from "@chakra-ui/react";
-import { useLazyLoadQuery, graphql } from "react-relay";
-import { useParams } from "react-router-dom";
-import type { PlayerPageQuery } from "../relay/__generated__/PlayerPageQuery.graphql";
-import { VideoPlayer } from "../components/VideoPlayer.js";
 import { Suspense } from "react";
+import { graphql, useLazyLoadQuery } from "react-relay";
+import { useParams } from "react-router-dom";
+
+import { VideoPlayer } from "../components/VideoPlayer.js";
+import type { PlayerPageQuery } from "../relay/__generated__/PlayerPageQuery.graphql";
 
 const VIDEO_QUERY = graphql`
   query PlayerPageQuery($id: ID!) {

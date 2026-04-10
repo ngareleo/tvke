@@ -1,9 +1,10 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { useRef } from "react";
 import { graphql } from "react-relay";
-import { ControlBar } from "./ControlBar.js";
-import type { ControlBarStoryQuery } from "../relay/__generated__/ControlBarStoryQuery.graphql.js";
+
 import type { ControlBar_video$key } from "../relay/__generated__/ControlBar_video.graphql.js";
+import type { ControlBarStoryQuery } from "../relay/__generated__/ControlBarStoryQuery.graphql.js";
+import { ControlBar } from "./ControlBar.js";
 
 /**
  * ControlBar is the playback UI: seek bar, play/pause, time display, title,

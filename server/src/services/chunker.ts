@@ -1,16 +1,17 @@
-import { createHash } from "crypto";
-import { mkdir, watch, stat } from "fs/promises";
-import { join, resolve } from "path";
-import ffmpeg from "fluent-ffmpeg";
 import ffmpegInstaller from "@ffmpeg-installer/ffmpeg";
 import ffprobeInstaller from "@ffprobe-installer/ffprobe";
+import { createHash } from "crypto";
+import ffmpeg from "fluent-ffmpeg";
+import { mkdir, stat, watch } from "fs/promises";
+import { join, resolve } from "path";
+
 import { config, RESOLUTION_PROFILES } from "../config.js";
-import { getJob, setJob } from "./jobStore.js";
-import { FFmpegFile } from "./ffmpegFile.js";
-import { insertJob, updateJobStatus, getJobById } from "../db/queries/jobs.js";
-import { insertSegment, getSegmentsByJob } from "../db/queries/segments.js";
+import { getJobById, insertJob, updateJobStatus } from "../db/queries/jobs.js";
+import { getSegmentsByJob, insertSegment } from "../db/queries/segments.js";
 import { getVideoById } from "../db/queries/videos.js";
-import type { Resolution, ActiveJob } from "../types.js";
+import type { ActiveJob, Resolution } from "../types.js";
+import { FFmpegFile } from "./ffmpegFile.js";
+import { getJob, setJob } from "./jobStore.js";
 
 ffmpeg.setFfmpegPath(ffmpegInstaller.path);
 ffmpeg.setFfprobePath(ffprobeInstaller.path);

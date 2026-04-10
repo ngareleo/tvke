@@ -1,11 +1,12 @@
-import { useRef, useState, useCallback, useEffect } from "react";
 import type { RefObject } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import type { UseMutationConfig } from "react-relay";
+
+import type { VideoPlayerStartTranscodeMutation } from "../relay/__generated__/VideoPlayerStartTranscodeMutation.graphql.js";
+import { BufferManager } from "../services/BufferManager.js";
+import { StreamingService } from "../services/StreamingService.js";
 import type { Resolution } from "../types.js";
 import { DISPLAY_TO_GQL } from "../types.js";
-import { StreamingService } from "../services/StreamingService.js";
-import { BufferManager } from "../services/BufferManager.js";
-import type { VideoPlayerStartTranscodeMutation } from "../relay/__generated__/VideoPlayerStartTranscodeMutation.graphql.js";
-import type { UseMutationConfig } from "react-relay";
 
 type StartTranscodeFn = (config: UseMutationConfig<VideoPlayerStartTranscodeMutation>) => void;
 

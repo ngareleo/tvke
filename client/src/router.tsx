@@ -1,6 +1,6 @@
+import { Box, Spinner } from "@chakra-ui/react";
 import { lazy, Suspense } from "react";
 import { createBrowserRouter } from "react-router-dom";
-import { Box, Spinner } from "@chakra-ui/react";
 
 const LibraryPage = lazy(() =>
   import("./pages/LibraryPage.js").then((m) => ({ default: m.LibraryPage }))

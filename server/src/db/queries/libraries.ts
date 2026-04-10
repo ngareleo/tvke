@@ -1,5 +1,5 @@
-import { getDb } from "../index.js";
 import type { LibraryRow } from "../../types.js";
+import { getDb } from "../index.js";
 
 export function upsertLibrary(row: LibraryRow): void {
   const db = getDb();

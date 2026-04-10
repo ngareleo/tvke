@@ -1,7 +1,8 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { graphql } from "react-relay";
-import { VideoCard } from "./VideoCard.js";
+
 import type { VideoCardStoryQuery } from "../relay/__generated__/VideoCardStoryQuery.graphql.js";
+import { VideoCard } from "./VideoCard.js";
 
 /**
  * VideoCard displays a clickable tile with the video title, duration, and

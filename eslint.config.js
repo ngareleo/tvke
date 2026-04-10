@@ -1,6 +1,8 @@
 import tseslint from "typescript-eslint";
 import prettier from "eslint-config-prettier";
 import unusedImports from "eslint-plugin-unused-imports";
+import simpleImportSort from "eslint-plugin-simple-import-sort";
+import jsonc from "eslint-plugin-jsonc";
 
 /**
  * Base ESLint config shared by all workspaces.
@@ -15,10 +17,13 @@ export const baseConfig = tseslint.config(
       "**/relay/__generated__/**",
     ],
   },
+
+  // ── TypeScript / JavaScript ──────────────────────────────────────────────────
   tseslint.configs.recommended,
   {
     plugins: {
       "unused-imports": unusedImports,
+      "simple-import-sort": simpleImportSort,
     },
     rules: {
       // Enforce explicit return types on module boundaries
@@ -43,8 +48,26 @@ export const baseConfig = tseslint.config(
       ],
       // No floating promises
       "@typescript-eslint/no-floating-promises": "error",
+      // Organised imports: sorted, grouped (external → internal → relative)
+      "simple-import-sort/imports": "error",
+      "simple-import-sort/exports": "error",
     },
   },
+
+  // ── JSON files ───────────────────────────────────────────────────────────────
+  // jsonc flat config registers its own parser (jsonc-eslint-parser) automatically.
+  // Prettier handles pretty-printing; jsonc catches structural issues ESLint can enforce.
+  // eslint-config-prettier is appended last to suppress any jsonc formatting rules
+  // that conflict with Prettier's output.
+  ...jsonc.configs["flat/recommended-with-json"],
+  {
+    files: ["**/*.json"],
+    rules: {
+      // No duplicate keys in any JSON file
+      "jsonc/no-dupe-keys": "error",
+    },
+  },
+
   prettier
 );
 

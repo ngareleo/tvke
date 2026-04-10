@@ -9,8 +9,8 @@
  * this one database.
  */
 import { mkdirSync } from "fs";
-import { join } from "path";
 import { tmpdir } from "os";
+import { join } from "path";
 
 const SHARED_TEST_DIR = join(tmpdir(), "tvke-test-shared");
 mkdirSync(SHARED_TEST_DIR, { recursive: true });

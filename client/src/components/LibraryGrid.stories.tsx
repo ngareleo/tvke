@@ -1,7 +1,8 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { graphql } from "react-relay";
-import { LibraryGrid } from "./LibraryGrid.js";
+
 import type { LibraryGridStoryQuery } from "../relay/__generated__/LibraryGridStoryQuery.graphql.js";
+import { LibraryGrid } from "./LibraryGrid.js";
 
 /**
  * LibraryGrid renders a responsive grid of VideoCards for a single library.

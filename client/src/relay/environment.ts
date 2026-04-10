@@ -1,6 +1,6 @@
-import { Environment, Network, RecordSource, Store, Observable } from "relay-runtime";
-import type { FetchFunction, SubscribeFunction } from "relay-runtime";
 import { createClient } from "graphql-ws";
+import type { FetchFunction, SubscribeFunction } from "relay-runtime";
+import { Environment, Network, Observable, RecordSource, Store } from "relay-runtime";
 
 const SERVER_URL = "/graphql";
 

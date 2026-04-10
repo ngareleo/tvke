@@ -7,9 +7,10 @@
  *   await f.probe();
  *   const cmd = f.applyTo(ffmpeg("/path/to/video.mkv"), profile);
  */
-import ffmpeg from "fluent-ffmpeg";
 import ffmpegInstaller from "@ffmpeg-installer/ffmpeg";
 import ffprobeInstaller from "@ffprobe-installer/ffprobe";
+import ffmpeg from "fluent-ffmpeg";
+
 import type { ResolutionProfile } from "../types.js";
 
 ffmpeg.setFfmpegPath(ffmpegInstaller.path);

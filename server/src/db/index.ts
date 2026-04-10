@@ -1,4 +1,5 @@
 import { Database } from "bun:sqlite";
+
 import { config } from "../config.js";
 import { migrate } from "./migrate.js";
 

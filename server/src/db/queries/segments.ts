@@ -1,5 +1,5 @@
-import { getDb } from "../index.js";
 import type { SegmentRow } from "../../types.js";
+import { getDb } from "../index.js";
 
 export function insertSegment(row: Omit<SegmentRow, "id">): void {
   getDb()

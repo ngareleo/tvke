@@ -1,6 +1,6 @@
 import { getLibraryById } from "../../db/queries/libraries.js";
 import { getStreamsByVideoId } from "../../db/queries/videos.js";
-import { presentLibrary, type GQLLibrary, type GQLVideo } from "../presenters.js";
+import { type GQLLibrary, type GQLVideo, presentLibrary } from "../presenters.js";
 
 export const videoResolvers = {
   Video: {

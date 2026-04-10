@@ -1,11 +1,12 @@
+import { Badge, Box, IconButton, Slider, Stack, Text } from "@chakra-ui/react";
 import type { RefObject } from "react";
-import { Box, Text, IconButton, Slider, Badge, Stack } from "@chakra-ui/react";
-import { useFragment, graphql } from "react-relay";
+import { graphql, useFragment } from "react-relay";
+
+import { useVideoSync } from "../hooks/useVideoSync.js";
 import type { ControlBar_video$key } from "../relay/__generated__/ControlBar_video.graphql.js";
 import type { Resolution } from "../types.js";
 import { ALL_RESOLUTIONS, RESOLUTION_ORDER } from "../types.js";
 import { formatDuration, maxResolutionForHeight } from "../utils/formatters.js";
-import { useVideoSync } from "../hooks/useVideoSync.js";
 
 const VIDEO_FRAGMENT = graphql`
   fragment ControlBar_video on Video {

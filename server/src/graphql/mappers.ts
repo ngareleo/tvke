@@ -1,4 +1,4 @@
-import type { Resolution, JobStatus, MediaType } from "../types.js";
+import type { JobStatus, MediaType, Resolution } from "../types.js";
 
 const GQL_TO_RESOLUTION: Record<string, Resolution> = {
   RESOLUTION_240P: "240p",

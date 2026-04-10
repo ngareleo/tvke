@@ -1,13 +1,14 @@
-import { createHash } from "crypto";
-import { readdir, stat, access } from "fs/promises";
-import { join, basename, extname } from "path";
-import ffmpeg from "fluent-ffmpeg";
 import ffmpegInstaller from "@ffmpeg-installer/ffmpeg";
 import ffprobeInstaller from "@ffprobe-installer/ffprobe";
-import { upsertLibrary, getAllLibraries } from "../db/queries/libraries.js";
-import { upsertVideo, replaceVideoStreams } from "../db/queries/videos.js";
+import { createHash } from "crypto";
+import ffmpeg from "fluent-ffmpeg";
+import { access, readdir, stat } from "fs/promises";
+import { basename, extname, join } from "path";
+
 import { loadMediaConfig } from "../config.js";
-import type { LibraryRow, VideoRow, VideoStreamRow, MediaLibraryEntry } from "../types.js";
+import { getAllLibraries, upsertLibrary } from "../db/queries/libraries.js";
+import { replaceVideoStreams, upsertVideo } from "../db/queries/videos.js";
+import type { LibraryRow, MediaLibraryEntry, VideoRow, VideoStreamRow } from "../types.js";
 import { DEFAULT_VIDEO_EXTENSIONS } from "../types.js";
 
 ffmpeg.setFfmpegPath(ffmpegInstaller.path);

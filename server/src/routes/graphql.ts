@@ -1,13 +1,14 @@
-import { createYoga } from "graphql-yoga";
 import { makeExecutableSchema } from "@graphql-tools/schema";
 import { assertValidSchema } from "graphql";
-import { typeDefs } from "../graphql/schema.js";
-import { queryResolvers } from "../graphql/resolvers/query.js";
-import { libraryResolvers } from "../graphql/resolvers/library.js";
-import { videoResolvers } from "../graphql/resolvers/video.js";
+import { createYoga } from "graphql-yoga";
+
 import { jobResolvers } from "../graphql/resolvers/job.js";
+import { libraryResolvers } from "../graphql/resolvers/library.js";
 import { mutationResolvers } from "../graphql/resolvers/mutation.js";
+import { queryResolvers } from "../graphql/resolvers/query.js";
 import { subscriptionResolvers } from "../graphql/resolvers/subscription.js";
+import { videoResolvers } from "../graphql/resolvers/video.js";
+import { typeDefs } from "../graphql/schema.js";
 
 const schema = makeExecutableSchema({
   typeDefs,

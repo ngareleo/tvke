@@ -1,5 +1,5 @@
 import { getVideoById } from "../../db/queries/videos.js";
-import { presentVideo, type GQLTranscodeJob, type GQLVideo } from "../presenters.js";
+import { type GQLTranscodeJob, type GQLVideo, presentVideo } from "../presenters.js";
 
 export const jobResolvers = {
   TranscodeJob: {

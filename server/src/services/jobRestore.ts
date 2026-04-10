@@ -14,10 +14,11 @@
 import { existsSync } from "fs";
 import { readdir, stat } from "fs/promises";
 import { join } from "path";
+
 import { getInterruptedJobs, updateJobStatus } from "../db/queries/jobs.js";
 import { getSegmentsByJob, insertSegment } from "../db/queries/segments.js";
-import { setJob } from "./jobStore.js";
 import type { ActiveJob, TranscodeJobRow } from "../types.js";
+import { setJob } from "./jobStore.js";
 
 export async function restoreInterruptedJobs(): Promise<void> {
   const interrupted = getInterruptedJobs();

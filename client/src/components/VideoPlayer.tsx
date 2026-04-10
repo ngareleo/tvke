@@ -1,12 +1,13 @@
-import { useRef, useState, useCallback } from "react";
 import { Box, Text } from "@chakra-ui/react";
-import { useFragment, useMutation, graphql } from "react-relay";
+import { useCallback, useRef, useState } from "react";
+import { graphql, useFragment, useMutation } from "react-relay";
+
+import { useVideoPlayback } from "../hooks/useVideoPlayback.js";
 import type { VideoPlayer_video$key } from "../relay/__generated__/VideoPlayer_video.graphql.js";
 import type { VideoPlayerStartTranscodeMutation } from "../relay/__generated__/VideoPlayerStartTranscodeMutation.graphql.js";
 import type { Resolution } from "../types.js";
 import { maxResolutionForHeight } from "../utils/formatters.js";
 import { ControlBar } from "./ControlBar.js";
-import { useVideoPlayback } from "../hooks/useVideoPlayback.js";
 
 const VIDEO_FRAGMENT = graphql`
   fragment VideoPlayer_video on Video {

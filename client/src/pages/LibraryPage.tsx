@@ -1,5 +1,6 @@
 import { Box, Spinner } from "@chakra-ui/react";
 import { Suspense } from "react";
+
 import { LibraryContent } from "./LibraryContent.js";
 
 export function LibraryPage(): JSX.Element {

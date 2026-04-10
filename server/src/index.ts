@@ -1,10 +1,11 @@
 import { mkdir } from "fs/promises";
+
 import { config } from "./config.js";
 import { getDb } from "./db/index.js";
-import { scanLibraries } from "./services/libraryScanner.js";
-import { restoreInterruptedJobs } from "./services/jobRestore.js";
 import { yoga } from "./routes/graphql.js";
 import { handleStream } from "./routes/stream.js";
+import { restoreInterruptedJobs } from "./services/jobRestore.js";
+import { scanLibraries } from "./services/libraryScanner.js";
 
 async function bootstrap(): Promise<void> {
   // Ensure tmp directories exist

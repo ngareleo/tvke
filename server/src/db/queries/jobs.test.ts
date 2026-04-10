@@ -3,7 +3,7 @@
  * Uses a temp SQLite database to verify the actual SQL is correct.
  */
 // DB_PATH is set by src/test/setup.ts (Bun preload) — do not override it here.
-import { describe, test, expect, beforeAll } from "bun:test";
+import { beforeAll, describe, expect, test } from "bun:test";
 
 const { insertJob, updateJobStatus, getJobById, getInterruptedJobs } = await import("./jobs.js");
 const { getDb } = await import("../index.js");

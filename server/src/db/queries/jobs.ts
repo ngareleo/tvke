@@ -1,5 +1,5 @@
-import { getDb } from "../index.js";
 import type { TranscodeJobRow } from "../../types.js";
+import { getDb } from "../index.js";
 
 export function insertJob(row: TranscodeJobRow): void {
   getDb()

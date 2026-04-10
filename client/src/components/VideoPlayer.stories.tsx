@@ -1,7 +1,8 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { graphql } from "react-relay";
-import { VideoPlayer } from "./VideoPlayer.js";
+
 import type { VideoPlayerStoryQuery } from "../relay/__generated__/VideoPlayerStoryQuery.graphql.js";
+import { VideoPlayer } from "./VideoPlayer.js";
 
 /**
  * VideoPlayer renders the <video> element + ControlBar and owns the MSE

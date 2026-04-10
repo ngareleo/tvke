@@ -1,8 +1,9 @@
-import { readFile, access } from "fs/promises";
+import { access, readFile } from "fs/promises";
 import { join } from "path";
-import { getJob } from "../services/jobStore.js";
+
 import { getJobById } from "../db/queries/jobs.js";
 import { getSegmentsByJob } from "../db/queries/segments.js";
+import { getJob } from "../services/jobStore.js";
 
 function writeLengthPrefixed(controller: ReadableStreamDefaultController, data: Uint8Array): void {
   const header = new Uint8Array(4);

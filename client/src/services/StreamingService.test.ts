@@ -1,4 +1,5 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
 import { StreamingService } from "./StreamingService.js";
 
 // Build a length-prefixed frame: [uint32 BE length][payload bytes]

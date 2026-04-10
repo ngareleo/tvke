@@ -1,6 +1,7 @@
-import { Box, Text, Badge } from "@chakra-ui/react";
-import { useFragment, graphql } from "react-relay";
+import { Badge, Box, Text } from "@chakra-ui/react";
+import { graphql, useFragment } from "react-relay";
 import { useNavigate } from "react-router-dom";
+
 import type { VideoCard_video$key } from "../relay/__generated__/VideoCard_video.graphql.js";
 import { formatDuration, resolutionLabel } from "../utils/formatters.js";
 

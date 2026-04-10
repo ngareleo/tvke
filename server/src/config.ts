@@ -1,10 +1,11 @@
-import { resolve } from "path";
 import { readFileSync } from "fs";
+import { resolve } from "path";
+
 import type {
-  ResolutionProfile,
-  Resolution,
   MediaFilesConfig,
   MediaLibraryEntry,
+  Resolution,
+  ResolutionProfile,
 } from "./types.js";
 
 export interface AppConfig {

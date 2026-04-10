@@ -7,10 +7,10 @@
  * Resolver files should import from here instead of calling toGlobalId or
  * the mapper functions directly.
  */
-import { toGlobalId } from "./relay.js";
-import { internalResolutionToGql, internalStatusToGql, internalMediaTypeToGql } from "./mappers.js";
-import type { LibraryRow, VideoRow, TranscodeJobRow } from "../types.js";
+import type { LibraryRow, TranscodeJobRow, VideoRow } from "../types.js";
 import type { ActiveJob } from "../types.js";
+import { internalMediaTypeToGql, internalResolutionToGql, internalStatusToGql } from "./mappers.js";
+import { toGlobalId } from "./relay.js";
 
 // ── Output shapes (GraphQL field names, for resolver return values) ──────────
 
