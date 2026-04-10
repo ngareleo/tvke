@@ -1,7 +1,9 @@
 import { graphql } from "react-relay";
+import { expect, within } from "storybook/test";
 import type { Meta, StoryObj } from "storybook-react-rsbuild";
 
 import type { VideoCardStoryQuery } from "../relay/__generated__/VideoCardStoryQuery.graphql.js";
+import { withLayout } from "../storybook/withLayout.js";
 import { VideoCard } from "./VideoCard.js";
 
 /**
@@ -36,19 +38,18 @@ const meta: Meta<typeof VideoCard> = {
       },
     },
   },
-  decorators: [
-    (Story) => (
-      <div style={{ width: 200 }}>
-        <Story />
-      </div>
-    ),
-  ],
+  decorators: [withLayout({ width: 200 })],
 };
 
 export default meta;
 type Story = StoryObj<typeof VideoCard>;
 
-export const Movie4K: Story = {};
+export const Movie4K: Story = {
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(canvas.getByText("Mad Max: Fury Road (2015)")).toBeInTheDocument();
+  },
+};
 
 export const Movie1080p: Story = {
   parameters: {

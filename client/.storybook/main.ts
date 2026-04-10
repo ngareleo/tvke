@@ -21,9 +21,10 @@ const config: StorybookConfig = {
     getAbsolutePath("@storybook/addon-a11y"),
     getAbsolutePath("@storybook/addon-docs"),
     getAbsolutePath("@storybook/addon-onboarding"),
+    getAbsolutePath("@storybook/addon-vitest"),
   ],
   framework: {
-    name: getAbsolutePath("storybook-react-rsbuild"),
+    name: getAbsolutePath("storybook-react-rsbuild") as "storybook-react-rsbuild",
     options: {},
   },
   rsbuildFinal(config) {

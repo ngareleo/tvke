@@ -1,7 +1,8 @@
 import { mapEventMetadata, NovaEventingProvider } from "@nova/react";
 import type { EventWrapper } from "@nova/types";
-import { useRef } from "react";
+import React, { useRef } from "react";
 import { graphql } from "react-relay";
+import { expect, within } from "storybook/test";
 import type { Meta, StoryObj } from "storybook-react-rsbuild";
 
 import type { ControlBar_video$key } from "../relay/__generated__/ControlBar_video.graphql.js";
@@ -49,10 +50,24 @@ interface WrapperProps {
 function ControlBarWrapper({ video, resolution, status }: WrapperProps): JSX.Element {
   const videoRef = useRef<HTMLVideoElement>(null);
   return (
-    <div style={{ position: "relative", width: "100%", maxWidth: 960, background: "#000" }}>
+    <div
+      style={{
+        position: "relative",
+        width: "100%",
+        maxWidth: 960,
+        background: "#000",
+        minHeight: 80,
+      }}
+    >
       <video ref={videoRef} style={{ display: "none" }} />
       <NovaEventingProvider eventing={noopEventing} reactEventMapper={mapEventMetadata}>
-        <ControlBar video={video} videoRef={videoRef} resolution={resolution} status={status} />
+        <ControlBar
+          video={video}
+          videoRef={videoRef}
+          resolution={resolution}
+          status={status}
+          isVisible={true}
+        />
       </NovaEventingProvider>
     </div>
   );
@@ -85,7 +100,14 @@ const meta: Meta<WrapperProps> = {
 export default meta;
 type Story = StoryObj<WrapperProps>;
 
-export const Playing: Story = {};
+export const Playing: Story = {
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(canvas.getByRole("button", { name: /play|pause/i })).toBeInTheDocument();
+    await expect(canvas.getByText(/0:00/)).toBeInTheDocument();
+    await expect(canvas.getByText("Mad Max: Fury Road (2015)")).toBeInTheDocument();
+  },
+};
 
 export const Idle: Story = { args: { status: "idle" } };
 
