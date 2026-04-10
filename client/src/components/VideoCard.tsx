@@ -33,7 +33,7 @@ export function VideoCard({ video }: Props): JSX.Element {
       bg="gray.800"
       _hover={{ bg: "gray.700", transform: "scale(1.02)" }}
       transition="all 0.15s"
-      onClick={() => navigate(`/play/${data.id}`)}
+      onClick={() => navigate(`/play/${encodeURIComponent(data.id)}`)}
       p={3}
     >
       <Box
