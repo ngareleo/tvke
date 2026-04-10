@@ -25,6 +25,8 @@ beforeAll(() => {
      (id, video_id, resolution, status, segment_dir, completed_segments, created_at, updated_at)
      VALUES ('job1', 'vvvv', '1080p', 'running', '/tmp/job1', 0, '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z')`
   ).run();
+  // Clear any segments left over from a previous test run so count assertions are reliable
+  db.prepare("DELETE FROM segments WHERE job_id = 'job1'").run();
 });
 
 const SEG: Parameters<typeof insertSegment>[0] = {
