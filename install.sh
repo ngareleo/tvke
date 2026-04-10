@@ -1,0 +1,67 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# tvke — setup script
+# Installs bun (if missing), dependencies, and prepares the project for development.
+
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+RED='\033[0;31m'
+NC='\033[0m' # no colour
+
+info()    { echo -e "${GREEN}[tvke]${NC} $*"; }
+warning() { echo -e "${YELLOW}[tvke]${NC} $*"; }
+error()   { echo -e "${RED}[tvke]${NC} $*" >&2; exit 1; }
+
+# ── 1. Bun ────────────────────────────────────────────────────────────────────
+
+if ! command -v bun &>/dev/null; then
+  info "bun not found — installing..."
+  curl -fsSL https://bun.sh/install | bash
+  # Make bun available in this shell session
+  export BUN_INSTALL="$HOME/.bun"
+  export PATH="$BUN_INSTALL/bin:$PATH"
+  info "bun installed: $(bun --version)"
+else
+  info "bun found: $(bun --version)"
+fi
+
+# ── 2. Dependencies ───────────────────────────────────────────────────────────
+
+info "Installing workspace dependencies..."
+bun install
+
+# ── 3. tmp/ directories ───────────────────────────────────────────────────────
+
+info "Creating tmp/ directories..."
+mkdir -p tmp/segments
+
+# ── 4. mediaFiles.json check ──────────────────────────────────────────────────
+
+if [ ! -f mediaFiles.json ]; then
+  error "mediaFiles.json not found. It should be at the project root."
+fi
+
+info "mediaFiles.json found."
+info "  → Edit the 'path' fields to point to your local video directories."
+info "  → Dev entries use env: \"dev\", prod entries use env: \"prod\"."
+
+# ── 5. Relay compiler ─────────────────────────────────────────────────────────
+
+warning "Relay compiler artifacts need to be generated before the client builds."
+warning "Steps to generate them:"
+warning "  1. Start the server once:    cd server && bun run dev"
+warning "  2. In another terminal:      cd client && bun relay"
+warning "  (The server must expose schema.graphql for the compiler to read)"
+
+# ── 6. Done ───────────────────────────────────────────────────────────────────
+
+echo ""
+info "Setup complete. To start development:"
+echo ""
+echo "    bun run dev"
+echo ""
+echo "  Server:  http://localhost:3001/graphql"
+echo "  Client:  http://localhost:5173"
+echo ""
+info "See README.md for full usage instructions."

@@ -1,0 +1,10 @@
+node_modules/
+tmp/
+dist/
+.env
+*.db
+*.db-shm
+*.db-wal
+
+# relay compiler artifacts are committed
+# (remove the line below if you want to gitignore them instead)

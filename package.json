@@ -1,0 +1,10 @@
+{
+  "name": "tvke",
+  "private": true,
+  "workspaces": ["server", "client"],
+  "scripts": {
+    "dev": "bun run --filter '*' dev",
+    "build": "bun run --filter server build && bun run --filter client build",
+    "lint": "bun run --filter '*' lint"
+  }
+}

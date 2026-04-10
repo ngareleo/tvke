@@ -1,0 +1,22 @@
+{
+  "libraries": [
+    {
+      "name": "My Videos",
+      "path": "/home/dag/Videos",
+      "mediaType": "movies",
+      "env": "dev"
+    },
+    {
+      "name": "Movies",
+      "path": "/mnt/storage/Movies",
+      "mediaType": "movies",
+      "env": "prod"
+    },
+    {
+      "name": "TV Shows",
+      "path": "/mnt/storage/TV",
+      "mediaType": "tvShows",
+      "env": "prod"
+    }
+  ]
+}
