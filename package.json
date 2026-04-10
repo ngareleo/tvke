@@ -1,0 +1,45 @@
+{
+  "name": "tvke",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "server",
+    "client"
+  ],
+  "scripts": {
+    "dev": "bun run --filter '*' dev",
+    "build": "bun run --filter server build && bun run --filter client build",
+    "lint": "bun run --filter '*' lint",
+    "format": "prettier --write \"**/*.{ts,tsx,json}\" --ignore-path .prettierignore",
+    "format:check": "prettier --check \"**/*.{ts,tsx,json}\" --ignore-path .prettierignore",
+    "stop": "bash scripts/stop.sh",
+    "clean": "bash scripts/clean.sh",
+    "clean:db": "bash scripts/clean.sh --db",
+    "prepare": "husky"
+  },
+  "devDependencies": {
+    "eslint": "^10.2.0",
+    "eslint-config-prettier": "^10.1.8",
+    "eslint-plugin-jsonc": "^3.1.2",
+    "eslint-plugin-react-hooks": "^7.0.1",
+    "eslint-plugin-simple-import-sort": "^13.0.0",
+    "eslint-plugin-unused-imports": "^4.4.1",
+    "husky": "^9.1.7",
+    "lint-staged": "^16.4.0",
+    "prettier": "^3.8.2",
+    "typescript-eslint": "^8.58.1"
+  },
+  "lint-staged": {
+    "client/src/**/*.{ts,tsx}": [
+      "eslint --fix --config client/eslint.config.js",
+      "prettier --write"
+    ],
+    "server/src/**/*.ts": [
+      "eslint --fix --config server/eslint.config.js",
+      "prettier --write"
+    ],
+    "**/*.{json,yaml,yml}": [
+      "prettier --write"
+    ]
+  }
+}

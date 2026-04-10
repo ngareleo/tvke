@@ -1,0 +1,6 @@
+dist/
+node_modules/
+tmp/
+client/src/relay/__generated__/
+bun.lockb
+*.md
