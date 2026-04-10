@@ -48,13 +48,20 @@ info "  → Dev entries use env: \"dev\", prod entries use env: \"prod\"."
 
 # ── 5. Relay compiler ─────────────────────────────────────────────────────────
 
-warning "Relay compiler artifacts need to be generated before the client builds."
-warning "Steps to generate them:"
-warning "  1. Start the server once:    cd server && bun run dev"
-warning "  2. In another terminal:      cd client && bun relay"
-warning "  (The server must expose schema.graphql for the compiler to read)"
+# server/schema.graphql is committed. Re-run relay-compiler if you change the
+# schema, then commit the updated __generated__/ artifacts.
+info "Generating Relay compiler artifacts..."
+(cd client && bun relay) && info "Relay artifacts up to date." || warning "Relay compiler failed — run 'cd client && bun relay' after fixing schema issues."
 
-# ── 6. Done ───────────────────────────────────────────────────────────────────
+# ── 6. Scripts ────────────────────────────────────────────────────────────────
+
+chmod +x scripts/stop.sh scripts/clean.sh
+info "Utility scripts ready:"
+info "  bun stop          — kill server, client, and any ffmpeg jobs"
+info "  bun clean         — stop + wipe tmp/segments/ and test databases"
+info "  bun clean:db      — clean + also wipe the main SQLite database"
+
+# ── 7. Done ───────────────────────────────────────────────────────────────────
 
 echo ""
 info "Setup complete. To start development:"
