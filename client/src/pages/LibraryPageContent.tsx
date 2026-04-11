@@ -1,7 +1,7 @@
 import { Box, Spinner, Text } from "@chakra-ui/react";
 import { NovaEventingInterceptor } from "@nova/react";
 import type { EventWrapper } from "@nova/types";
-import React, { type FC, useCallback, useMemo, useState, useTransition } from "react";
+import React, { type FC, useCallback, useMemo, useRef, useState, useTransition } from "react";
 import { graphql, useLazyLoadQuery, useSubscription } from "react-relay";
 
 import { AppHeader } from "../components/AppHeader.js";
@@ -37,6 +37,9 @@ export const LibraryPageContent: FC = () => {
   const [scanning, setScanning] = useState(false);
   const [fetchKey, setFetchKey] = useState(0);
   const [, startTransition] = useTransition();
+  // Track previous scanning state so we only refetch on a true → false
+  // transition, not on the initial subscription payload when the server is idle.
+  const wasScanning = useRef(false);
 
   const scanConfig = useMemo(
     () => ({
@@ -45,13 +48,14 @@ export const LibraryPageContent: FC = () => {
       onNext: (response: LibraryPageContentScanSubscription["response"] | null | undefined) => {
         const isScanning = response?.libraryScanUpdated?.scanning ?? false;
         setScanning(isScanning);
-        if (!isScanning) {
+        if (wasScanning.current && !isScanning) {
           // Defer the refetch so the UI keeps showing current data while
           // Relay loads the updated library list in the background
           startTransition(() => {
             setFetchKey((k) => k + 1);
           });
         }
+        wasScanning.current = isScanning;
       },
       onError: () => {},
     }),

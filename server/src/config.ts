@@ -33,7 +33,10 @@ const prod: AppConfig = {
   segmentDir: process.env.SEGMENT_DIR ?? resolve(root, "tmp/segments"),
   dbPath: process.env.DB_PATH ?? resolve(root, "tmp/tvke.db"),
   mediaConfigPath: resolve(root, "mediaFiles.json"),
-  scanIntervalMs: Number(process.env.SCAN_INTERVAL_MS ?? 30_000),
+  scanIntervalMs: (() => {
+    const raw = Number(process.env.SCAN_INTERVAL_MS ?? 30_000);
+    return Number.isFinite(raw) && raw > 0 ? raw : 30_000;
+  })(),
 };
 
 export const config: AppConfig = process.env.NODE_ENV === "production" ? prod : dev;

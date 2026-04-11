@@ -16,6 +16,22 @@ import { isScanRunning, markScanEnded, markScanStarted } from "./scanStore.js";
 ffmpeg.setFfmpegPath(ffmpegInstaller.path);
 ffmpeg.setFfprobePath(ffprobeInstaller.path);
 
+// Maximum number of files probed/fingerprinted simultaneously.
+// Keeps file-descriptor and CPU usage bounded on large libraries.
+const SCAN_CONCURRENCY = 4;
+
+/** Runs task functions with at most `limit` executing concurrently. */
+async function runConcurrently(tasks: (() => Promise<void>)[], limit: number): Promise<void> {
+  let idx = 0;
+  async function worker(): Promise<void> {
+    while (idx < tasks.length) {
+      const i = idx++;
+      await tasks[i]();
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(limit, tasks.length) }, worker));
+}
+
 function sha1(input: string): string {
   return createHash("sha1").update(input).digest("hex");
 }
@@ -136,16 +152,17 @@ async function scanLibraryEntry(entry: MediaLibraryEntry): Promise<LibraryRow> {
     (entry.videoExtensions ?? DEFAULT_VIDEO_EXTENSIONS).map((e) => e.toLowerCase())
   );
 
-  // Pipeline: kick off processing for each file as soon as it is discovered during
-  // the directory walk. probeVideo + computeContentFingerprint run concurrently per
-  // file; all files in the library are processed in parallel.
-  const tasks: Promise<void>[] = [];
+  // Collect all file paths first, then process with bounded concurrency.
+  // probeVideo + computeContentFingerprint run concurrently within each task;
+  // at most SCAN_CONCURRENCY tasks run simultaneously to avoid exhausting
+  // file descriptors and CPU on large libraries.
+  const taskFns: (() => Promise<void>)[] = [];
   for await (const filePath of walkDirectory(entry.path, extensions)) {
-    tasks.push(processFile(filePath, libraryId));
+    taskFns.push(() => processFile(filePath, libraryId));
   }
 
-  console.log(`[scanner] Found ${tasks.length} video(s) in "${entry.name}"`);
-  await Promise.all(tasks);
+  console.log(`[scanner] Found ${taskFns.length} video(s) in "${entry.name}"`);
+  await runConcurrently(taskFns, SCAN_CONCURRENCY);
 
   return libraryRow;
 }

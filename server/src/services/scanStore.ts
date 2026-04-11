@@ -40,12 +40,21 @@ export function subscribeToScan(): AsyncIterable<boolean> {
     [Symbol.asyncIterator]() {
       let done = false;
       let resolve: ((result: IteratorResult<boolean>) => void) | undefined;
+      // Holds a state change that arrived before next() was awaiting, so it
+      // isn't dropped. A new change overwrites the previous pending value
+      // (only the latest state matters for scan progress).
+      let pending: { value: boolean } | undefined;
 
       function listener(value: boolean): void {
         if (done) return;
-        const r = resolve;
-        resolve = undefined;
-        r?.({ value, done: false });
+        if (resolve) {
+          const r = resolve;
+          resolve = undefined;
+          pending = undefined;
+          r({ value, done: false });
+        } else {
+          pending = { value };
+        }
       }
 
       listeners.add(listener);
@@ -53,6 +62,11 @@ export function subscribeToScan(): AsyncIterable<boolean> {
       return {
         async next(): Promise<IteratorResult<boolean>> {
           if (done) return { value: undefined as never, done: true };
+          if (pending) {
+            const { value } = pending;
+            pending = undefined;
+            return { value, done: false };
+          }
           return new Promise<IteratorResult<boolean>>((r) => {
             resolve = r;
           });
@@ -61,6 +75,7 @@ export function subscribeToScan(): AsyncIterable<boolean> {
         async return(): Promise<IteratorResult<boolean>> {
           done = true;
           listeners.delete(listener);
+          pending = undefined;
           // Unblock any pending next() so it doesn't hang after the for-await exits
           resolve?.({ value: undefined as never, done: true });
           resolve = undefined;

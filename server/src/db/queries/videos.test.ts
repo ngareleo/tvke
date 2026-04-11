@@ -52,6 +52,7 @@ describe("upsertVideo", () => {
   test("ON CONFLICT(path) updates metadata fields", () => {
     upsertVideo({ ...VIDEO, title: "Updated Title", duration_seconds: 3600, bitrate: 8_000_000 });
     const row = getVideoById("vid1");
+    expect(row).not.toBeNull();
     if (!row) return;
     expect(row.title).toBe("Updated Title");
     expect(row.duration_seconds).toBe(3600);
@@ -64,6 +65,7 @@ describe("upsertVideo", () => {
   test("null title is stored as null", () => {
     upsertVideo({ ...VIDEO, id: "vid-null-title", path: "/test/notitle.mkv", title: null });
     const row = getVideoById("vid-null-title");
+    expect(row).not.toBeNull();
     if (!row) return;
     expect(row.title).toBeNull();
   });
@@ -199,6 +201,7 @@ describe("getVideoById", () => {
     };
     upsertVideo(full);
     const row = getVideoById("vid-full");
+    expect(row).not.toBeNull();
     if (!row) return;
     expect(row.duration_seconds).toBe(5400.5);
     expect(row.file_size_bytes).toBe(8_589_934_592);

@@ -24,11 +24,16 @@ async function bootstrap(): Promise<void> {
   // Start continuous library scan loop. Runs immediately then repeats every
   // config.scanIntervalMs so the library stays up to date without any client
   // action. scanLibraries() is a no-op if a scan is already in progress.
+  // Errors are caught per-iteration so a transient failure doesn't stop the loop.
   void (async () => {
     while (true) {
-      console.log("[server] Scanning media libraries...");
-      await scanLibraries();
-      console.log("[server] Library scan complete");
+      try {
+        console.log("[server] Scanning media libraries...");
+        await scanLibraries();
+        console.log("[server] Library scan complete");
+      } catch (err) {
+        console.error("[server] Scan error (will retry):", err);
+      }
       await Bun.sleep(config.scanIntervalMs);
     }
   })();
@@ -65,19 +70,19 @@ async function bootstrap(): Promise<void> {
   console.log(`[server] GraphQL at http://localhost:${config.port}/graphql`);
 }
 
-function shutdown(signal: string): void {
+async function shutdown(signal: string): Promise<void> {
   console.log(`[server] ${signal} received — shutting down`);
-  killAllActiveJobs();
+  await killAllActiveJobs(5000);
   closeDb();
   console.log("[server] Shutdown complete");
   process.exit(0);
 }
 
 process.on("SIGTERM", () => {
-  shutdown("SIGTERM");
+  void shutdown("SIGTERM");
 });
 process.on("SIGINT", () => {
-  shutdown("SIGINT");
+  void shutdown("SIGINT");
 });
 
 bootstrap().catch((err) => {

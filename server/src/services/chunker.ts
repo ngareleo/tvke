@@ -19,13 +19,42 @@ ffmpeg.setFfprobePath(ffprobeInstaller.path);
 // Tracks all ffmpeg processes currently encoding so they can be killed on shutdown.
 const activeCommands = new Map<string, FfmpegCommand>();
 
-export function killAllActiveJobs(): void {
+/**
+ * Gracefully shuts down all active ffmpeg jobs:
+ * 1. Sends SIGTERM to every running process.
+ * 2. Waits up to `timeoutMs` for each to exit.
+ * 3. SIGKILLs any process that did not exit within the timeout.
+ */
+export async function killAllActiveJobs(timeoutMs = 5000): Promise<void> {
+  if (activeCommands.size === 0) return;
+
+  const exitPromises = [...activeCommands.entries()].map(([id, command]) => {
+    return new Promise<void>((resolve) => {
+      const cleanup = (): void => {
+        activeCommands.delete(id);
+        resolve();
+      };
+      command.once("end", cleanup);
+      command.once("error", cleanup);
+      console.log(`[chunker] Killing job ${id.slice(0, 8)}`);
+      try {
+        command.kill("SIGTERM");
+      } catch {
+        cleanup();
+      }
+    });
+  });
+
+  const timeout = new Promise<void>((resolve) => setTimeout(resolve, timeoutMs));
+  await Promise.race([Promise.all(exitPromises), timeout]);
+
+  // SIGKILL any processes that didn't exit within the timeout
   for (const [id, command] of activeCommands) {
-    console.log(`[chunker] Killing job ${id.slice(0, 8)}`);
+    console.warn(`[chunker] Force-killing job ${id.slice(0, 8)} (SIGTERM timeout)`);
     try {
-      command.kill("SIGTERM");
+      command.kill("SIGKILL");
     } catch {
-      // process may have already exited
+      // already gone
     }
   }
   activeCommands.clear();
