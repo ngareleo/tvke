@@ -21,7 +21,7 @@ export const AppShell: FC<AppShellProps> = ({ children }) => {
 
   return (
     <div className={mergeClasses(styles.root, collapsed && styles.rootCollapsed)}>
-      <AppHeader collapsed={collapsed} onToggle={() => setCollapsed((c) => !c)} />
+      <AppHeader />
       <Sidebar collapsed={collapsed} onToggle={() => setCollapsed((c) => !c)} />
       <div className={styles.main}>{children}</div>
     </div>

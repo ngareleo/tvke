@@ -38,10 +38,6 @@ export const useAppHeaderStyles = makeStyles({
     transitionDuration: "0.22s",
     transitionTimingFunction: "ease",
   },
-  brandCollapsed: {
-    width: tokens.sidebarCollapsedWidth,
-  },
-
   brandText: {
     overflow: "hidden",
   },
@@ -63,25 +59,6 @@ export const useAppHeaderStyles = makeStyles({
   },
   brandTextHidden: {
     display: "none",
-  },
-
-  toggleBtn: {
-    width: "44px",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    flexShrink: 0,
-    backgroundColor: "transparent",
-    border: "none",
-    borderRight: "1px solid rgba(206, 17, 38, 0.15)",
-    color: "rgba(255, 255, 255, 0.45)",
-    cursor: "pointer",
-    transitionProperty: "color, background",
-    transitionDuration: tokens.transition,
-    ":hover": {
-      color: tokens.colorWhite,
-      backgroundColor: "rgba(255, 255, 255, 0.05)",
-    },
   },
 
   content: {
