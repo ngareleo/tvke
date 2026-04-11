@@ -7,6 +7,7 @@ import { handleStream } from "./routes/stream.js";
 import { killAllActiveJobs } from "./services/chunker.js";
 import { restoreInterruptedJobs } from "./services/jobRestore.js";
 import { scanLibraries } from "./services/libraryScanner.js";
+import { isOmdbConfigured } from "./services/omdbService.js";
 
 async function bootstrap(): Promise<void> {
   // Ensure tmp directories exist
@@ -15,6 +16,11 @@ async function bootstrap(): Promise<void> {
   // Initialize DB (migrations run inside getDb)
   getDb();
   console.log("[server] Database ready");
+
+  // Warn early if OMDb is not configured — matchVideo will fail without it
+  if (!isOmdbConfigured()) {
+    console.warn("[server] OMDB_API_KEY not set — metadata matching will be unavailable");
+  }
 
   // Restore any jobs that were running when server last died.
   // Jobs whose segment files still exist are restored to memory and marked

@@ -71,6 +71,15 @@ export function countVideosByLibrary(libraryId: string): number {
   return row.count;
 }
 
+export function sumFileSizeByLibrary(libraryId: string): number {
+  const row = getDb()
+    .prepare(
+      "SELECT COALESCE(SUM(file_size_bytes), 0) AS total FROM videos WHERE library_id = $library_id"
+    )
+    .get({ $library_id: libraryId }) as { total: number };
+  return row.total;
+}
+
 export function getStreamsByVideoId(videoId: string): VideoStreamRow[] {
   return getDb()
     .prepare("SELECT * FROM video_streams WHERE video_id = $video_id")

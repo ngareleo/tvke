@@ -1,6 +1,9 @@
-import { getDb } from "../../db/index.js";
 import { countMatchedByLibrary, getMetadataByVideoId } from "../../db/queries/videoMetadata.js";
-import { countVideosByLibrary, getVideosByLibrary } from "../../db/queries/videos.js";
+import {
+  countVideosByLibrary,
+  getVideosByLibrary,
+  sumFileSizeByLibrary,
+} from "../../db/queries/videos.js";
 import {
   decodeCursor,
   encodeCursor,
@@ -23,19 +26,13 @@ export const libraryResolvers = {
       const libraryId = parent._raw.id;
       const total = countVideosByLibrary(libraryId);
       const { matched, unmatched } = countMatchedByLibrary(libraryId);
-
-      // totalSizeBytes: sum of file sizes for all videos in this library
-      const sizeRow = getDb()
-        .prepare(
-          "SELECT COALESCE(SUM(file_size_bytes), 0) AS total FROM videos WHERE library_id = $library_id"
-        )
-        .get({ $library_id: libraryId }) as { total: number };
+      const totalSizeBytes = sumFileSizeByLibrary(libraryId);
 
       return {
         totalCount: total,
         matchedCount: matched,
         unmatchedCount: unmatched,
-        totalSizeBytes: sizeRow.total,
+        totalSizeBytes,
       };
     },
 
