@@ -14,12 +14,33 @@ enum MediaType {
   TV_SHOWS
 }
 
+type LibraryStats {
+  totalCount: Int!
+  matchedCount: Int!
+  unmatchedCount: Int!
+  totalSizeBytes: Float!
+}
+
 type Library implements Node {
   id: ID!
   name: String!
   path: String!
   mediaType: MediaType!
+  videoExtensions: [String!]!
+  stats: LibraryStats!
   videos(first: Int, after: String): VideoConnection!
+}
+
+type VideoMetadata {
+  imdbId: String!
+  title: String!
+  year: Int
+  genre: String
+  director: String
+  cast: [String!]!
+  rating: Float
+  plot: String
+  posterUrl: String
 }
 
 type Video implements Node {
@@ -27,9 +48,12 @@ type Video implements Node {
   title: String!
   filename: String!
   durationSeconds: Float!
-  fileSizeBytes: Int!
+  fileSizeBytes: Float!
   bitrate: Int!
+  matched: Boolean!
+  mediaType: MediaType!
   library: Library!
+  metadata: VideoMetadata
   videoStream: VideoStreamInfo
   audioStream: AudioStreamInfo
 }
@@ -56,6 +80,22 @@ type VideoConnection {
 type VideoEdge {
   node: Video!
   cursor: String!
+}
+
+type WatchlistItem implements Node {
+  id: ID!
+  video: Video!
+  addedAt: String!
+  progressSeconds: Float!
+  notes: String
+}
+
+type OmdbSearchResult {
+  imdbId: String!
+  title: String!
+  year: Int
+  posterUrl: String
+  plot: String
 }
 
 enum Resolution {
@@ -92,6 +132,8 @@ type Query {
   libraries: [Library!]!
   video(id: ID!): Video
   transcodeJob(id: ID!): TranscodeJob
+  watchlist: [WatchlistItem!]!
+  searchOmdb(query: String!, year: Int): [OmdbSearchResult!]!
 }
 
 type Mutation {
@@ -102,13 +144,34 @@ type Mutation {
     startTimeSeconds: Float
     endTimeSeconds: Float
   ): TranscodeJob!
+  createLibrary(
+    name: String!
+    path: String!
+    mediaType: MediaType!
+    extensions: [String!]!
+  ): Library!
+  deleteLibrary(id: ID!): Boolean!
+  matchVideo(videoId: ID!, imdbId: String!): Video!
+  unmatchVideo(videoId: ID!): Video!
+  addToWatchlist(videoId: ID!): WatchlistItem!
+  removeFromWatchlist(id: ID!): Boolean!
+  updateWatchProgress(videoId: ID!, progressSeconds: Float!): WatchlistItem!
+  setSetting(key: String!, value: String!): Boolean!
 }
 
 type LibraryScanUpdate {
   scanning: Boolean!
 }
 
+type LibraryScanProgress {
+  scanning: Boolean!
+  libraryId: ID
+  done: Int
+  total: Int
+}
+
 type Subscription {
   transcodeJobUpdated(jobId: ID!): TranscodeJob!
   libraryScanUpdated: LibraryScanUpdate!
+  libraryScanProgress: LibraryScanProgress!
 }

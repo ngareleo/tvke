@@ -1,3 +1,4 @@
+import { mergeClasses } from "@griffel/react";
 import { useNovaEventing } from "@nova/react";
 import React, { type FC, type MouseEvent, type RefObject, useState } from "react";
 import { graphql, useFragment } from "react-relay";
@@ -15,6 +16,7 @@ import {
   createSkipRequestedEvent,
   createVolumeChangedEvent,
 } from "./ControlBar.events.js";
+import { useControlBarStyles } from "./ControlBar.styles.js";
 
 const VIDEO_FRAGMENT = graphql`
   fragment ControlBar_video on Video {
@@ -32,26 +34,12 @@ interface Props {
   videoRef: RefObject<HTMLVideoElement | null>;
   resolution: Resolution;
   status: "idle" | "loading" | "playing";
-  /** Controls visibility for the auto-hide overlay behaviour. */
   isVisible: boolean;
 }
 
-const BTN: React.CSSProperties = {
-  background: "transparent",
-  border: "none",
-  color: "white",
-  cursor: "pointer",
-  padding: "6px 8px",
-  borderRadius: 6,
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "center",
-  fontSize: 18,
-  lineHeight: 1,
-};
-
 export const ControlBar: FC<Props> = ({ video, videoRef, resolution, status, isVisible }) => {
   const data = useFragment(VIDEO_FRAGMENT, video);
+  const styles = useControlBarStyles();
   const { currentTime, isPlaying } = useVideoSync(videoRef);
   const { bubble } = useNovaEventing();
 
@@ -106,22 +94,13 @@ export const ControlBar: FC<Props> = ({ video, videoRef, resolution, status, isV
 
   const progressPct = data.durationSeconds > 0 ? (currentTime / data.durationSeconds) * 100 : 0;
 
+  const playIcon = status === "loading" ? "⏳" : isPlaying ? "⏸" : "▶";
+
   return (
-    <div
-      style={{
-        position: "absolute",
-        bottom: 0,
-        left: 0,
-        right: 0,
-        background: "linear-gradient(transparent, rgba(0,0,0,0.85))",
-        padding: "40px 16px 16px",
-        opacity: isVisible ? 1 : 0,
-        transition: "opacity 0.3s ease",
-        pointerEvents: isVisible ? "auto" : "none",
-      }}
-    >
-      {/* Progress bar */}
+    <div className={mergeClasses(styles.root, !isVisible && styles.rootHidden)}>
+      {/* Progress track */}
       <div
+        className={styles.track}
         role="slider"
         aria-label="Seek"
         aria-valuemin={0}
@@ -129,62 +108,35 @@ export const ControlBar: FC<Props> = ({ video, videoRef, resolution, status, isV
         aria-valuenow={currentTime}
         tabIndex={0}
         onClick={handleSeek}
-        style={{
-          position: "relative",
-          height: 6,
-          background: "rgba(255,255,255,0.25)",
-          borderRadius: 3,
-          cursor: "pointer",
-          marginBottom: 12,
-          transition: "height 0.15s ease",
-        }}
-        onMouseEnter={(e) => {
-          (e.currentTarget as HTMLDivElement).style.height = "10px";
-        }}
-        onMouseLeave={(e) => {
-          (e.currentTarget as HTMLDivElement).style.height = "6px";
-        }}
       >
-        <div
-          style={{
-            position: "absolute",
-            left: 0,
-            top: 0,
-            height: "100%",
-            width: `${progressPct}%`,
-            background: "#d4a84b",
-            borderRadius: 3,
-            pointerEvents: "none",
-          }}
-        />
+        <div className={styles.trackFill} style={{ width: `${progressPct}%` }} />
       </div>
 
       {/* Controls row */}
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-        {/* Left controls */}
-        <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
-          {/* Play/Pause */}
-          <button style={BTN} aria-label={isPlaying ? "Pause" : "Play"} onClick={togglePlayPause}>
-            {status === "loading" ? "⏳" : isPlaying ? "⏸" : "▶"}
+      <div className={styles.row}>
+        {/* Left */}
+        <div className={styles.left}>
+          <button
+            className={styles.btn}
+            aria-label={isPlaying ? "Pause" : "Play"}
+            onClick={togglePlayPause}
+          >
+            {playIcon}
           </button>
-
-          {/* Skip −10s */}
-          <button style={BTN} aria-label="Rewind 10 seconds" onClick={handleSkip(-10)}>
+          <button className={styles.btn} aria-label="Rewind 10 seconds" onClick={handleSkip(-10)}>
             ⏮ 10
           </button>
-
-          {/* Skip +10s */}
-          <button style={BTN} aria-label="Forward 10 seconds" onClick={handleSkip(10)}>
+          <button className={styles.btn} aria-label="Forward 10 seconds" onClick={handleSkip(10)}>
             10 ⏭
           </button>
 
           {/* Volume */}
           <div
-            style={{ display: "flex", alignItems: "center", gap: 4 }}
+            className={styles.volumeGroup}
             onMouseEnter={() => setShowVolumeSlider(true)}
             onMouseLeave={() => setShowVolumeSlider(false)}
           >
-            <button style={BTN} aria-label="Volume">
+            <button className={styles.btn} aria-label="Volume">
               🔊
             </button>
             <input
@@ -194,90 +146,42 @@ export const ControlBar: FC<Props> = ({ video, videoRef, resolution, status, isV
               step={0.05}
               defaultValue={1}
               onChange={handleVolumeChange}
+              className={styles.volumeSlider}
               style={{
                 width: showVolumeSlider ? 72 : 0,
                 opacity: showVolumeSlider ? 1 : 0,
-                transition: "width 0.2s, opacity 0.2s",
-                cursor: "pointer",
-                accentColor: "#d4a84b",
               }}
               aria-label="Volume level"
             />
           </div>
 
-          {/* Time */}
-          <span
-            style={{
-              color: "#aaa",
-              fontSize: 13,
-              marginLeft: 4,
-              fontVariantNumeric: "tabular-nums",
-            }}
-          >
+          <span className={styles.time}>
             {formatDuration(currentTime)} / {formatDuration(data.durationSeconds)}
           </span>
         </div>
 
-        {/* Right controls */}
-        <div style={{ display: "flex", alignItems: "center", gap: 4, position: "relative" }}>
-          {/* Title */}
-          <span
-            style={{
-              color: "white",
-              fontSize: 13,
-              fontWeight: 500,
-              maxWidth: 280,
-              overflow: "hidden",
-              textOverflow: "ellipsis",
-              whiteSpace: "nowrap",
-              marginRight: 8,
-            }}
-          >
-            {data.title}
-          </span>
+        {/* Right */}
+        <div className={styles.right}>
+          <span className={styles.title}>{data.title}</span>
 
           {/* Resolution dropdown */}
-          <div style={{ position: "relative" }}>
+          <div className={styles.resWrapper}>
             <button
-              style={{
-                ...BTN,
-                fontSize: 13,
-                padding: "4px 10px",
-                background: "rgba(255,255,255,0.15)",
-                borderRadius: 4,
-              }}
+              className={mergeClasses(styles.btn, styles.btnSmall)}
               onClick={() => setResMenuOpen((o) => !o)}
               aria-label={`Resolution: ${resolution}`}
             >
               {resolution}
             </button>
             {resMenuOpen && (
-              <div
-                style={{
-                  position: "absolute",
-                  bottom: "calc(100% + 6px)",
-                  right: 0,
-                  background: "#1a1a2e",
-                  border: "1px solid #2a2a40",
-                  borderRadius: 8,
-                  overflow: "hidden",
-                  minWidth: 100,
-                  zIndex: 100,
-                }}
-              >
+              <div className={styles.resMenu}>
                 {availableResolutions.map((r) => (
                   <button
                     key={r}
-                    style={{
-                      ...BTN,
-                      width: "100%",
-                      justifyContent: "flex-start",
-                      fontSize: 13,
-                      padding: "8px 14px",
-                      color: r === resolution ? "#d4a84b" : "white",
-                      background: r === resolution ? "rgba(212,168,75,0.1)" : "transparent",
-                      borderRadius: 0,
-                    }}
+                    className={mergeClasses(
+                      styles.resItem,
+                      r === resolution && styles.resItemActive
+                    )}
                     onClick={(e) => handleResolutionClick(e, r)}
                   >
                     {r}
@@ -287,8 +191,7 @@ export const ControlBar: FC<Props> = ({ video, videoRef, resolution, status, isV
             )}
           </div>
 
-          {/* Fullscreen */}
-          <button style={BTN} aria-label="Fullscreen" onClick={handleFullscreen}>
+          <button className={styles.btn} aria-label="Fullscreen" onClick={handleFullscreen}>
             ⛶
           </button>
         </div>

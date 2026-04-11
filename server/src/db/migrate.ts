@@ -4,11 +4,12 @@ export function migrate(db: Database): void {
   db.transaction(() => {
     db.run(`
       CREATE TABLE IF NOT EXISTS libraries (
-        id          TEXT PRIMARY KEY,
-        name        TEXT NOT NULL,
-        path        TEXT NOT NULL UNIQUE,
-        media_type  TEXT NOT NULL,
-        env         TEXT NOT NULL
+        id               TEXT PRIMARY KEY,
+        name             TEXT NOT NULL,
+        path             TEXT NOT NULL UNIQUE,
+        media_type       TEXT NOT NULL,
+        env              TEXT NOT NULL,
+        video_extensions TEXT NOT NULL DEFAULT '[]'
       )
     `);
 
@@ -75,5 +76,48 @@ export function migrate(db: Database): void {
     `);
 
     db.run(`CREATE INDEX IF NOT EXISTS segments_job_id ON segments(job_id)`);
+
+    db.run(`
+      CREATE TABLE IF NOT EXISTS video_metadata (
+        video_id      TEXT PRIMARY KEY REFERENCES videos(id) ON DELETE CASCADE,
+        imdb_id       TEXT NOT NULL,
+        title         TEXT NOT NULL,
+        year          INTEGER,
+        genre         TEXT,
+        director      TEXT,
+        cast_list     TEXT,
+        rating        REAL,
+        plot          TEXT,
+        poster_url    TEXT,
+        matched_at    TEXT NOT NULL
+      )
+    `);
+
+    db.run(`
+      CREATE TABLE IF NOT EXISTS watchlist_items (
+        id               TEXT PRIMARY KEY,
+        video_id         TEXT NOT NULL REFERENCES videos(id) ON DELETE CASCADE,
+        added_at         TEXT NOT NULL,
+        progress_seconds REAL NOT NULL DEFAULT 0,
+        notes            TEXT,
+        UNIQUE(video_id)
+      )
+    `);
+
+    db.run(`CREATE INDEX IF NOT EXISTS watchlist_video_id ON watchlist_items(video_id)`);
+
+    db.run(`
+      CREATE TABLE IF NOT EXISTS user_settings (
+        key   TEXT PRIMARY KEY,
+        value TEXT NOT NULL
+      )
+    `);
+
+    // Add video_extensions column to existing libraries tables (no-op if already exists).
+    try {
+      db.run(`ALTER TABLE libraries ADD COLUMN video_extensions TEXT NOT NULL DEFAULT '[]'`);
+    } catch {
+      // Column already exists — safe to ignore
+    }
   })();
 }

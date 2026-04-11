@@ -1,12 +1,34 @@
 import { getLibraryById } from "../../db/queries/libraries.js";
+import { getMetadataByVideoId } from "../../db/queries/videoMetadata.js";
 import { getStreamsByVideoId } from "../../db/queries/videos.js";
-import { type GQLLibrary, type GQLVideo, presentLibrary } from "../presenters.js";
+import { internalMediaTypeToGql } from "../mappers.js";
+import {
+  type GQLLibrary,
+  type GQLVideo,
+  type GQLVideoMetadata,
+  presentLibrary,
+  presentVideoMetadata,
+} from "../presenters.js";
 
 export const videoResolvers = {
   Video: {
     library(parent: GQLVideo): GQLLibrary | null {
       const row = getLibraryById(parent._raw.library_id);
       return row ? presentLibrary(row) : null;
+    },
+
+    mediaType(parent: GQLVideo): string {
+      const lib = getLibraryById(parent._raw.library_id);
+      return lib ? internalMediaTypeToGql(lib.media_type) : "MOVIES";
+    },
+
+    metadata(parent: GQLVideo): GQLVideoMetadata | null {
+      const row = getMetadataByVideoId(parent._raw.id);
+      return row ? presentVideoMetadata(row) : null;
+    },
+
+    matched(parent: GQLVideo): boolean {
+      return parent.matched;
     },
 
     videoStream(

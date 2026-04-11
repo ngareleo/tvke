@@ -18,7 +18,7 @@ export interface MediaLibraryEntry {
   name: string;
   path: string;
   mediaType: MediaType;
-  env: "dev" | "prod";
+  env: "dev" | "prod" | "user";
   /** File extensions to scan. Defaults to DEFAULT_VIDEO_EXTENSIONS if omitted. */
   videoExtensions?: string[];
 }
@@ -36,6 +36,36 @@ export interface LibraryRow {
   path: string;
   media_type: MediaType;
   env: string;
+  /** JSON-encoded string array of file extensions, e.g. '[\".mkv\",\".mp4\"]' */
+  video_extensions: string;
+}
+
+export interface VideoMetadataRow {
+  video_id: string;
+  imdb_id: string;
+  title: string;
+  year: number | null;
+  genre: string | null;
+  director: string | null;
+  /** JSON-encoded string array of cast names */
+  cast_list: string | null;
+  rating: number | null;
+  plot: string | null;
+  poster_url: string | null;
+  matched_at: string;
+}
+
+export interface WatchlistItemRow {
+  id: string;
+  video_id: string;
+  added_at: string;
+  progress_seconds: number;
+  notes: string | null;
+}
+
+export interface UserSettingRow {
+  key: string;
+  value: string;
 }
 
 export interface VideoRow {

@@ -16,8 +16,7 @@
     "test-storybook": "vitest run --config vitest.storybook.config.ts"
   },
   "dependencies": {
-    "@chakra-ui/react": "^3.2.0",
-    "@emotion/react": "^11.13.0",
+    "@griffel/react": "^1.6.1",
     "@nova/react": "^2.9.2",
     "@nova/types": "^1.7.1",
     "graphql": "^16.9.0",

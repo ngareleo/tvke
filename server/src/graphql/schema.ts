@@ -17,16 +17,37 @@ export const typeDefs = /* GraphQL */ `
     TV_SHOWS
   }
 
+  type LibraryStats {
+    totalCount: Int!
+    matchedCount: Int!
+    unmatchedCount: Int!
+    totalSizeBytes: Float!
+  }
+
   type Library implements Node {
     id: ID!
     name: String!
     path: String!
     mediaType: MediaType!
+    videoExtensions: [String!]!
+    stats: LibraryStats!
     # MAX_PAGE_SIZE = 100 (enforced server-side regardless of this default)
     videos(first: Int = 20, after: String): VideoConnection!
   }
 
   # ── Video ────────────────────────────────────────────────────────────────────
+
+  type VideoMetadata {
+    imdbId: String!
+    title: String!
+    year: Int
+    genre: String
+    director: String
+    cast: [String!]!
+    rating: Float
+    plot: String
+    posterUrl: String
+  }
 
   type Video implements Node {
     id: ID!
@@ -35,7 +56,10 @@ export const typeDefs = /* GraphQL */ `
     durationSeconds: Float!
     fileSizeBytes: Float!
     bitrate: Int!
+    matched: Boolean!
+    mediaType: MediaType!
     library: Library!
+    metadata: VideoMetadata
     videoStream: VideoStreamInfo
     audioStream: AudioStreamInfo
   }
@@ -62,6 +86,26 @@ export const typeDefs = /* GraphQL */ `
   type VideoEdge {
     node: Video!
     cursor: String!
+  }
+
+  # ── Watchlist ─────────────────────────────────────────────────────────────────
+
+  type WatchlistItem implements Node {
+    id: ID!
+    video: Video!
+    addedAt: String!
+    progressSeconds: Float!
+    notes: String
+  }
+
+  # ── OMDb search ───────────────────────────────────────────────────────────────
+
+  type OmdbSearchResult {
+    imdbId: String!
+    title: String!
+    year: Int
+    posterUrl: String
+    plot: String
   }
 
   # ── Transcode Job ─────────────────────────────────────────────────────────────
@@ -102,6 +146,8 @@ export const typeDefs = /* GraphQL */ `
     libraries: [Library!]!
     video(id: ID!): Video
     transcodeJob(id: ID!): TranscodeJob
+    watchlist: [WatchlistItem!]!
+    searchOmdb(query: String!, year: Int): [OmdbSearchResult!]!
   }
 
   type Mutation {
@@ -112,12 +158,37 @@ export const typeDefs = /* GraphQL */ `
       startTimeSeconds: Float
       endTimeSeconds: Float
     ): TranscodeJob!
+
+    createLibrary(
+      name: String!
+      path: String!
+      mediaType: MediaType!
+      extensions: [String!]!
+    ): Library!
+
+    deleteLibrary(id: ID!): Boolean!
+
+    matchVideo(videoId: ID!, imdbId: String!): Video!
+    unmatchVideo(videoId: ID!): Video!
+
+    addToWatchlist(videoId: ID!): WatchlistItem!
+    removeFromWatchlist(id: ID!): Boolean!
+    updateWatchProgress(videoId: ID!, progressSeconds: Float!): WatchlistItem!
+
+    setSetting(key: String!, value: String!): Boolean!
   }
 
   # ── Scan status ──────────────────────────────────────────────────────────────
 
   type LibraryScanUpdate {
     scanning: Boolean!
+  }
+
+  type LibraryScanProgress {
+    scanning: Boolean!
+    libraryId: ID
+    done: Int
+    total: Int
   }
 
   type Subscription {
@@ -128,5 +199,9 @@ export const typeDefs = /* GraphQL */ `
     scanning=false → scan completed; re-query libraries for updated data
     """
     libraryScanUpdated: LibraryScanUpdate!
+    """
+    Emits per-library scan progress including done/total counts for metadata matching.
+    """
+    libraryScanProgress: LibraryScanProgress!
   }
 `;

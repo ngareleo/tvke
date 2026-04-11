@@ -1,8 +1,6 @@
-import { Box, Spinner, Text } from "@chakra-ui/react";
 import React, { type FC, Suspense } from "react";
 import { graphql, useLazyLoadQuery, useMutation } from "react-relay";
 
-import { AppHeader } from "~/components/app-header/AppHeader.js";
 import type { SetupPageContentQuery } from "~/relay/__generated__/SetupPageContentQuery.graphql.js";
 import type { SetupPageContentScanMutation } from "~/relay/__generated__/SetupPageContentScanMutation.graphql.js";
 
@@ -38,215 +36,229 @@ const SetupPageInner: FC = () => {
   };
 
   return (
-    <Box display="flex" h="100%" overflow="hidden">
-      {/* Left sidebar — icon rail */}
-      <Box
-        w="260px"
-        bg="gray.900"
-        borderRight="1px solid"
-        borderColor="gray.800"
-        p={4}
-        overflowY="auto"
-        flexShrink={0}
+    <div style={{ display: "flex", height: "100%", overflow: "hidden" }}>
+      {/* Left sidebar */}
+      <div
+        style={{
+          width: 260,
+          background: "#0F0F0F",
+          borderRight: "1px solid #222",
+          padding: 16,
+          overflowY: "auto",
+          flexShrink: 0,
+        }}
       >
-        <Text
-          fontSize="xs"
-          fontWeight="semibold"
-          color="gray.500"
-          textTransform="uppercase"
-          letterSpacing="wider"
-          mb={4}
-          px={2}
+        <div
+          style={{
+            fontSize: 10,
+            fontWeight: 700,
+            color: "#444",
+            textTransform: "uppercase",
+            letterSpacing: "0.12em",
+            marginBottom: 16,
+            padding: "0 8px",
+          }}
         >
           Profiles
-        </Text>
+        </div>
         {data.libraries.map((lib) => (
-          <Box
+          <div
             key={lib.id}
-            display="flex"
-            alignItems="center"
-            gap={3}
-            p={3}
-            bg="gray.800"
-            border="1px solid"
-            borderColor="gray.700"
-            borderRadius="10px"
-            mb={2}
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 12,
+              padding: 12,
+              background: "#1C1C1C",
+              border: "1px solid #222",
+              borderRadius: 10,
+              marginBottom: 8,
+            }}
           >
-            <Box
-              w={10}
-              h={10}
-              bg="orange.400"
-              borderRadius="md"
-              display="flex"
-              alignItems="center"
-              justifyContent="center"
-              flexShrink={0}
-              fontSize="lg"
-              color="gray.900"
+            <div
+              style={{
+                width: 36,
+                height: 36,
+                background: "#CE1126",
+                borderRadius: 6,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                flexShrink: 0,
+                fontSize: 16,
+              }}
             >
               {lib.mediaType === "MOVIES" ? "🎬" : "📺"}
-            </Box>
-            <Box flex={1} minW={0}>
-              <Text
-                fontWeight="semibold"
-                fontSize="sm"
-                color="white"
-                overflow="hidden"
-                textOverflow="ellipsis"
-                whiteSpace="nowrap"
+            </div>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div
+                style={{
+                  fontWeight: 600,
+                  fontSize: 13,
+                  color: "#fff",
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                  whiteSpace: "nowrap",
+                }}
               >
                 {lib.name}
-              </Text>
-              <Text fontSize="xs" color="gray.500">
-                {lib.videos.totalCount} items
-              </Text>
-            </Box>
-          </Box>
+              </div>
+              <div style={{ fontSize: 11, color: "#666" }}>{lib.videos.totalCount} items</div>
+            </div>
+          </div>
         ))}
-      </Box>
+      </div>
 
       {/* Main content */}
-      <Box flex={1} p={12} overflowY="auto">
-        <Box maxW="600px">
-          <Text fontSize="3xl" fontWeight="bold" color="white" mb={2}>
-            Welcome to Media Stream Hub
-          </Text>
-          <Text fontSize="sm" color="gray.500" mb={10} lineHeight="1.6">
+      <div style={{ flex: 1, padding: 48, overflowY: "auto" }}>
+        <div style={{ maxWidth: 600 }}>
+          <h1 style={{ fontSize: 28, fontWeight: 700, color: "#fff", marginBottom: 8 }}>
+            Welcome to Moran
+          </h1>
+          <p style={{ fontSize: 13, color: "#666", marginBottom: 40, lineHeight: 1.6 }}>
             Profiles are configured in{" "}
-            <Text as="span" color="orange.400" fontFamily="mono" fontSize="xs">
-              mediaFiles.json
-            </Text>{" "}
-            at the project root. Each entry becomes a streaming profile for your library.
-          </Text>
+            <code style={{ color: "#CE1126", fontSize: 11 }}>mediaFiles.json</code> at the project
+            root. Each entry becomes a streaming profile for your library.
+          </p>
 
-          {/* Your Profiles */}
-          <Box mb={8}>
-            <Box display="flex" alignItems="center" justifyContent="space-between" mb={4}>
-              <Box display="flex" alignItems="center" gap={2}>
-                <Text fontSize="lg" fontWeight="semibold" color="white">
-                  Your Profiles
-                </Text>
-                <Box
-                  bg="orange.400"
-                  color="gray.900"
-                  fontSize="xs"
-                  fontWeight="bold"
-                  px={2}
-                  py={0.5}
-                  borderRadius="full"
+          <div style={{ marginBottom: 32 }}>
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                marginBottom: 16,
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <span style={{ fontSize: 16, fontWeight: 600, color: "#fff" }}>Your Profiles</span>
+                <span
+                  style={{
+                    background: "#CE1126",
+                    color: "#fff",
+                    fontSize: 11,
+                    fontWeight: 700,
+                    padding: "1px 8px",
+                    borderRadius: 100,
+                  }}
                 >
                   {data.libraries.length}
-                </Box>
-              </Box>
-              <Box
-                as="button"
-                px={4}
-                py={2}
-                bg="gray.800"
-                border="1px solid"
-                borderColor="gray.700"
-                borderRadius="md"
-                color={isScanning ? "gray.500" : "gray.300"}
-                fontSize="sm"
-                fontWeight="medium"
-                cursor={isScanning ? "not-allowed" : "pointer"}
-                _hover={{ borderColor: "gray.500", color: "white" }}
-                transition="all 0.2s"
+                </span>
+              </div>
+              <button
                 onClick={handleScan}
-                aria-disabled={isScanning}
+                disabled={isScanning}
+                style={{
+                  padding: "7px 16px",
+                  background: "#1C1C1C",
+                  border: "1px solid #222",
+                  borderRadius: 6,
+                  color: isScanning ? "#555" : "#ccc",
+                  fontSize: 12,
+                  cursor: isScanning ? "not-allowed" : "pointer",
+                }}
               >
                 {isScanning ? "Scanning…" : "↻ Rescan Libraries"}
-              </Box>
-            </Box>
+              </button>
+            </div>
 
             {data.libraries.length === 0 ? (
-              <Box
-                p={8}
-                bg="gray.900"
-                border="1px dashed"
-                borderColor="gray.700"
-                borderRadius="12px"
-                textAlign="center"
+              <div
+                style={{
+                  padding: 32,
+                  background: "#0F0F0F",
+                  border: "1px dashed #222",
+                  borderRadius: 10,
+                  textAlign: "center",
+                  color: "#555",
+                  fontSize: 13,
+                }}
               >
-                <Text color="gray.500" fontSize="sm">
-                  No profiles found. Check your{" "}
-                  <Text as="span" color="orange.400" fontFamily="mono" fontSize="xs">
-                    mediaFiles.json
-                  </Text>{" "}
-                  configuration.
-                </Text>
-              </Box>
+                No profiles found. Check your{" "}
+                <code style={{ color: "#CE1126", fontSize: 11 }}>mediaFiles.json</code>{" "}
+                configuration.
+              </div>
             ) : (
-              <Box display="flex" flexDir="column" gap={3}>
+              <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
                 {data.libraries.map((lib) => (
-                  <Box
+                  <div
                     key={lib.id}
-                    display="flex"
-                    alignItems="center"
-                    gap={4}
-                    p={4}
-                    bg="gray.900"
-                    border="1px solid"
-                    borderColor="gray.800"
-                    borderRadius="12px"
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 16,
+                      padding: 16,
+                      background: "#0F0F0F",
+                      border: "1px solid #222",
+                      borderRadius: 10,
+                    }}
                   >
-                    <Box
-                      w={10}
-                      h={10}
-                      bg="orange.400"
-                      borderRadius="md"
-                      display="flex"
-                      alignItems="center"
-                      justifyContent="center"
-                      flexShrink={0}
-                      fontSize="lg"
-                      color="gray.900"
+                    <div
+                      style={{
+                        width: 36,
+                        height: 36,
+                        background: "#CE1126",
+                        borderRadius: 6,
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        flexShrink: 0,
+                        fontSize: 16,
+                      }}
                     >
                       {lib.mediaType === "MOVIES" ? "🎬" : "📺"}
-                    </Box>
-                    <Box flex={1} minW={0}>
-                      <Text fontWeight="semibold" fontSize="sm" color="white" mb={0.5}>
+                    </div>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div
+                        style={{ fontWeight: 600, fontSize: 13, color: "#fff", marginBottom: 2 }}
+                      >
                         {lib.name}
-                      </Text>
-                      <Text
-                        fontSize="xs"
-                        color="gray.500"
-                        fontFamily="mono"
-                        overflow="hidden"
-                        textOverflow="ellipsis"
-                        whiteSpace="nowrap"
+                      </div>
+                      <div
+                        style={{
+                          fontSize: 11,
+                          color: "#555",
+                          fontFamily: "monospace",
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                          whiteSpace: "nowrap",
+                        }}
                       >
                         {lib.path}
-                      </Text>
-                    </Box>
-                    <Text fontSize="xs" color="gray.600">
+                      </div>
+                    </div>
+                    <span style={{ fontSize: 11, color: "#444" }}>
                       {lib.videos.totalCount} items
-                    </Text>
-                  </Box>
+                    </span>
+                  </div>
                 ))}
-              </Box>
+              </div>
             )}
-          </Box>
-        </Box>
-      </Box>
-    </Box>
+          </div>
+        </div>
+      </div>
+    </div>
   );
 };
 
 export const SetupPageContent: FC = () => {
   return (
-    <Box display="flex" flexDir="column" h="100vh" bg="gray.950">
-      <AppHeader />
-      <Suspense
-        fallback={
-          <Box display="flex" justifyContent="center" alignItems="center" flex={1}>
-            <Spinner size="xl" />
-          </Box>
-        }
-      >
-        <SetupPageInner />
-      </Suspense>
-    </Box>
+    <Suspense
+      fallback={
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "center",
+            alignItems: "center",
+            flex: 1,
+            color: "#666",
+          }}
+        >
+          Loading…
+        </div>
+      }
+    >
+      <SetupPageInner />
+    </Suspense>
   );
 };

@@ -1,26 +1,45 @@
-import { Box, Spinner, Text } from "@chakra-ui/react";
-import { NovaEventingInterceptor } from "@nova/react";
-import type { EventWrapper } from "@nova/types";
-import React, { type FC, useCallback, useMemo, useRef, useState, useTransition } from "react";
+import { mergeClasses } from "@griffel/react";
+import React, {
+  type FC,
+  Suspense,
+  useCallback,
+  useMemo,
+  useRef,
+  useState,
+  useTransition,
+} from "react";
 import { graphql, useLazyLoadQuery, useSubscription } from "react-relay";
+import { useSearchParams } from "react-router-dom";
 
-import { AppHeader } from "~/components/app-header/AppHeader.js";
-import { LibraryGrid } from "~/components/library-grid/LibraryGrid.js";
-import {
-  isLibraryRailSelectedEvent,
-  type LibraryRailSelectedData,
-} from "~/components/library-rail/LibraryRail.events.js";
-import { LibraryRail } from "~/components/library-rail/LibraryRail.js";
+import { FilmDetailPane } from "~/components/film-detail-pane/FilmDetailPane.js";
+import { PosterCard } from "~/components/poster-card/PosterCard.js";
+import { IconBars, IconSquares } from "~/lib/icons.js";
+import type { LibraryPageContentDetailQuery } from "~/relay/__generated__/LibraryPageContentDetailQuery.graphql.js";
 import type { LibraryPageContentQuery } from "~/relay/__generated__/LibraryPageContentQuery.graphql.js";
 import type { LibraryPageContentScanSubscription } from "~/relay/__generated__/LibraryPageContentScanSubscription.graphql.js";
+
+import { useLibraryStyles } from "./LibraryPage.styles.js";
 
 const LIBRARY_QUERY = graphql`
   query LibraryPageContentQuery {
     libraries {
       id
       name
-      ...LibraryRail_library
-      ...LibraryGrid_library
+      mediaType
+      videos(first: 200) {
+        edges {
+          node {
+            id
+            title
+            matched
+            metadata {
+              genre
+            }
+            ...PosterCard_video
+          }
+        }
+        totalCount
+      }
     }
   }
 `;
@@ -33,12 +52,35 @@ const SCAN_SUBSCRIPTION = graphql`
   }
 `;
 
+const DETAIL_VIDEO_QUERY = graphql`
+  query LibraryPageContentDetailQuery($videoId: ID!) {
+    video(id: $videoId) {
+      ...FilmDetailPane_video
+    }
+  }
+`;
+
+// ─── Detail loader ────────────────────────────────────────────────────────────
+
+interface DetailLoaderProps {
+  filmId: string;
+  onClose: () => void;
+}
+
+const DetailLoader: FC<DetailLoaderProps> = ({ filmId, onClose }) => {
+  const data = useLazyLoadQuery<LibraryPageContentDetailQuery>(DETAIL_VIDEO_QUERY, {
+    videoId: filmId,
+  });
+  if (!data.video) return null;
+  return <FilmDetailPane video={data.video} onClose={onClose} />;
+};
+
+// ─── Main component ───────────────────────────────────────────────────────────
+
 export const LibraryPageContent: FC = () => {
-  const [scanning, setScanning] = useState(false);
+  const styles = useLibraryStyles();
   const [fetchKey, setFetchKey] = useState(0);
   const [, startTransition] = useTransition();
-  // Track previous scanning state so we only refetch on a true → false
-  // transition, not on the initial subscription payload when the server is idle.
   const wasScanning = useRef(false);
 
   const scanConfig = useMemo(
@@ -47,13 +89,8 @@ export const LibraryPageContent: FC = () => {
       variables: {},
       onNext: (response: LibraryPageContentScanSubscription["response"] | null | undefined) => {
         const isScanning = response?.libraryScanUpdated?.scanning ?? false;
-        setScanning(isScanning);
         if (wasScanning.current && !isScanning) {
-          // Defer the refetch so the UI keeps showing current data while
-          // Relay loads the updated library list in the background
-          startTransition(() => {
-            setFetchKey((k) => k + 1);
-          });
+          startTransition(() => setFetchKey((k) => k + 1));
         }
         wasScanning.current = isScanning;
       },
@@ -70,66 +107,140 @@ export const LibraryPageContent: FC = () => {
     { fetchKey, fetchPolicy: fetchKey > 0 ? "network-only" : "store-or-network" }
   );
 
-  const [selectedLibraryId, setSelectedLibraryId] = useState<string | null>(
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [activeLibraryId, setActiveLibraryId] = useState<string | null>(
     data.libraries[0]?.id ?? null
   );
+  const [search, setSearch] = useState("");
+  const [isGrid, setIsGrid] = useState(true);
 
-  const selectedLibrary = data.libraries.find((l) => l.id === selectedLibraryId) ?? null;
+  const filmId = searchParams.get("film");
+  const isPaneOpen = Boolean(filmId);
 
-  const interceptor = useCallback(
-    async (wrapper: EventWrapper, _forward: (e: EventWrapper) => Promise<void>) => {
-      if (isLibraryRailSelectedEvent(wrapper) && wrapper.event.data) {
-        const { libraryId } = wrapper.event.data() as LibraryRailSelectedData;
-        setSelectedLibraryId(libraryId);
+  const closePane = useCallback((): void => {
+    setSearchParams({});
+  }, [setSearchParams]);
+
+  const handleSelect = useCallback(
+    (id: string): void => {
+      if (filmId === id) {
+        closePane();
+      } else {
+        setSearchParams({ film: id });
       }
-      return wrapper;
     },
-    []
+    [filmId, closePane, setSearchParams]
   );
 
+  const activeLibrary =
+    data.libraries.find((l) => l.id === activeLibraryId) ?? data.libraries[0] ?? null;
+
+  const filteredVideos = useMemo(() => {
+    if (!activeLibrary) return [];
+    const q = search.toLowerCase();
+    return activeLibrary.videos.edges
+      .map((e) => e.node)
+      .filter(
+        (v) =>
+          !q ||
+          v.title.toLowerCase().includes(q) ||
+          (v.metadata?.genre ?? "").toLowerCase().includes(q)
+      );
+  }, [activeLibrary, search]);
+
+  if (data.libraries.length === 0) {
+    return (
+      <div className={mergeClasses(styles.root)}>
+        <div className={styles.empty}>
+          <div className={styles.emptyTitle}>No libraries found</div>
+          <div className={styles.emptyBody}>
+            Create a library from the Dashboard to start browsing your collection.
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <Box display="flex" flexDir="column" h="100vh" bg="gray.950">
-      <AppHeader />
+    <div className={styles.root}>
+      {/* Filter bar */}
+      <div className={styles.filterBar}>
+        <input
+          className={styles.searchInput}
+          placeholder="Search titles, genres…"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+        />
+        <div className={styles.filterSep} />
+        <button
+          className={mergeClasses(styles.toggleBtn, isGrid && styles.toggleBtnActive)}
+          onClick={() => setIsGrid(true)}
+          title="Grid view"
+          type="button"
+        >
+          <IconSquares size={13} />
+        </button>
+        <button
+          className={mergeClasses(styles.toggleBtn, !isGrid && styles.toggleBtnActive)}
+          onClick={() => setIsGrid(false)}
+          title="List view"
+          type="button"
+        >
+          <IconBars size={13} />
+        </button>
+        <span className={styles.filterCount}>
+          {filteredVideos.length} title{filteredVideos.length !== 1 ? "s" : ""}
+        </span>
+      </div>
 
-      <NovaEventingInterceptor interceptor={interceptor}>
-        <Box display="flex" flex={1} overflow="hidden">
-          {/* Narrow icon rail */}
-          <LibraryRail libraries={data.libraries} selectedLibraryId={selectedLibraryId} />
-
-          {/* Main content */}
-          {selectedLibrary ? (
-            <Box flex={1} overflowY="auto" p={8}>
-              <Box display="flex" alignItems="center" gap={3} mb={6}>
-                <Text fontSize="xl" fontWeight="bold" color="white">
-                  {selectedLibrary.name}
-                </Text>
-                {scanning && <Spinner size="sm" color="orange.400" />}
-              </Box>
-              <LibraryGrid library={selectedLibrary} />
-            </Box>
-          ) : (
-            <Box
-              flex={1}
-              display="flex"
-              flexDir="column"
-              alignItems="center"
-              justifyContent="center"
-              gap={4}
+      {/* Library tabs (only when >1 library) */}
+      {data.libraries.length > 1 && (
+        <div className={styles.tabs}>
+          {data.libraries.map((lib) => (
+            <button
+              key={lib.id}
+              className={mergeClasses(
+                styles.tab,
+                lib.id === (activeLibrary?.id ?? null) && styles.tabActive
+              )}
+              onClick={() => setActiveLibraryId(lib.id)}
+              type="button"
             >
-              <Text fontSize="xl" fontWeight="bold" color="white">
-                No libraries found
-              </Text>
-              <Text fontSize="sm" color="gray.500" textAlign="center" maxW="280px">
-                Add entries to your{" "}
-                <Text as="span" color="orange.400" fontFamily="mono" fontSize="xs">
-                  mediaFiles.json
-                </Text>{" "}
-                to get started
-              </Text>
-            </Box>
+              {lib.name}
+              <span className={styles.tabCount}>{lib.videos.totalCount}</span>
+            </button>
+          ))}
+        </div>
+      )}
+
+      {/* Split body */}
+      <div className={mergeClasses(styles.splitBody, isPaneOpen && styles.splitBodyPaneOpen)}>
+        <div className={styles.splitLeft}>
+          {filteredVideos.length === 0 ? (
+            <div className={styles.empty}>
+              <div className={styles.emptyTitle}>No results</div>
+              <div className={styles.emptyBody}>Try a different search term.</div>
+            </div>
+          ) : (
+            <div className={styles.gridArea}>
+              <div className={styles.grid}>
+                {filteredVideos.map((video) => (
+                  <PosterCard key={video.id} video={video} onSelect={handleSelect} />
+                ))}
+              </div>
+            </div>
           )}
-        </Box>
-      </NovaEventingInterceptor>
-    </Box>
+        </div>
+
+        {/* Right pane */}
+        <div className={styles.rightPane}>
+          {filmId && (
+            <Suspense fallback={null}>
+              <DetailLoader filmId={filmId} onClose={closePane} />
+            </Suspense>
+          )}
+        </div>
+      </div>
+    </div>
   );
 };

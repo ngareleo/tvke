@@ -1,10 +1,106 @@
-import React, { type FC, Suspense } from "react";
+import { makeStyles, mergeClasses } from "@griffel/react";
+import React, { type FC, Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { graphql, useLazyLoadQuery } from "react-relay";
 import { useNavigate, useParams } from "react-router-dom";
 
 import { PlayerSidebarAsync } from "~/components/player-sidebar/PlayerSidebarAsync.js";
 import { VideoPlayerAsync } from "~/components/video-player/VideoPlayerAsync.js";
+import { IconArrowLeft } from "~/lib/icons.js";
 import type { PlayerPageQuery } from "~/relay/__generated__/PlayerPageQuery.graphql.js";
+import { tokens } from "~/styles/tokens.js";
+
+const usePlayerStyles = makeStyles({
+  root: {
+    position: "fixed",
+    inset: "0",
+    display: "flex",
+    flexDirection: "column",
+    backgroundColor: tokens.colorBlack,
+    fontFamily: tokens.fontBody,
+  },
+
+  // ── Top bar ────────────────────────────────────────────────────────────────
+  topBar: {
+    height: "54px",
+    backgroundColor: tokens.colorSurface,
+    borderBottom: `1px solid ${tokens.colorBorder}`,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    padding: "0 20px",
+    flexShrink: "0",
+    zIndex: "10",
+    transitionProperty: "opacity, transform",
+    transitionDuration: "0.3s",
+  },
+  topBarHidden: {
+    opacity: "0",
+    transform: "translateY(-100%)",
+    pointerEvents: "none",
+  },
+  topBarLeft: {
+    display: "flex",
+    alignItems: "center",
+    gap: "14px",
+  },
+  backBtn: {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: "6px",
+    background: "transparent",
+    border: "none",
+    color: tokens.colorMuted,
+    cursor: "pointer",
+    padding: "6px 10px",
+    borderRadius: tokens.radiusSm,
+    fontSize: "13px",
+    fontWeight: "500",
+    transitionProperty: "color, background",
+    transitionDuration: tokens.transition,
+    ":hover": {
+      color: tokens.colorWhite,
+      backgroundColor: "rgba(255,255,255,0.06)",
+    },
+  },
+  videoTitle: {
+    fontSize: "15px",
+    fontWeight: "600",
+    color: tokens.colorWhite,
+    maxWidth: "400px",
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    whiteSpace: "nowrap",
+  },
+
+  // ── Body ───────────────────────────────────────────────────────────────────
+  body: {
+    flex: "1",
+    display: "flex",
+    minHeight: "0",
+  },
+  videoArea: {
+    flex: "1",
+    position: "relative",
+    backgroundColor: "#000",
+  },
+
+  // Loading skeleton
+  skeleton: {
+    flex: "1",
+    display: "flex",
+    minHeight: "0",
+  },
+  skeletonVideo: {
+    flex: "1",
+    backgroundColor: "#000",
+  },
+  skeletonSidebar: {
+    width: tokens.playerPanelWidth,
+    flexShrink: "0",
+    backgroundColor: tokens.colorSurface,
+    borderLeft: `1px solid ${tokens.colorBorder}`,
+  },
+});
 
 const VIDEO_QUERY = graphql`
   query PlayerPageQuery($id: ID!) {
@@ -16,12 +112,6 @@ const VIDEO_QUERY = graphql`
   }
 `;
 
-/**
- * Normalise the route param to a Relay global ID.
- * The param is URL-encoded by VideoCard (encodeURIComponent); decode first.
- * If the decoded value already looks like a Relay global ID (decodes to "Video:…"),
- * use it as-is. Otherwise treat it as a bare local ID and wrap it.
- */
 function resolveVideoId(param: string): string {
   const decoded = decodeURIComponent(param);
   try {
@@ -32,9 +122,30 @@ function resolveVideoId(param: string): string {
   return btoa(`Video:${decoded}`);
 }
 
+// ─── PlayerContent ────────────────────────────────────────────────────────────
+
+const INACTIVITY_MS = 3000;
+
 const PlayerContent: FC<{ videoId: string }> = ({ videoId }) => {
   const navigate = useNavigate();
+  const styles = usePlayerStyles();
   const data = useLazyLoadQuery<PlayerPageQuery>(VIDEO_QUERY, { id: videoId });
+
+  const [controlsHidden, setControlsHidden] = useState(false);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const resetTimer = useCallback((): void => {
+    setControlsHidden(false);
+    if (timerRef.current) clearTimeout(timerRef.current);
+    timerRef.current = setTimeout(() => setControlsHidden(true), INACTIVITY_MS);
+  }, []);
+
+  useEffect(() => {
+    resetTimer();
+    return () => {
+      if (timerRef.current) clearTimeout(timerRef.current);
+    };
+  }, [resetTimer]);
 
   if (!data.video) {
     return <div style={{ padding: 32, color: "#f0f0f5" }}>Video not found.</div>;
@@ -42,109 +153,38 @@ const PlayerContent: FC<{ videoId: string }> = ({ videoId }) => {
 
   return (
     <div
-      style={{
-        position: "fixed",
-        inset: 0,
-        display: "flex",
-        flexDirection: "column",
-        background: "#0a0a0f",
-        fontFamily: "'Inter', -apple-system, BlinkMacSystemFont, sans-serif",
-      }}
+      className={styles.root}
+      onMouseMove={resetTimer}
+      onKeyDown={resetTimer}
+      style={{ cursor: controlsHidden ? "none" : undefined }}
     >
-      {/* Header — renders immediately from Relay data, before player chunks load */}
-      <div
-        style={{
-          height: 60,
-          background: "#141420",
-          borderBottom: "1px solid #2a2a40",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          padding: "0 24px",
-          flexShrink: 0,
-          zIndex: 10,
-        }}
-      >
-        <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+      {/* Top bar */}
+      <div className={mergeClasses(styles.topBar, controlsHidden && styles.topBarHidden)}>
+        <div className={styles.topBarLeft}>
           <button
+            className={styles.backBtn}
             onClick={() => navigate(-1)}
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 8,
-              background: "none",
-              border: "none",
-              color: "#8888a0",
-              cursor: "pointer",
-              padding: "8px 12px",
-              borderRadius: 8,
-              fontSize: 14,
-              fontWeight: 500,
-            }}
             aria-label="Go back"
+            type="button"
           >
-            <svg
-              viewBox="0 0 20 20"
-              style={{ width: 20, height: 20, fill: "currentColor" }}
-              aria-hidden="true"
-            >
-              <path
-                fillRule="evenodd"
-                d="M12.707 5.293a1 1 0 010 1.414L9.414 10l3.293 3.293a1 1 0 01-1.414 1.414l-4-4a1 1 0 010-1.414l4-4a1 1 0 011.414 0z"
-                clipRule="evenodd"
-              />
-            </svg>
+            <IconArrowLeft size={14} />
             Back
           </button>
-          <span
-            style={{
-              fontSize: 16,
-              fontWeight: 600,
-              color: "#f0f0f5",
-              maxWidth: 400,
-              overflow: "hidden",
-              textOverflow: "ellipsis",
-              whiteSpace: "nowrap",
-            }}
-          >
-            {data.video.title}
-          </span>
+          <span className={styles.videoTitle}>{data.video.title}</span>
         </div>
-
-        <nav style={{ display: "flex", gap: 8 }}>
-          <span
-            style={{
-              color: "#0a0a0f",
-              background: "#d4a84b",
-              padding: "8px 16px",
-              borderRadius: 8,
-              fontSize: 14,
-              fontWeight: 500,
-            }}
-          >
-            Player
-          </span>
-        </nav>
       </div>
 
-      {/* Body — deferred: VideoPlayer and PlayerSidebar are lazy chunks */}
+      {/* Body */}
       <Suspense
         fallback={
-          <div style={{ flex: 1, display: "flex", minHeight: 0 }}>
-            <div style={{ flex: 1, background: "#000" }} />
-            <div
-              style={{
-                width: 360,
-                flexShrink: 0,
-                background: "#141420",
-                borderLeft: "1px solid #2a2a40",
-              }}
-            />
+          <div className={styles.skeleton}>
+            <div className={styles.skeletonVideo} />
+            <div className={styles.skeletonSidebar} />
           </div>
         }
       >
-        <div style={{ flex: 1, display: "flex", minHeight: 0 }}>
-          <div style={{ flex: 1, position: "relative", background: "#000" }}>
+        <div className={styles.body}>
+          <div className={styles.videoArea}>
             <VideoPlayerAsync video={data.video} />
           </div>
           <PlayerSidebarAsync video={data.video} />
@@ -154,8 +194,11 @@ const PlayerContent: FC<{ videoId: string }> = ({ videoId }) => {
   );
 };
 
+// ─── PlayerPage ───────────────────────────────────────────────────────────────
+
 export const PlayerPage: FC = () => {
   const { videoId } = useParams<{ videoId: string }>();
+  const styles = usePlayerStyles();
 
   if (!videoId) {
     return <div style={{ padding: 32, color: "#f0f0f5" }}>Invalid video ID.</div>;
@@ -165,21 +208,15 @@ export const PlayerPage: FC = () => {
     <Suspense
       fallback={
         <div
-          style={{
-            position: "fixed",
-            inset: 0,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            background: "#0a0a0f",
-          }}
+          className={mergeClasses(styles.root)}
+          style={{ alignItems: "center", justifyContent: "center" }}
         >
           <div
             style={{
-              width: 48,
-              height: 48,
-              border: "3px solid #2a2a40",
-              borderTopColor: "#d4a84b",
+              width: 40,
+              height: 40,
+              border: `3px solid ${tokens.colorBorder}`,
+              borderTopColor: tokens.colorRed,
               borderRadius: "50%",
               animation: "spin 0.8s linear infinite",
             }}

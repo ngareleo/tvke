@@ -1,4 +1,3 @@
-import { Box, Text } from "@chakra-ui/react";
 import { NovaEventingInterceptor } from "@nova/react";
 import type { EventWrapper } from "@nova/types";
 import React, { type FC, useCallback, useEffect, useRef, useState } from "react";
@@ -149,12 +148,12 @@ export const VideoPlayer: FC<Props> = ({ video }) => {
               width: 72,
               height: 72,
               borderRadius: "50%",
-              background: "#d4a84b",
+              background: "#CE1126",
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
               fontSize: 26,
-              color: "#141420",
+              color: "#ffffff",
               paddingLeft: 4,
             }}
           >
@@ -165,29 +164,40 @@ export const VideoPlayer: FC<Props> = ({ video }) => {
 
       {/* Transcode progress label */}
       {progressLabel && (
-        <Box
-          position="absolute"
-          top={4}
-          left={4}
-          right={4}
-          bg="gray.900"
-          p={2}
-          borderRadius="md"
-          opacity={0.85}
+        <div
+          style={{
+            position: "absolute",
+            top: 16,
+            left: 16,
+            right: 16,
+            background: "rgba(0,0,0,0.8)",
+            padding: "8px 12px",
+            borderRadius: 6,
+            fontSize: 12,
+            color: "#aaa",
+          }}
         >
-          <Text color="gray.300" fontSize="xs">
-            {progressLabel}
-          </Text>
-        </Box>
+          {progressLabel}
+        </div>
       )}
 
       {/* Error overlay */}
       {error && (
-        <Box position="absolute" top={4} left={4} right={4} bg="red.800" p={3} borderRadius="md">
-          <Text color="white" fontSize="sm">
-            {error}
-          </Text>
-        </Box>
+        <div
+          style={{
+            position: "absolute",
+            top: 16,
+            left: 16,
+            right: 16,
+            background: "rgba(206,17,38,0.85)",
+            padding: "10px 14px",
+            borderRadius: 6,
+            fontSize: 13,
+            color: "#fff",
+          }}
+        >
+          {error}
+        </div>
       )}
 
       <NovaEventingInterceptor interceptor={interceptor}>

@@ -40,6 +40,7 @@ beforeAll(() => {
     path: "/tmp/gql-test-library",
     media_type: "movies",
     env: "dev",
+    video_extensions: "[]",
   });
 
   upsertVideo({
