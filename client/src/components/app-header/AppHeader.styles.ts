@@ -24,23 +24,13 @@ export const useAppHeaderStyles = makeStyles({
   },
 
   brand: {
-    width: tokens.sidebarWidth,
     display: "flex",
     alignItems: "center",
     gap: tokens.space2,
     paddingLeft: tokens.space4,
     paddingRight: tokens.space4,
-    overflow: "hidden",
-    flexShrink: 0,
-    whiteSpace: "nowrap",
-    borderRight: "1px solid rgba(206, 17, 38, 0.20)",
-    transitionProperty: "width",
-    transitionDuration: "0.22s",
-    transitionTimingFunction: "ease",
   },
-  brandText: {
-    overflow: "hidden",
-  },
+  brandText: {},
   logoMark: {
     fontFamily: tokens.fontHead,
     fontSize: "21px",
@@ -48,19 +38,6 @@ export const useAppHeaderStyles = makeStyles({
     color: tokens.colorWhite,
     lineHeight: "1",
   },
-  logoSub: {
-    fontSize: "8px",
-    fontWeight: "700",
-    letterSpacing: "0.18em",
-    textTransform: "uppercase",
-    color: tokens.colorRed,
-    display: "block",
-    marginTop: "1px",
-  },
-  brandTextHidden: {
-    display: "none",
-  },
-
   content: {
     flex: "1",
     display: "flex",
