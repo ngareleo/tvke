@@ -39,6 +39,8 @@ jobs:
   client:
     name: Client — lint, test, relay, build
     runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
     defaults:
       run:
         working-directory: client
