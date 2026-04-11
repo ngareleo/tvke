@@ -1,3 +1,4 @@
+import { mergeClasses } from "@griffel/react";
 import React, { type FC } from "react";
 
 import { usePageSkeletonStyles } from "./PageSkeleton.styles.js";
@@ -8,16 +9,16 @@ export const DashboardSkeleton: FC = () => {
   return (
     <div className={s.root}>
       {/* Hero shimmer */}
-      <div className={`skeleton ${s.hero}`} />
+      <div className={mergeClasses(s.skeleton, s.hero)} />
       {/* Location bar */}
       <div className={s.locationBar}>
-        <div className="skeleton" style={{ width: 120, height: 14 }} />
+        <div className={s.skeleton} style={{ width: 120, height: 14 }} />
       </div>
       {/* Column header row */}
       <div className={s.dirHeader}>
         {[12, 0, 60, 100, 55, 28].map((w, i) =>
           w > 0 ? (
-            <div key={i} className="skeleton" style={{ width: w, height: 12 }} />
+            <div key={i} className={s.skeleton} style={{ width: w, height: 12 }} />
           ) : (
             <div key={i} />
           )
@@ -26,15 +27,15 @@ export const DashboardSkeleton: FC = () => {
       {/* Profile row shimmers */}
       {[260, 180, 220].map((w, i) => (
         <div key={i} className={s.dirRow}>
-          <div className="skeleton" style={{ width: 12, height: 12, borderRadius: "50%" }} />
+          <div className={s.skeleton} style={{ width: 12, height: 12, borderRadius: "50%" }} />
           <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
-            <div className="skeleton" style={{ width: w, height: 13 }} />
-            <div className="skeleton" style={{ width: w * 0.6, height: 11 }} />
+            <div className={s.skeleton} style={{ width: w, height: 13 }} />
+            <div className={s.skeleton} style={{ width: w * 0.6, height: 11 }} />
           </div>
-          <div className="skeleton" style={{ width: 60, height: 13 }} />
-          <div className="skeleton" style={{ width: 100, height: 13 }} />
-          <div className="skeleton" style={{ width: 55, height: 13 }} />
-          <div className="skeleton" style={{ width: 28, height: 28 }} />
+          <div className={s.skeleton} style={{ width: 60, height: 13 }} />
+          <div className={s.skeleton} style={{ width: 100, height: 13 }} />
+          <div className={s.skeleton} style={{ width: 55, height: 13 }} />
+          <div className={s.skeleton} style={{ width: 28, height: 28 }} />
         </div>
       ))}
     </div>
@@ -48,28 +49,28 @@ export const LibrarySkeleton: FC = () => {
     <div className={s.root}>
       {/* Filter bar */}
       <div className={s.filterBar}>
-        <div className="skeleton" style={{ flex: 1, height: 32 }} />
-        <div className="skeleton" style={{ width: 110, height: 32 }} />
-        <div className="skeleton" style={{ width: 68, height: 32 }} />
+        <div className={s.skeleton} style={{ flex: 1, height: 32 }} />
+        <div className={s.skeleton} style={{ width: 110, height: 32 }} />
+        <div className={s.skeleton} style={{ width: 68, height: 32 }} />
       </div>
       {/* Poster grids */}
       {[6, 4].map((count, si) => (
         <div key={si} style={{ padding: "16px 20px 0" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14 }}>
-            <div className="skeleton" style={{ width: 18, height: 18, borderRadius: "50%" }} />
-            <div className="skeleton" style={{ width: 160, height: 14 }} />
-            <div className="skeleton" style={{ width: 50, height: 12 }} />
+            <div className={s.skeleton} style={{ width: 18, height: 18, borderRadius: "50%" }} />
+            <div className={s.skeleton} style={{ width: 160, height: 14 }} />
+            <div className={s.skeleton} style={{ width: 50, height: 12 }} />
           </div>
           <div className={s.grid} style={{ padding: 0, marginBottom: 8 }}>
             {Array.from({ length: count }).map((_, i) => (
               <div key={i} className={s.posterCard}>
                 <div
-                  className={`skeleton ${s.posterImg}`}
+                  className={mergeClasses(s.skeleton, s.posterImg)}
                   style={{ borderRadius: "8px 8px 0 0" }}
                 />
                 <div className={s.posterInfo}>
-                  <div className="skeleton" style={{ width: "80%", height: 13 }} />
-                  <div className="skeleton" style={{ width: "55%", height: 11 }} />
+                  <div className={s.skeleton} style={{ width: "80%", height: 13 }} />
+                  <div className={s.skeleton} style={{ width: "55%", height: 11 }} />
                 </div>
               </div>
             ))}
@@ -89,23 +90,23 @@ export const WatchlistSkeleton: FC = () => {
       <div className={s.statsRow}>
         {[1, 2, 3].map((i) => (
           <div key={i} className={s.statCell}>
-            <div className="skeleton" style={{ width: 32, height: 26 }} />
-            <div className="skeleton" style={{ width: 64, height: 12 }} />
+            <div className={s.skeleton} style={{ width: 32, height: 26 }} />
+            <div className={s.skeleton} style={{ width: 64, height: 12 }} />
           </div>
         ))}
       </div>
       {/* List items */}
       <div className={s.scrollBody}>
-        <div className="skeleton" style={{ width: 160, height: 13, marginBottom: 14 }} />
+        <div className={s.skeleton} style={{ width: 160, height: 13, marginBottom: 14 }} />
         {[240, 190, 210, 175, 230].map((w, i) => (
           <div key={i} className={s.listItem}>
-            <div className={`skeleton ${s.listThumb}`} />
+            <div className={mergeClasses(s.skeleton, s.listThumb)} />
             <div className={s.listInfo}>
-              <div className="skeleton" style={{ width: w, height: 13 }} />
-              <div className="skeleton" style={{ width: w * 0.65, height: 11 }} />
+              <div className={s.skeleton} style={{ width: w, height: 13 }} />
+              <div className={s.skeleton} style={{ width: w * 0.65, height: 11 }} />
             </div>
-            <div className="skeleton" style={{ width: 80, height: 3, borderRadius: 2 }} />
-            <div className="skeleton" style={{ width: 28, height: 28 }} />
+            <div className={s.skeleton} style={{ width: 80, height: 3, borderRadius: 2 }} />
+            <div className={s.skeleton} style={{ width: 28, height: 28 }} />
           </div>
         ))}
       </div>
@@ -122,7 +123,7 @@ export const SettingsSkeleton: FC = () => {
       <div className={s.tabBar}>
         {[60, 70, 90].map((w, i) => (
           <div key={i} className={s.tab}>
-            <div className="skeleton" style={{ width: w, height: 13 }} />
+            <div className={s.skeleton} style={{ width: w, height: 13 }} />
           </div>
         ))}
       </div>
@@ -130,9 +131,9 @@ export const SettingsSkeleton: FC = () => {
       <div className={s.settingsBody}>
         {[1, 2, 3].map((i) => (
           <div key={i} className={s.settingsSection}>
-            <div className="skeleton" style={{ width: 200, height: 14 }} />
-            <div className="skeleton" style={{ width: "60%", height: 11 }} />
-            <div className="skeleton" style={{ width: "100%", height: 36 }} />
+            <div className={s.skeleton} style={{ width: 200, height: 14 }} />
+            <div className={s.skeleton} style={{ width: "60%", height: 11 }} />
+            <div className={s.skeleton} style={{ width: "100%", height: 36 }} />
           </div>
         ))}
       </div>

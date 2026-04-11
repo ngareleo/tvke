@@ -12,12 +12,12 @@
  *
  * The "completing" exit animation (300ms fill-to-full + 250ms fade) provides
  * visual confirmation that the load succeeded without abruptly vanishing.
- *
- * Styles live in global.css under the .lb-* namespace.
  */
 
+import { mergeClasses } from "@griffel/react";
 import { type FC, useEffect, useState } from "react";
 
+import { useLoadingBarStyles } from "./LoadingBar.styles.js";
 import { useLoadingBarState } from "./LoadingBarContext.js";
 
 type Phase = "idle" | "loading" | "completing";
@@ -25,6 +25,7 @@ type Phase = "idle" | "loading" | "completing";
 export const LoadingBar: FC = () => {
   const isLoading = useLoadingBarState();
   const [phase, setPhase] = useState<Phase>("idle");
+  const styles = useLoadingBarStyles();
 
   useEffect(() => {
     if (isLoading) {
@@ -48,10 +49,15 @@ export const LoadingBar: FC = () => {
   if (phase === "idle") return null;
 
   return (
-    <div className="lb-root" aria-hidden="true">
-      <div className={`lb-track lb-track--${phase}`}>
-        <div className="lb-sheen" />
-        <div className="lb-spark" />
+    <div className={styles.root} aria-hidden="true">
+      <div
+        className={mergeClasses(
+          styles.track,
+          phase === "loading" ? styles.trackLoading : styles.trackCompleting
+        )}
+      >
+        <div className={styles.sheen} />
+        <div className={styles.spark} />
       </div>
     </div>
   );

@@ -1,6 +1,6 @@
 import { makeStyles } from "@griffel/react";
 
-import { tokens } from "~/styles/tokens.js";
+import { tokens } from "~/styles/tokens";
 
 export const useSidebarStyles = makeStyles({
   root: {
@@ -63,8 +63,13 @@ export const useSidebarStyles = makeStyles({
     justifyContent: "center",
     borderLeftWidth: "0",
     height: "44px",
+    overflow: "visible",
+    "--side-tip-opacity": "0",
+    "--side-tip-transform": "translateY(-50%) translateX(-4px)",
     ":hover": {
       backgroundColor: "rgba(255,255,255,0.03)",
+      "--side-tip-opacity": "1",
+      "--side-tip-transform": "translateY(-50%) translateX(0)",
     },
   },
   navItemCollapsedActive: {
@@ -116,6 +121,31 @@ export const useSidebarStyles = makeStyles({
 
   navSpacer: {
     flex: "1",
+  },
+
+  // Tooltip that appears to the right of collapsed nav items.
+  // Uses CSS custom properties set on the parent navItem to control visibility.
+  navSideTip: {
+    position: "absolute",
+    left: "calc(100% + 10px)",
+    top: "50%",
+    transform: "var(--side-tip-transform, translateY(-50%) translateX(-4px))",
+    whiteSpace: "nowrap",
+    fontSize: "10px",
+    fontFamily: "'Inter', sans-serif",
+    letterSpacing: "0.04em",
+    fontWeight: "500",
+    background: "#1a1a1a",
+    border: "1px solid rgba(255,255,255,0.08)",
+    color: "rgba(255,255,255,0.5)",
+    padding: "3px 8px",
+    borderRadius: "3px",
+    pointerEvents: "none",
+    opacity: "var(--side-tip-opacity, 0)",
+    transitionProperty: "opacity, transform",
+    transitionDuration: "0.12s",
+    transitionTimingFunction: "ease",
+    zIndex: "9999",
   },
 
   // ── Collapse button ────────────────────────────────────────────────────────

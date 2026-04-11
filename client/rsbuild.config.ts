@@ -15,6 +15,8 @@ export default defineConfig({
   plugins: [
     pluginReact(),
     // Apply babel-plugin-relay so graphql template literals are compiled at build time.
+    // Also apply @griffel/babel-preset here (in the main pipeline, after TypeScript
+    // is already stripped) so the webpack loader can extract styles.
     pluginBabel({
       include: /\.(?:ts|jsx|tsx)$/,
       babelLoaderOptions(opts) {
@@ -81,13 +83,6 @@ export default defineConfig({
       strategy: "custom",
       splitChunks: {
         cacheGroups: {
-          // Chakra UI pulls in @emotion, @ark-ui, and @zag-js — group them all
-          // together since they're always co-loaded and change together.
-          chakra: {
-            test: /@chakra-ui|@emotion|@ark-ui|@zag-js/,
-            name: "vendor-chakra",
-            chunks: "all" as const,
-          },
           // Relay + GraphQL are tightly coupled; bundle them as one cacheable unit.
           relay: {
             test: /relay-runtime|react-relay|[/+]graphql[/+]/,

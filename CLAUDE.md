@@ -19,7 +19,7 @@ tvke is a high-resolution web streaming application. The server transcodes video
 | Video processing | `fluent-ffmpeg` + `@ffmpeg-installer/ffmpeg` |
 | Client bundler | Rsbuild |
 | UI framework | React 18 + React Router v6 |
-| UI components | Chakra UI v3 |
+| UI styling | `@griffel/react` (atomic CSS-in-JS) |
 | Data fetching | Relay (`react-relay`) + `relay-compiler` |
 | Component eventing | `@nova/react` + `@nova/types` |
 
@@ -420,3 +420,4 @@ Do not couple the client to anything server-implementation-specific. All client�
 - **No non-null assertions (`!`)** — use optional chaining (`?.`) or explicit `if` guards instead; `!` masks null errors rather than preventing them
 - **No callback props for user actions** — components use `@nova/react` eventing (`useNovaEventing().bubble()`) to surface interactions; intermediate parents handle events via `NovaEventingInterceptor`. Do not add `onXxx` callback props to components for things the user does (clicks, selections). Data-flow props (fragment keys, state values like `resolution` and `status`) are still plain props.
 - **One `NovaEventingProvider` at the app root** — do not add more providers deeper in the tree. Intermediate components use `NovaEventingInterceptor` instead. Event files (`ComponentName.events.ts`) are colocated with their component, not in a shared top-level file.
+- **No literal `className` strings** — all component styles must use Griffel (`makeStyles` / `mergeClasses`). Define styles in a colocated `ComponentName.styles.ts` file and consume them via `const styles = useComponentNameStyles()`. The ESLint rule `no-restricted-syntax` enforces this and will error on any `className="..."` literal in JSX. The only classes permitted in `global.css` are true browser globals: CSS resets, fonts, scrollbar, `[data-tip]` / `[data-tip-right]` tooltip attributes, `body.resizing` / `.is-resizing` (applied via `document.body.classList`). Everything else belongs in a Griffel styles file.

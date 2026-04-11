@@ -6,10 +6,10 @@
  * When closed: `1fr 0px 0px`. When open: `1fr 4px ${paneWidth}px`.
  *
  * During drag the hook:
- *   1. Adds `.is-resizing` to the split-body (suppresses CSS transition so the
- *      pane tracks the pointer without a 0.25s lag on every mousemove).
- *   2. Adds `body.resizing` (enforces col-resize cursor globally).
- *   3. Removes both classes on mouseup.
+ *   1. Disables the CSS transition on the container so the pane tracks the
+ *      pointer without a 0.25s lag on every mousemove.
+ *   2. Sets col-resize cursor on <html> and disables text selection on <body>.
+ *   3. Restores both on mouseup.
  *
  * Usage:
  *   const { paneWidth, containerRef, onResizeMouseDown } = useSplitResize();
@@ -49,9 +49,11 @@ export function useSplitResize(defaultWidth = 360): SplitResizeResult {
     const startX = e.clientX;
     const startWidth = paneWidthRef.current;
 
-    // Suppress the CSS transition during drag and lock the cursor globally.
-    containerRef.current?.classList.add("is-resizing");
-    document.body.classList.add("resizing");
+    // Suppress transition during drag so the pane tracks the pointer instantly.
+    if (containerRef.current) containerRef.current.style.transition = "none";
+    // Lock cursor globally so it stays col-resize even when hovering other elements.
+    document.documentElement.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
 
     const onMouseMove = (ev: MouseEvent) => {
       // Dragging left widens the right pane; dragging right narrows it.
@@ -62,8 +64,9 @@ export function useSplitResize(defaultWidth = 360): SplitResizeResult {
     };
 
     const onMouseUp = () => {
-      containerRef.current?.classList.remove("is-resizing");
-      document.body.classList.remove("resizing");
+      if (containerRef.current) containerRef.current.style.transition = "";
+      document.documentElement.style.cursor = "";
+      document.body.style.userSelect = "";
       document.removeEventListener("mousemove", onMouseMove);
       document.removeEventListener("mouseup", onMouseUp);
     };

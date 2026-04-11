@@ -11,17 +11,18 @@
  *   PROD  — customer-facing help page: friendly guidance, actionable steps,
  *            and a support contact. No internal details exposed.
  *
- * Styles live in global.css under the .eb-* namespace.
- *
  * Usage — wrap the entire app in main.tsx:
  *   <ErrorBoundary>
  *     <RouterProvider router={router} />
  *   </ErrorBoundary>
  */
 
+import { mergeClasses } from "@griffel/react";
 import { Component, type ErrorInfo, type FC, type ReactNode, useState } from "react";
 
 import { IconBug, IconChat, IconClose, IconRefresh, LogoShield } from "~/lib/icons.js";
+
+import { useErrorBoundaryStyles } from "./ErrorBoundary.styles.js";
 
 // ── DevErrorScreen ────────────────────────────────────────────────────────────
 
@@ -32,6 +33,7 @@ const DevErrorScreen: FC<{
 }> = ({ error, errorInfo, onReset }) => {
   const [copied, setCopied] = useState(false);
   const [previewProd, setPreviewProd] = useState(false);
+  const styles = useErrorBoundaryStyles();
 
   const fullText = [
     `${error.name}: ${error.message}`,
@@ -53,10 +55,13 @@ const DevErrorScreen: FC<{
   if (previewProd) {
     return (
       <div style={{ position: "relative" }}>
-        <div className="eb-preview-banner">
-          <span className="eb-preview-label">DEV PREVIEW</span>
-          <span className="eb-preview-sub">Customer view — no stack traces are shown below</span>
-          <button className="eb-action-btn eb-preview-back" onClick={() => setPreviewProd(false)}>
+        <div className={styles.previewBanner}>
+          <span className={styles.previewLabel}>DEV PREVIEW</span>
+          <span className={styles.previewSub}>Customer view — no stack traces are shown below</span>
+          <button
+            className={mergeClasses(styles.actionBtn, styles.previewBack)}
+            onClick={() => setPreviewProd(false)}
+          >
             ← Back to dev view
           </button>
         </div>
@@ -66,37 +71,44 @@ const DevErrorScreen: FC<{
   }
 
   return (
-    <div className="eb-root eb-dev">
-      <div className="eb-grain" />
+    <div className={mergeClasses(styles.root, styles.devRoot)}>
+      <div className={styles.grain} />
 
-      <div className="eb-panel">
-        <div className="eb-head">
-          <div className="eb-head-left">
-            <span className="eb-icon-wrap">
+      <div className={styles.panel}>
+        <div className={styles.head}>
+          <div className={styles.headLeft}>
+            <span className={styles.iconWrap}>
               <IconBug size={16} />
             </span>
             <div>
-              <div className="eb-label">Unhandled render error</div>
-              <div className="eb-error-name">{error.name}</div>
+              <div className={styles.label}>Unhandled render error</div>
+              <div className={styles.errorName}>{error.name}</div>
             </div>
           </div>
-          <div className="eb-head-actions">
+          <div className={styles.headActions}>
             <button
-              className="eb-action-btn eb-action-preview"
+              className={mergeClasses(styles.actionBtn, styles.actionPreview)}
               onClick={() => setPreviewProd(true)}
               title="See what a customer would see"
             >
               Preview customer view
             </button>
-            <button className="eb-action-btn" onClick={handleCopy} title="Copy error to clipboard">
+            <button
+              className={styles.actionBtn}
+              onClick={handleCopy}
+              title="Copy error to clipboard"
+            >
               {copied ? "Copied!" : "Copy"}
             </button>
-            <button className="eb-action-btn eb-action-primary" onClick={onReset}>
+            <button
+              className={mergeClasses(styles.actionBtn, styles.actionPrimary)}
+              onClick={onReset}
+            >
               <IconRefresh size={12} />
               Try again
             </button>
             <button
-              className="eb-action-btn"
+              className={styles.actionBtn}
               onClick={() => window.location.reload()}
               title="Hard reload"
             >
@@ -105,15 +117,17 @@ const DevErrorScreen: FC<{
           </div>
         </div>
 
-        <div className="eb-message">{error.message}</div>
+        <div className={styles.message}>{error.message}</div>
 
-        <div className="eb-section-label">JavaScript stack</div>
-        <pre className="eb-code">{error.stack}</pre>
+        <div className={styles.sectionLabel}>JavaScript stack</div>
+        <pre className={styles.code}>{error.stack}</pre>
 
         {errorInfo.componentStack && (
           <>
-            <div className="eb-section-label">React component stack</div>
-            <pre className="eb-code eb-component-stack">{errorInfo.componentStack.trim()}</pre>
+            <div className={styles.sectionLabel}>React component stack</div>
+            <pre className={mergeClasses(styles.code, styles.componentStack)}>
+              {errorInfo.componentStack.trim()}
+            </pre>
           </>
         )}
       </div>
@@ -123,59 +137,63 @@ const DevErrorScreen: FC<{
 
 // ── ProdErrorScreen ───────────────────────────────────────────────────────────
 
-const ProdErrorScreen: FC<{ onReset: () => void }> = ({ onReset }) => (
-  <div className="eb-root eb-prod">
-    <div className="eb-grain" />
-    <div className="eb-prod-body">
-      <LogoShield />
-      <div className="eb-prod-title">Something went wrong</div>
-      <div className="eb-prod-sub">
-        Moran ran into an unexpected problem. Your library and watchlist are safe — this is a
-        display issue only.
-      </div>
+const ProdErrorScreen: FC<{ onReset: () => void }> = ({ onReset }) => {
+  const styles = useErrorBoundaryStyles();
+  return (
+    <div className={mergeClasses(styles.root, styles.prodRoot)}>
+      <div className={styles.grain} />
+      <div className={styles.prodBody}>
+        <LogoShield />
+        <div className={styles.prodTitle}>Something went wrong</div>
+        <div className={styles.prodSub}>
+          Moran ran into an unexpected problem. Your library and watchlist are safe — this is a
+          display issue only.
+        </div>
 
-      <div className="eb-prod-steps">
-        <div className="eb-prod-step-label">Things to try</div>
-        <div className="eb-prod-step">
-          <span className="eb-prod-step-num">1</span>
-          <div className="eb-prod-step-body">
-            <strong>Retry</strong> — tap the button below to reload just this screen without a full
-            page refresh.
+        <div className={styles.prodSteps}>
+          <div className={styles.prodStepLabel}>Things to try</div>
+          <div className={styles.prodStep}>
+            <span className={styles.prodStepNum}>1</span>
+            <div className={styles.prodStepBody}>
+              <span className={styles.prodStepEmphasis}>Retry</span> — tap the button below to
+              reload just this screen without a full page refresh.
+            </div>
+          </div>
+          <div className={styles.prodStep}>
+            <span className={styles.prodStepNum}>2</span>
+            <div className={styles.prodStepBody}>
+              <span className={styles.prodStepEmphasis}>Reload the page</span> — a full browser
+              reload clears any stale state.
+            </div>
+          </div>
+          <div className={styles.prodStep}>
+            <span className={styles.prodStepNum}>3</span>
+            <div className={styles.prodStepBody}>
+              <span className={styles.prodStepEmphasis}>Clear your cache</span> — open your
+              browser&apos;s history settings, clear cached files, then reload.
+            </div>
           </div>
         </div>
-        <div className="eb-prod-step">
-          <span className="eb-prod-step-num">2</span>
-          <div className="eb-prod-step-body">
-            <strong>Reload the page</strong> — a full browser reload clears any stale state.
-          </div>
-        </div>
-        <div className="eb-prod-step">
-          <span className="eb-prod-step-num">3</span>
-          <div className="eb-prod-step-body">
-            <strong>Clear your cache</strong> — open your browser's history settings, clear cached
-            files, then reload.
-          </div>
-        </div>
-      </div>
 
-      <div className="eb-prod-actions">
-        <button className="btn btn-red btn-md" onClick={onReset}>
-          <IconRefresh size={14} />
-          Try again
-        </button>
-        <button className="btn btn-ghost btn-md" onClick={() => window.location.reload()}>
-          <IconClose size={14} />
-          Reload page
-        </button>
-      </div>
+        <div className={styles.prodActions}>
+          <button className={styles.btnPrimary} onClick={onReset}>
+            <IconRefresh size={14} />
+            Try again
+          </button>
+          <button className={styles.btnGhost} onClick={() => window.location.reload()}>
+            <IconClose size={14} />
+            Reload page
+          </button>
+        </div>
 
-      <div className="eb-prod-contact">
-        <IconChat size={13} />
-        <span>Still having trouble? Contact your system administrator.</span>
+        <div className={styles.prodContact}>
+          <IconChat size={13} />
+          <span>Still having trouble? Contact your system administrator.</span>
+        </div>
       </div>
     </div>
-  </div>
-);
+  );
+};
 
 // ── ErrorBoundary (class) ─────────────────────────────────────────────────────
 

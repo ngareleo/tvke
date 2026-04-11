@@ -15,9 +15,11 @@
  * Press Escape or click outside to close.
  */
 
+import { mergeClasses } from "@griffel/react";
 import { type FC, useCallback, useEffect, useRef, useState } from "react";
 import { useLocation } from "react-router-dom";
 
+import { useDevPanelStyles } from "./DevPanel.styles.js";
 import { useDevTools } from "./DevToolsContext.js";
 
 // Pages / component trees that can be force-thrown from the panel.
@@ -34,6 +36,7 @@ export const DevPanelInner: FC = () => {
   const { setThrowTarget } = useDevTools();
   const { pathname } = useLocation();
   const panelRef = useRef<HTMLDivElement>(null);
+  const styles = useDevPanelStyles();
 
   useEffect(() => {
     if (!open) return;
@@ -64,24 +67,24 @@ export const DevPanelInner: FC = () => {
   );
 
   return (
-    <div className="devpanel-root" ref={panelRef}>
+    <div className={styles.root} ref={panelRef}>
       {open && (
-        <div className="devpanel-popup">
-          <div className="devpanel-header">
-            <span className="devpanel-title">DevTools</span>
-            <span className="devpanel-route">{pathname}</span>
+        <div className={styles.popup}>
+          <div className={styles.header}>
+            <span className={styles.title}>DevTools</span>
+            <span className={styles.route}>{pathname}</span>
           </div>
 
-          <div className="devpanel-section-label">Kill switch — force throw</div>
-          <div className="devpanel-targets">
+          <div className={styles.sectionLabel}>Kill switch — force throw</div>
+          <div className={styles.targets}>
             {THROW_TARGETS.map(({ id, label }) => (
-              <div key={id} className="devpanel-target-row">
+              <div key={id} className={styles.targetRow}>
                 <div>
-                  <div className="devpanel-target-label">{label}</div>
-                  <div className="devpanel-target-id">{id}</div>
+                  <div className={styles.targetLabel}>{label}</div>
+                  <div className={styles.targetId}>{id}</div>
                 </div>
                 <button
-                  className="devpanel-throw-btn"
+                  className={styles.throwBtn}
                   onClick={() => handleThrow(id)}
                   title={`Throw error inside <DevThrowTarget id="${id}">`}
                   type="button"
@@ -92,15 +95,16 @@ export const DevPanelInner: FC = () => {
             ))}
           </div>
 
-          <div className="devpanel-footer">
-            Errors are caught by the nearest <code>&lt;ErrorBoundary&gt;</code>. Click "Try again"
-            to recover.
+          <div className={styles.footer}>
+            Errors are caught by the nearest{" "}
+            <code className={styles.footerCode}>&lt;ErrorBoundary&gt;</code>. Click &quot;Try
+            again&quot; to recover.
           </div>
         </div>
       )}
 
       <button
-        className={`devpanel-pill${open ? " active" : ""}`}
+        className={mergeClasses(styles.pill, open && styles.pillActive)}
         onClick={() => setOpen((o) => !o)}
         title="Toggle DevTools panel"
         type="button"

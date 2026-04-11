@@ -29,6 +29,8 @@
   },
   "devDependencies": {
     "@chromatic-com/storybook": "^5.1.1",
+    "@griffel/babel-preset": "^1.8.1",
+    "@griffel/webpack-loader": "^2.2.23",
     "@imchhh/storybook-addon-relay": "^0.0.15",
     "@rsbuild/core": "^1.7.5",
     "@rsbuild/plugin-babel": "^1.1.2",

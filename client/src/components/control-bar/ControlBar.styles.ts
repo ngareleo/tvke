@@ -1,6 +1,6 @@
 import { makeStyles } from "@griffel/react";
 
-import { tokens } from "~/styles/tokens.js";
+import { tokens } from "~/styles/tokens";
 
 export const useControlBarStyles = makeStyles({
   // ── Wrapper ────────────────────────────────────────────────────────────────

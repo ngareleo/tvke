@@ -178,7 +178,7 @@ export const Sidebar: FC<SidebarProps> = ({ collapsed, onToggle }) => {
             Profiles
           </span>
           {collapsed && (
-            <span className="nav-side-tip" aria-hidden="true">
+            <span className={styles.navSideTip} aria-hidden="true">
               Profiles
             </span>
           )}
@@ -193,7 +193,7 @@ export const Sidebar: FC<SidebarProps> = ({ collapsed, onToggle }) => {
             Library
           </span>
           {collapsed && (
-            <span className="nav-side-tip" aria-hidden="true">
+            <span className={styles.navSideTip} aria-hidden="true">
               Library
             </span>
           )}
@@ -208,7 +208,7 @@ export const Sidebar: FC<SidebarProps> = ({ collapsed, onToggle }) => {
             Watchlist
           </span>
           {collapsed && (
-            <span className="nav-side-tip" aria-hidden="true">
+            <span className={styles.navSideTip} aria-hidden="true">
               Watchlist
             </span>
           )}
@@ -223,7 +223,7 @@ export const Sidebar: FC<SidebarProps> = ({ collapsed, onToggle }) => {
             Settings
           </span>
           {collapsed && (
-            <span className="nav-side-tip" aria-hidden="true">
+            <span className={styles.navSideTip} aria-hidden="true">
               Settings
             </span>
           )}
@@ -238,7 +238,7 @@ export const Sidebar: FC<SidebarProps> = ({ collapsed, onToggle }) => {
             Feedback
           </span>
           {collapsed && (
-            <span className="nav-side-tip" aria-hidden="true">
+            <span className={styles.navSideTip} aria-hidden="true">
               Feedback
             </span>
           )}

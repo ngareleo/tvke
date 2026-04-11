@@ -1,8 +1,22 @@
 import { makeStyles } from "@griffel/react";
 
-import { tokens } from "~/styles/tokens.js";
+import { tokens } from "~/styles/tokens";
 
 export const usePageSkeletonStyles = makeStyles({
+  // ── Shimmer skeleton ──────────────────────────────────────────────────────
+  skeleton: {
+    background: "linear-gradient(90deg, #161616 25%, #1C1C1C 50%, #161616 75%)",
+    backgroundSize: "200% 100%",
+    animationName: {
+      "0%": { backgroundPosition: "200% 0" },
+      "100%": { backgroundPosition: "-200% 0" },
+    },
+    animationDuration: "1.6s",
+    animationTimingFunction: "ease-in-out",
+    animationIterationCount: "infinite",
+    borderRadius: "4px",
+  },
+
   // ── Shared shell ──────────────────────────────────────────────────────────
   statsRow: {
     display: "flex",
