@@ -2,7 +2,7 @@ import { Box, Spinner, Text } from "@chakra-ui/react";
 import React, { type FC, Suspense } from "react";
 import { graphql, useLazyLoadQuery, useMutation } from "react-relay";
 
-import { AppHeader } from "~/components/app_header/AppHeader.js";
+import { AppHeader } from "~/components/app-header/AppHeader.js";
 import type { SetupPageContentQuery } from "~/relay/__generated__/SetupPageContentQuery.graphql.js";
 import type { SetupPageContentScanMutation } from "~/relay/__generated__/SetupPageContentScanMutation.graphql.js";
 

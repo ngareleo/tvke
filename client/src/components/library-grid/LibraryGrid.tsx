@@ -2,8 +2,8 @@ import { SimpleGrid } from "@chakra-ui/react";
 import React, { type FC } from "react";
 import { graphql, useFragment } from "react-relay";
 
-import type { LibraryGrid_library$key } from "../relay/__generated__/LibraryGrid_library.graphql";
-import { VideoCard } from "./VideoCard.js";
+import { VideoCard } from "~/components/video-card/VideoCard.js";
+import type { LibraryGrid_library$key } from "~/relay/__generated__/LibraryGrid_library.graphql";
 
 const LIBRARY_FRAGMENT = graphql`
   fragment LibraryGrid_library on Library {

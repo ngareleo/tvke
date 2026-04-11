@@ -5,24 +5,24 @@ import React, { type FC, Suspense, useCallback, useState } from "react";
 import { graphql, useLazyLoadQuery } from "react-relay";
 import { useNavigate } from "react-router-dom";
 
-import { AppHeader } from "~/components/app_header/AppHeader.js";
+import { AppHeader } from "~/components/app-header/AppHeader.js";
 import {
   isVideoPlayEvent,
   isVideoSelectedEvent,
   type VideoPlayData,
   type VideoSelectedData,
-} from "~/components/media_list/MediaList.events.js";
-import { MediaList } from "~/components/media_list/MediaList.js";
+} from "~/components/media-list/MediaList.events.js";
+import { MediaList } from "~/components/media-list/MediaList.js";
 import {
   isLibrarySelectedEvent,
   type LibrarySelectedData,
-} from "~/components/profiles_sidebar/ProfilesSidebar.events.js";
-import { ProfilesSidebar } from "~/components/profiles_sidebar/ProfilesSidebar.js";
+} from "~/components/profiles-sidebar/ProfilesSidebar.events.js";
+import { ProfilesSidebar } from "~/components/profiles-sidebar/ProfilesSidebar.js";
 import {
   isVideoDetailsPanelPlayEvent,
   type VideoDetailsPanelPlayData,
-} from "~/components/video_details_panel/VideoDetailsPanel.events.js";
-import { VideoDetailsPanelAsync } from "~/components/video_details_panel/VideoDetailsPanelAsync.js";
+} from "~/components/video-details-panel/VideoDetailsPanel.events.js";
+import { VideoDetailsPanelAsync } from "~/components/video-details-panel/VideoDetailsPanelAsync.js";
 import type { ProfilesPageContentQuery } from "~/relay/__generated__/ProfilesPageContentQuery.graphql.js";
 
 const PROFILES_QUERY = graphql`

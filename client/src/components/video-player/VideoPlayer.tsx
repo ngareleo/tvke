@@ -4,12 +4,6 @@ import type { EventWrapper } from "@nova/types";
 import React, { type FC, useCallback, useEffect, useRef, useState } from "react";
 import { graphql, useFragment } from "react-relay";
 
-import type { JobProgress } from "../hooks/useJobSubscription.js";
-import { useJobSubscription } from "../hooks/useJobSubscription.js";
-import { useVideoPlayback } from "../hooks/useVideoPlayback.js";
-import type { VideoPlayer_video$key } from "../relay/__generated__/VideoPlayer_video.graphql.js";
-import type { Resolution } from "../types.js";
-import { maxResolutionForHeight } from "../utils/formatters.js";
 import {
   isFullscreenRequestedEvent,
   isPlayRequestedEvent,
@@ -19,8 +13,14 @@ import {
   type ResolutionChangedData,
   type SkipRequestedData,
   type VolumeChangedData,
-} from "./ControlBar.events.js";
-import { ControlBar } from "./ControlBar.js";
+} from "~/components/control-bar/ControlBar.events.js";
+import { ControlBar } from "~/components/control-bar/ControlBar.js";
+import type { JobProgress } from "~/hooks/useJobSubscription.js";
+import { useJobSubscription } from "~/hooks/useJobSubscription.js";
+import { useVideoPlayback } from "~/hooks/useVideoPlayback.js";
+import type { VideoPlayer_video$key } from "~/relay/__generated__/VideoPlayer_video.graphql.js";
+import type { Resolution } from "~/types.js";
+import { maxResolutionForHeight } from "~/utils/formatters.js";
 
 const VIDEO_FRAGMENT = graphql`
   fragment VideoPlayer_video on Video {

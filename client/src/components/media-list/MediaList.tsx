@@ -2,8 +2,8 @@ import { Box, SimpleGrid, Text } from "@chakra-ui/react";
 import React, { type FC, useState } from "react";
 import { graphql, useFragment } from "react-relay";
 
-import { MediaGridItem } from "~/components/media_grid_item/MediaGridItem.js";
-import { MediaListItem } from "~/components/media_list_item/MediaListItem.js";
+import { MediaGridItem } from "~/components/media-grid-item/MediaGridItem.js";
+import { MediaListItem } from "~/components/media-list-item/MediaListItem.js";
 import type { MediaList_library$key } from "~/relay/__generated__/MediaList_library.graphql.js";
 
 const LIBRARY_FRAGMENT = graphql`

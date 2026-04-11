@@ -3,12 +3,15 @@ import { useNovaEventing } from "@nova/react";
 import React, { type FC, type MouseEvent } from "react";
 import { graphql, useFragment } from "react-relay";
 
-import type { MediaListItem_video$key } from "../relay/__generated__/MediaListItem_video.graphql.js";
-import { formatDuration, formatFileSize, resolutionLabel } from "../utils/formatters.js";
-import { createVideoPlayEvent, createVideoSelectedEvent } from "./MediaList.events.js";
+import {
+  createVideoPlayEvent,
+  createVideoSelectedEvent,
+} from "~/components/media-list/MediaList.events.js";
+import type { MediaGridItem_video$key } from "~/relay/__generated__/MediaGridItem_video.graphql.js";
+import { formatDuration, formatFileSize, resolutionLabel } from "~/utils/formatters.js";
 
 const VIDEO_FRAGMENT = graphql`
-  fragment MediaListItem_video on Video {
+  fragment MediaGridItem_video on Video {
     id
     title
     durationSeconds
@@ -21,16 +24,15 @@ const VIDEO_FRAGMENT = graphql`
 `;
 
 interface Props {
-  video: MediaListItem_video$key;
-  isSelected: boolean;
+  video: MediaGridItem_video$key;
 }
 
-export const MediaListItem: FC<Props> = ({ video, isSelected }) => {
+export const MediaGridItem: FC<Props> = ({ video }) => {
   const data = useFragment(VIDEO_FRAGMENT, video);
   const { bubble } = useNovaEventing();
   const label = resolutionLabel(data.videoStream?.height, data.videoStream?.width);
 
-  const handleRowClick = (e: MouseEvent): void => {
+  const handleClick = (e: MouseEvent): void => {
     void bubble({ reactEvent: e, event: createVideoSelectedEvent(data.id) });
   };
 
@@ -41,51 +43,53 @@ export const MediaListItem: FC<Props> = ({ video, isSelected }) => {
 
   return (
     <Box
-      display="flex"
-      alignItems="center"
-      gap={4}
-      p={4}
-      bg={isSelected ? "rgba(251,146,60,0.08)" : "gray.900"}
-      border="1px solid"
-      borderColor={isSelected ? "orange.400" : "gray.800"}
+      bg="gray.900"
       borderRadius="12px"
+      overflow="hidden"
       cursor="pointer"
-      onClick={handleRowClick}
-      _hover={{ borderColor: "orange.400", transform: "translateX(4px)" }}
+      onClick={handleClick}
+      _hover={{ transform: "translateY(-4px)", boxShadow: "0 12px 40px rgba(0,0,0,0.4)" }}
       transition="all 0.2s"
       role="group"
     >
       {/* Thumbnail */}
       <Box
-        w="120px"
-        h="68px"
+        aspectRatio="16/9"
         bg="gray.800"
-        borderRadius="md"
         display="flex"
         alignItems="center"
         justifyContent="center"
-        flexShrink={0}
         position="relative"
         overflow="hidden"
       >
-        <Text color="gray.600" fontSize="2xl">
+        <Text color="gray.600" fontSize="3xl">
           ▶
         </Text>
         <Box
           position="absolute"
           inset={0}
-          bg="blackAlpha.600"
+          bg="blackAlpha.700"
           display="flex"
           alignItems="center"
           justifyContent="center"
           opacity={0}
           _groupHover={{ opacity: 1 }}
           transition="opacity 0.2s"
-          borderRadius="md"
         >
-          <Text color="orange.400" fontSize="xl">
-            ▶
-          </Text>
+          <Box
+            w={12}
+            h={12}
+            bg="orange.400"
+            borderRadius="full"
+            display="flex"
+            alignItems="center"
+            justifyContent="center"
+            onClick={handlePlayClick}
+          >
+            <Text color="gray.900" fontSize="md" ml="2px">
+              ▶
+            </Text>
+          </Box>
         </Box>
         <Text
           position="absolute"
@@ -93,7 +97,6 @@ export const MediaListItem: FC<Props> = ({ video, isSelected }) => {
           right={1}
           bg="blackAlpha.800"
           px={1}
-          py={0}
           borderRadius="sm"
           fontSize="10px"
           color="white"
@@ -103,10 +106,10 @@ export const MediaListItem: FC<Props> = ({ video, isSelected }) => {
       </Box>
 
       {/* Info */}
-      <Box flex={1} minW={0}>
+      <Box p={3}>
         <Text
           fontWeight="semibold"
-          fontSize="md"
+          fontSize="sm"
           color="white"
           mb={1}
           overflow="hidden"
@@ -115,41 +118,15 @@ export const MediaListItem: FC<Props> = ({ video, isSelected }) => {
         >
           {data.title}
         </Text>
-        <Box display="flex" alignItems="center" gap={3} flexWrap="wrap">
+        <Box display="flex" alignItems="center" gap={2}>
+          {label && (
+            <Badge colorPalette={label === "4k" ? "purple" : "blue"} size="sm">
+              {label.toUpperCase()}
+            </Badge>
+          )}
           <Text fontSize="xs" color="gray.500">
             {formatFileSize(data.fileSizeBytes)}
           </Text>
-        </Box>
-      </Box>
-
-      {/* Resolution badge */}
-      {label && (
-        <Badge colorPalette={label === "4k" ? "purple" : "blue"} fontSize="xs" flexShrink={0}>
-          {label.toUpperCase()}
-        </Badge>
-      )}
-
-      {/* Actions */}
-      <Box display="flex" gap={2} flexShrink={0}>
-        <Box
-          as="button"
-          w={9}
-          h={9}
-          bg="gray.800"
-          border="1px solid"
-          borderColor="gray.700"
-          borderRadius="md"
-          display="flex"
-          alignItems="center"
-          justifyContent="center"
-          color="gray.400"
-          cursor="pointer"
-          _hover={{ color: "orange.400", borderColor: "orange.400" }}
-          transition="all 0.2s"
-          onClick={handlePlayClick}
-          aria-label="Play"
-        >
-          <Text fontSize="sm">▶</Text>
         </Box>
       </Box>
     </Box>
