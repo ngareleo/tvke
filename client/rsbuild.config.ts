@@ -1,5 +1,8 @@
+import { createRequire } from "node:module";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+
+const require = createRequire(import.meta.url);
 
 import { defineConfig } from "@rsbuild/core";
 import { pluginBabel } from "@rsbuild/plugin-babel";
@@ -26,7 +29,7 @@ export default defineConfig({
       // Generate an interactive HTML bundle report in CI. Output lands at
       // dist/stats.html, which the CI workflow uploads as an artifact.
       if (process.env.CI) {
-        // eslint-disable-next-line @typescript-eslint/no-require-imports, @typescript-eslint/no-explicit-any
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const { BundleAnalyzerPlugin } = require("webpack-bundle-analyzer") as any;
         config.plugins ??= [];
         // eslint-disable-next-line @typescript-eslint/no-unsafe-call
