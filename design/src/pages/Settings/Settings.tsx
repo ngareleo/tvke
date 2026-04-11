@@ -1,6 +1,9 @@
 import { type FC, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { AppHeader } from "../../components/AppHeader/AppHeader.js";
 import { useSimulatedLoad } from "../../hooks/useSimulatedLoad.js";
+import { usePageLoading } from "../../components/LoadingBar/LoadingBarContext.js";
+import { DevThrowTarget } from "../../components/DevTools/DevToolsContext.js";
 import {
   IconCog,
   IconFolder,
@@ -18,51 +21,22 @@ interface Toggle {
   on: boolean;
 }
 
-// ── SettingsSkeleton ──────────────────────────────────────────────────────
-// Mirrors the two-column settings layout: nav sidebar on the left, content on the right.
-const SettingsSkeleton: FC = () => (
-  <>
-    <AppHeader collapsed={false}>
-      <span className="topbar-title" style={{ opacity: 0 }}>Settings</span>
-    </AppHeader>
-    <div className="main">
-      <div className="content" style={{ padding: 0, display: "flex", overflow: "hidden" }}>
-        {/* Settings nav column */}
-        <div style={{ width: 200, borderRight: "1px solid var(--border)", padding: "16px 12px", flexShrink: 0, display: "flex", flexDirection: "column", gap: 6 }}>
-          {[120, 90, 100, 110, 90, 110].map((w, i) => (
-            <div key={i} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 10px" }}>
-              <div className="skeleton" style={{ width: 16, height: 16, borderRadius: "50%" }} />
-              <div className="skeleton" style={{ width: w, height: 13 }} />
-            </div>
-          ))}
-        </div>
-        {/* Settings content area */}
-        <div style={{ flex: 1, padding: 28, display: "flex", flexDirection: "column", gap: 24 }}>
-          <div className="skeleton" style={{ width: 160, height: 20 }} />
-          {[1, 2, 3].map((i) => (
-            <div key={i} style={{ borderBottom: "1px solid var(--border)", paddingBottom: 20, display: "flex", flexDirection: "column", gap: 10 }}>
-              <div className="skeleton" style={{ width: 200, height: 14 }} />
-              <div className="skeleton" style={{ width: "70%", height: 11 }} />
-              <div className="skeleton" style={{ width: 48, height: 24, borderRadius: 12 }} />
-            </div>
-          ))}
-        </div>
-      </div>
-    </div>
-  </>
-);
+const VALID_SECTIONS: SettingsSection[] = ["general", "library", "playback", "metadata", "account", "danger"];
 
 export const Settings: FC = () => {
   const loading = useSimulatedLoad();
-  const [section, setSection] = useState<SettingsSection>("general");
+  usePageLoading(loading);
+  const [searchParams] = useSearchParams();
+  const paramSection = searchParams.get("section") as SettingsSection | null;
+  const initialSection: SettingsSection =
+    paramSection && VALID_SECTIONS.includes(paramSection) ? paramSection : "general";
+  const [section, setSection] = useState<SettingsSection>(initialSection);
   const [toggles, setToggles] = useState<Record<string, boolean>>({
     hardwareAccel: true,
     autoPlay: false,
     notifications: true,
     analytics: false,
   });
-
-  if (loading) return <SettingsSkeleton />;
 
   const flip = (key: string) => setToggles((t) => ({ ...t, [key]: !t[key] }));
 
@@ -85,7 +59,8 @@ export const Settings: FC = () => {
   ];
 
   return (
-    <>
+    <DevThrowTarget id="Settings">
+      <>
       <AppHeader collapsed={false}>
         <span className="topbar-title">Settings</span>
       </AppHeader>
@@ -302,6 +277,7 @@ export const Settings: FC = () => {
           </div>
         </div>
       </div>
-    </>
+      </>
+    </DevThrowTarget>
   );
 };

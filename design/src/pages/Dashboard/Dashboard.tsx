@@ -33,6 +33,7 @@
 
 import { type FC, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
+import { useSplitResize } from "../../hooks/useSplitResize.js";
 import { AppHeader } from "../../components/AppHeader/AppHeader.js";
 import { Slideshow } from "../../components/Slideshow/Slideshow.js";
 import {
@@ -55,6 +56,8 @@ import {
   type Film,
 } from "../../data/mock.js";
 import { useSimulatedLoad } from "../../hooks/useSimulatedLoad.js";
+import { usePageLoading } from "../../components/LoadingBar/LoadingBarContext.js";
+import { DevThrowTarget } from "../../components/DevTools/DevToolsContext.js";
 import "./Dashboard.css";
 
 function getGreeting(): string {
@@ -131,7 +134,7 @@ const FilmRow: FC<{
           className="btn btn-surface btn-xs"
           onClick={(e) => { e.stopPropagation(); onEdit(film.id); }}
           style={{ padding: "3px 7px" }}
-          title="Edit link"
+          data-tip="Edit link"
         >
           <IconPencil size={11} />
         </button>
@@ -223,10 +226,10 @@ const ProfileRow: FC<{
             <span style={{ fontSize: 10, color: "var(--green)" }}>Scanning…</span>
           ) : (
             <>
-              <button className="btn btn-surface btn-xs" onClick={(e) => e.stopPropagation()}>
+              <button className="btn btn-surface btn-xs" data-tip="Re-scan" onClick={(e) => e.stopPropagation()}>
                 <IconRefresh size={11} />
               </button>
-              <button className="btn btn-surface btn-xs" onClick={(e) => e.stopPropagation()}>
+              <button className="btn btn-surface btn-xs" data-tip="Edit" onClick={(e) => e.stopPropagation()}>
                 <IconPencil size={11} />
               </button>
             </>
@@ -456,66 +459,12 @@ const FilmDetailPane: FC<{ film: Film; onClose: () => void }> = ({ film, onClose
   );
 };
 
-// ── DashboardSkeleton ─────────────────────────────────────────────────────
-// Shown while data is loading (Relay Suspense fallback in production).
-// Mirrors the real layout: hero → location bar → column headers → profile rows.
-const DashboardSkeleton: FC = () => (
-  <>
-    <AppHeader collapsed={false}>
-      <span className="topbar-sub" />
-      <div className="header-actions" style={{ gap: 8 }}>
-        <div className="skeleton" style={{ width: 80, height: 28, borderRadius: 4 }} />
-        <div className="skeleton" style={{ width: 110, height: 28, borderRadius: 4 }} />
-      </div>
-    </AppHeader>
-    <div className="main">
-      <div className="split-body">
-        <div className="split-left" style={{ padding: 0, display: "flex", flexDirection: "column", minHeight: 0 }}>
-          {/* Hero shimmer */}
-          <div className="skeleton" style={{ height: 220, borderRadius: 0, flexShrink: 0 }} />
-          {/* Location bar shimmer */}
-          <div style={{ height: 38, borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", padding: "0 24px", flexShrink: 0 }}>
-            <div className="skeleton" style={{ width: 120, height: 14 }} />
-          </div>
-          {/* Column header row */}
-          <div className="dir-header">
-            <div /><div /><div /><div /><div /><div />
-          </div>
-          {/* Profile row shimmers */}
-          <div className="dir-list">
-            {[260, 180, 220].map((w, i) => (
-              <div key={i} className="dir-row" style={{ pointerEvents: "none" }}>
-                <div className="dir-icon">
-                  <div className="skeleton" style={{ width: 12, height: 12, borderRadius: "50%" }} />
-                </div>
-                <div className="dir-name-cell" style={{ paddingLeft: 4, gap: 5 }}>
-                  <div className="skeleton" style={{ width: w, height: 13 }} />
-                  <div className="skeleton" style={{ width: w * 0.6, height: 11 }} />
-                </div>
-                <div className="dir-cell dir-files">
-                  <div className="skeleton" style={{ width: 60, height: 13 }} />
-                </div>
-                <div className="dir-cell dir-matched">
-                  <div className="skeleton" style={{ width: 100, height: 13 }} />
-                </div>
-                <div className="dir-cell mono dir-size">
-                  <div className="skeleton" style={{ width: 55, height: 13 }} />
-                </div>
-                <div className="dir-actions">
-                  <div className="skeleton" style={{ width: 28, height: 28, borderRadius: 4 }} />
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
-    </div>
-  </>
-);
-
 // ── Dashboard (page root) ─────────────────────────────────────────────────
 export const Dashboard: FC = () => {
   const loading = useSimulatedLoad();
+  usePageLoading(loading);
+
+  const { paneWidth, containerRef, onResizeMouseDown } = useSplitResize(360);
 
   // Profile rows that are expanded (showing their child film list).
   // Local state only — not URL-encoded because expansion is transient UX.
@@ -558,16 +507,15 @@ export const Dashboard: FC = () => {
   const totalFiles = profiles.reduce((s, p) => s + (p.filmCount ?? p.episodeCount ?? 0), 0);
   const totalSize  = "4.3 TB";
 
-  if (loading) return <DashboardSkeleton />;
-
   return (
-    <>
+    <DevThrowTarget id="Dashboard">
+      <>
       <AppHeader collapsed={false}>
         <span className="topbar-sub" id="topbarSub" />
         <div className="header-actions">
           {/* Scan All triggers a full re-scan of every library.
               In production: fires scanLibraries mutation, then subscribes to progress. */}
-          <button className="header-action-btn" onClick={() => {}}>
+          <button className="header-action-btn" data-tip="Rescan all libraries" onClick={() => {}}>
             <IconRefresh size={14} />
             Scan All
           </button>
@@ -589,7 +537,11 @@ export const Dashboard: FC = () => {
          * The hero, location bar, directory list, and footer all live inside
          * split-left so the right pane spans the full height of the main area.
          */}
-        <div className={`split-body${paneOpen ? " pane-open" : ""}`}>
+        <div
+          ref={containerRef}
+          className={`split-body${paneOpen ? " pane-open" : ""}`}
+          style={paneOpen ? { gridTemplateColumns: `1fr 4px ${paneWidth}px` } : undefined}
+        >
           <div className="split-left" style={{ padding: 0, display: "flex", flexDirection: "column", minHeight: 0 }}>
 
             {/* Hero: slideshow fills the container; greeting overlays the left third */}
@@ -647,6 +599,11 @@ export const Dashboard: FC = () => {
             </div>
           </div>
 
+          {/* Resize handle — only present when pane is open */}
+          {paneOpen && (
+            <div className="split-resize-handle" onMouseDown={onResizeMouseDown} />
+          )}
+
           {/* Right pane — renders the active pane mode or nothing */}
           <div className="right-pane">
             {paneMode === "new-profile" && (
@@ -658,6 +615,7 @@ export const Dashboard: FC = () => {
           </div>
         </div>
       </div>
-    </>
+      </>
+    </DevThrowTarget>
   );
 };

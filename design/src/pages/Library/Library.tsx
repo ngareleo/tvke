@@ -29,6 +29,7 @@
 
 import React, { type FC } from "react";
 import { Link, useSearchParams } from "react-router-dom";
+import { useSplitResize } from "../../hooks/useSplitResize.js";
 import { AppHeader } from "../../components/AppHeader/AppHeader.js";
 import {
   IconSearch,
@@ -40,6 +41,8 @@ import {
 } from "../../lib/icons.js";
 import { profiles, films, type Film } from "../../data/mock.js";
 import { useSimulatedLoad } from "../../hooks/useSimulatedLoad.js";
+import { usePageLoading } from "../../components/LoadingBar/LoadingBarContext.js";
+import { DevThrowTarget } from "../../components/DevTools/DevToolsContext.js";
 import "./Library.css";
 
 type ViewMode = "grid" | "list";
@@ -94,7 +97,7 @@ const PosterCard: FC<{
 // so both feel like the same component to users (consistent detail view).
 // The 200px poster area uses the film's gradient — replace with real poster image.
 const DetailPane: FC<{ film: Film; onClose: () => void }> = ({ film, onClose }) => (
-  <div className="right-pane" style={{ borderLeft: "1px solid var(--border)" }}>
+  <div className="right-pane">
     <div style={{ height: 200, position: "relative", overflow: "hidden", flexShrink: 0, background: film.gradient }}>
       <div style={{
         position: "absolute", inset: 0,
@@ -107,7 +110,7 @@ const DetailPane: FC<{ film: Film; onClose: () => void }> = ({ film, onClose }) 
           PLAY
         </Link>
         <div className="fd-action-sep" />
-        <button className="fd-action-btn"><IconPencil size={10} /> RE-LINK</button>
+        <button className="fd-action-btn" data-tip="Re-link metadata"><IconPencil size={10} /> RE-LINK</button>
         <div style={{ flex: 1 }} />
         <button className="fd-action-close" onClick={onClose}><IconClose size={13} /></button>
       </div>
@@ -166,51 +169,6 @@ const DetailPane: FC<{ film: Film; onClose: () => void }> = ({ film, onClose }) 
   </div>
 );
 
-// ── LibrarySkeleton ───────────────────────────────────────────────────────
-// Mirrors the filter bar + poster grid layout.
-const POSTER_WIDTHS = [0, 1, 2, 3, 4, 5]; // 6 per row placeholder
-
-const LibrarySkeleton: FC = () => (
-  <>
-    <AppHeader collapsed={false}>
-      <span className="topbar-title">Library</span>
-    </AppHeader>
-    <div className="main">
-      <div className="split-body">
-        <div className="split-left">
-          {/* Filter bar — non-interactive shimmer */}
-          <div className="filter-bar">
-            <div className="skeleton" style={{ flex: 1, height: 32, borderRadius: 4 }} />
-            <div className="skeleton" style={{ width: 110, height: 32, borderRadius: 4 }} />
-            <div className="skeleton" style={{ width: 68, height: 32, borderRadius: 4 }} />
-          </div>
-          {/* Two profile sections with poster grids */}
-          {[6, 4].map((count, si) => (
-            <div key={si} className="profile-section">
-              <div className="profile-section-head">
-                <div className="skeleton" style={{ width: 18, height: 18, borderRadius: "50%" }} />
-                <div className="skeleton" style={{ width: 160, height: 14 }} />
-                <div className="skeleton" style={{ width: 50, height: 12 }} />
-              </div>
-              <div className="films-grid">
-                {Array.from({ length: count }).map((_, i) => (
-                  <div key={i} className="poster-card" style={{ pointerEvents: "none" }}>
-                    <div className="skeleton poster-img" style={{ borderRadius: "4px 4px 0 0" }} />
-                    <div className="poster-info" style={{ gap: 6 }}>
-                      <div className="skeleton" style={{ width: "80%", height: 13 }} />
-                      <div className="skeleton" style={{ width: "55%", height: 11 }} />
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
-    </div>
-  </>
-);
-
 // ── Library (page root) ───────────────────────────────────────────────────
 export const Library: FC = () => {
   // Search and view-mode are local transient state — not URL-encoded because
@@ -220,6 +178,9 @@ export const Library: FC = () => {
 
   // Selected film drives the right pane; encoded in the URL for Back support.
   const loading = useSimulatedLoad();
+  usePageLoading(loading);
+
+  const { paneWidth, containerRef, onResizeMouseDown } = useSplitResize(360);
 
   const [searchParams, setSearchParams] = useSearchParams();
   const selectedFilmId = searchParams.get("film");
@@ -235,10 +196,6 @@ export const Library: FC = () => {
     }
   };
 
-  // Client-side search: filters by title, filename, or genre.
-  // In production this would filter the already-loaded relay store data.
-  if (loading) return <LibrarySkeleton />;
-
   const filterFilms = (profileFilms: Film[]) => {
     if (!search.trim()) return profileFilms;
     const q = search.toLowerCase();
@@ -251,13 +208,18 @@ export const Library: FC = () => {
   };
 
   return (
-    <>
+    <DevThrowTarget id="Library">
+      <>
       <AppHeader collapsed={false}>
         <span className="topbar-title">Library</span>
       </AppHeader>
 
       <div className="main">
-        <div className={`split-body${paneOpen ? " pane-open" : ""}`}>
+        <div
+          ref={containerRef}
+          className={`split-body${paneOpen ? " pane-open" : ""}`}
+          style={paneOpen ? { gridTemplateColumns: `1fr 4px ${paneWidth}px` } : undefined}
+        >
           <div className="split-left">
 
             {/* Filter / view controls */}
@@ -338,12 +300,18 @@ export const Library: FC = () => {
             )}
           </div>
 
+          {/* Resize handle — only present when pane is open */}
+          {paneOpen && (
+            <div className="split-resize-handle" onMouseDown={onResizeMouseDown} />
+          )}
+
           {/* Right pane: only rendered when a film is selected */}
           {paneOpen && selectedFilm && (
             <DetailPane film={selectedFilm} onClose={() => setSearchParams({})} />
           )}
         </div>
       </div>
-    </>
+      </>
+    </DevThrowTarget>
   );
 };
