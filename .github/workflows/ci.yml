@@ -39,6 +39,8 @@ jobs:
   client:
     name: Client — lint, test, relay, build
     runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
     defaults:
       run:
         working-directory: client
@@ -74,52 +76,34 @@ jobs:
       - name: Build
         run: bun run build
 
-      - name: Upload bundle report as Pages artifact
-        uses: actions/upload-pages-artifact@v3
-        with:
-          path: client/dist
+      # Per-PR deployment: each PR gets its own stable subdomain so reports
+      # from concurrent PRs never overwrite each other.
+      - name: Deploy bundle report (PR)
+        if: github.event_name == 'pull_request'
+        env:
+          SURGE_TOKEN: ${{ secrets.SURGE_TOKEN }}
+        run: bunx surge dist/ tvke-pr-${{ github.event.pull_request.number }}.surge.sh --token $SURGE_TOKEN
 
-  deploy-bundle-report:
-    name: Deploy bundle report
-    needs: client
-    # Deploy only on push events — PR merge refs (refs/pull/*/merge) are not
-    # real branches and are always rejected by the Pages environment policy.
-    # The push event carries refs/heads/<branch> which matches the "*" allowlist.
-    if: github.event_name == 'push'
-    runs-on: ubuntu-latest
-    permissions:
-      pages: write
-      id-token: write
-      pull-requests: write
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-    steps:
-      - name: Deploy to GitHub Pages
-        id: deployment
-        uses: actions/deploy-pages@v4
-
-      - name: Comment bundle report link on open PR
+      - name: Comment bundle report link on PR
+        if: github.event_name == 'pull_request'
         uses: actions/github-script@v7
         with:
           script: |
-            const pageUrl = '${{ steps.deployment.outputs.page_url }}';
-            const branch = context.ref.replace('refs/heads/', '');
-            const { data: prs } = await github.rest.pulls.list({
+            const prNumber = context.issue.number;
+            await github.rest.issues.createComment({
               owner: context.repo.owner,
               repo: context.repo.repo,
-              head: `${context.repo.owner}:${branch}`,
-              state: 'open',
+              issue_number: prNumber,
+              body: [
+                '## Bundle Report',
+                '',
+                `[View interactive bundle report](https://tvke-pr-${prNumber}.surge.sh/stats.html)`,
+              ].join('\n'),
             });
-            for (const pr of prs) {
-              await github.rest.issues.createComment({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                issue_number: pr.number,
-                body: [
-                  '## Bundle Report',
-                  '',
-                  `[View interactive bundle report](${pageUrl}stats.html)`,
-                ].join('\n'),
-              });
-            }
+
+      # Keep a stable post-merge report at a fixed URL.
+      - name: Deploy bundle report (main)
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        env:
+          SURGE_TOKEN: ${{ secrets.SURGE_TOKEN }}
+        run: bunx surge dist/ tvke-bundle.surge.sh --token $SURGE_TOKEN
