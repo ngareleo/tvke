@@ -191,7 +191,7 @@ export const IconBug = (p: IconProps): JSX.Element =>
   );
 
 export const LogoShield = (): JSX.Element => (
-  <svg className="logo-shield" viewBox="0 0 24 28" fill="none">
+  <svg width="24" height="28" viewBox="0 0 24 28" fill="none">
     <path
       d="M12 1L23 6v13Q23 26 12 27Q1 26 1 19V6Z"
       fill="#CE1126"
