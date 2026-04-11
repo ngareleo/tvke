@@ -42,6 +42,13 @@ export default defineConfig({
   },
 
   performance: {
+    // Print each chunk's raw and gzip size after every production build.
+    printFileSize: {
+      total: true,
+      detail: true,
+      compressed: true,
+    },
+
     /**
      * Split vendor dependencies into stable, independently-cacheable chunks.
      * Grouping by library means a UI-only change doesn't bust the relay or
