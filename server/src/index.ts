@@ -17,9 +17,13 @@ async function bootstrap(): Promise<void> {
   getDb();
   console.log("[server] Database ready");
 
-  // Warn early if OMDb is not configured — matchVideo will fail without it
+  // Warn early if OMDb is not configured — matchVideo will fail without it.
+  // Key can be set via OMDB_API_KEY env var OR saved through Settings → Metadata.
   if (!isOmdbConfigured()) {
-    console.warn("[server] OMDB_API_KEY not set — metadata matching will be unavailable");
+    console.warn(
+      "[server] OMDb API key not configured — metadata matching will be unavailable. " +
+        "Set OMDB_API_KEY env var or add the key in Settings → Metadata."
+    );
   }
 
   // Restore any jobs that were running when server last died.

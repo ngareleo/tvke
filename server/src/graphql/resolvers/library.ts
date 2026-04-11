@@ -3,7 +3,10 @@ import {
   countVideosByLibrary,
   getVideosByLibrary,
   sumFileSizeByLibrary,
+  type VideoFilter,
 } from "../../db/queries/videos.js";
+import type { MediaType } from "../../types.js";
+import { gqlMediaTypeToInternal } from "../mappers.js";
 import {
   decodeCursor,
   encodeCursor,
@@ -38,7 +41,12 @@ export const libraryResolvers = {
 
     videos(
       parent: GQLLibrary,
-      { first = 20, after }: { first?: number; after?: string }
+      {
+        first = 20,
+        after,
+        search,
+        mediaType,
+      }: { first?: number; after?: string; search?: string; mediaType?: string }
     ): {
       edges: { node: GQLVideo; cursor: string }[];
       totalCount: number;
@@ -52,8 +60,12 @@ export const libraryResolvers = {
       const offset = after ? decodeCursor(after) + 1 : 0;
       const limit = Math.min(first, MAX_PAGE_SIZE);
       const libraryId = parent._raw.id;
-      const rows = getVideosByLibrary(libraryId, limit, offset);
-      const total = countVideosByLibrary(libraryId);
+      const filter: VideoFilter = {
+        search: search ?? undefined,
+        mediaType: mediaType ? (gqlMediaTypeToInternal(mediaType) as MediaType) : undefined,
+      };
+      const rows = getVideosByLibrary(libraryId, limit, offset, filter);
+      const total = countVideosByLibrary(libraryId, filter);
 
       const edges = rows.map((row, i) => ({
         node: presentVideo(row),

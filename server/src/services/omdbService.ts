@@ -7,6 +7,8 @@
  * Free tier: 1000 requests/day.
  */
 
+import { getSetting } from "../db/queries/userSettings.js";
+
 const OMDB_BASE = "http://www.omdbapi.com/";
 
 export interface OmdbResult {
@@ -36,7 +38,8 @@ interface OmdbApiResponse {
 }
 
 function getApiKey(): string | null {
-  return process.env.OMDB_API_KEY ?? null;
+  // env var takes precedence; fall back to key saved via the Settings UI
+  return process.env.OMDB_API_KEY ?? getSetting("omdbApiKey") ?? null;
 }
 
 function parseYear(raw: string | undefined): number | null {

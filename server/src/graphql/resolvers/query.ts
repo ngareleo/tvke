@@ -1,6 +1,5 @@
 import { getJobById } from "../../db/queries/jobs.js";
 import { getAllLibraries, getLibraryById } from "../../db/queries/libraries.js";
-import { getMetadataByVideoId, hasVideoMetadata } from "../../db/queries/videoMetadata.js";
 import { getVideoById } from "../../db/queries/videos.js";
 import { getWatchlist, getWatchlistItemById } from "../../db/queries/watchlist.js";
 import { searchOmdbList } from "../../services/omdbService.js";
@@ -8,12 +7,10 @@ import {
   type GQLLibrary,
   type GQLTranscodeJob,
   type GQLVideo,
-  type GQLVideoMetadata,
   type GQLWatchlistItem,
   presentJob,
   presentLibrary,
   presentVideo,
-  presentVideoMetadata,
   presentWatchlistItem,
 } from "../presenters.js";
 import { fromGlobalId } from "../relay.js";
@@ -86,17 +83,6 @@ export const queryResolvers = {
         posterUrl: r.posterUrl,
         plot: r.plot,
       }));
-    },
-  },
-
-  // Video sub-resolvers — metadata and matched are fetched lazily only when requested
-  Video: {
-    matched(parent: GQLVideo): boolean {
-      return hasVideoMetadata(parent._raw.id);
-    },
-    metadata(parent: GQLVideo): GQLVideoMetadata | null {
-      const meta = getMetadataByVideoId(parent._raw.id);
-      return meta ? presentVideoMetadata(meta) : null;
     },
   },
 

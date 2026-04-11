@@ -105,7 +105,7 @@ export const PosterCard: FC<Props> = ({ video, isSelected = false }) => {
         {/* Play chip (hover) — always shown when selected */}
         {data.matched && (
           <Link
-            to={`/player/${data.id}`}
+            to={`/player/${encodeURIComponent(data.id)}`}
             className={mergeClasses(styles.playChip, isSelected && styles.playChipVisible)}
             onClick={(e) => e.stopPropagation()}
           >

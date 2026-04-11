@@ -28,7 +28,7 @@ type Library implements Node {
   mediaType: MediaType!
   videoExtensions: [String!]!
   stats: LibraryStats!
-  videos(first: Int, after: String): VideoConnection!
+  videos(first: Int, after: String, search: String, mediaType: MediaType): VideoConnection!
 }
 
 type VideoMetadata {

@@ -105,7 +105,7 @@ export const FilmRow: FC<Props> = ({ video, isSelected }) => {
           </button>
         ) : (
           <Link
-            to={`/player/${data.id}`}
+            to={`/player/${encodeURIComponent(data.id)}`}
             className={styles.btnRed}
             onClick={(e) => e.stopPropagation()}
           >

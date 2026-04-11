@@ -32,7 +32,7 @@ export const typeDefs = /* GraphQL */ `
     videoExtensions: [String!]!
     stats: LibraryStats!
     # MAX_PAGE_SIZE = 100 (enforced server-side regardless of this default)
-    videos(first: Int = 20, after: String): VideoConnection!
+    videos(first: Int = 20, after: String, search: String, mediaType: MediaType): VideoConnection!
   }
 
   # ── Video ────────────────────────────────────────────────────────────────────

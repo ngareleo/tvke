@@ -1,5 +1,5 @@
 import { mergeClasses } from "@griffel/react";
-import { type FC, useEffect, useState } from "react";
+import { type FC, useEffect, useRef, useState } from "react";
 
 import { useSlideshowStyles } from "./Slideshow.styles.js";
 
@@ -20,15 +20,20 @@ export const Slideshow: FC = () => {
   const [fading, setFading] = useState(false);
   const styles = useSlideshowStyles();
 
+  const fadeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   useEffect(() => {
-    const timer = setInterval(() => {
+    const interval = setInterval(() => {
       setFading(true);
-      setTimeout(() => {
+      fadeTimerRef.current = setTimeout(() => {
         setCurrent((c) => (c + 1) % GRADIENTS.length);
         setFading(false);
       }, 600);
     }, INTERVAL_MS);
-    return () => clearInterval(timer);
+    return () => {
+      clearInterval(interval);
+      if (fadeTimerRef.current !== null) clearTimeout(fadeTimerRef.current);
+    };
   }, []);
 
   const goTo = (idx: number): void => {

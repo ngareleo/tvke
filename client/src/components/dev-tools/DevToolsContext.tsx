@@ -11,18 +11,39 @@
  *   // causes that DevThrowTarget to throw, triggering the nearest ErrorBoundary.
  */
 
-import { createContext, type FC, type ReactNode, useContext, useState } from "react";
+import {
+  createContext,
+  type FC,
+  type MutableRefObject,
+  type ReactNode,
+  useCallback,
+  useContext,
+  useReducer,
+  useRef,
+} from "react";
 
 interface DevToolsCtx {
-  throwTarget: string | null;
+  /** Ref holding the active throw target id (or null). Mutation is safe during render. */
+  throwTargetRef: MutableRefObject<string | null>;
   setThrowTarget: (id: string | null) => void;
 }
 
-const Ctx = createContext<DevToolsCtx>({ throwTarget: null, setThrowTarget: () => {} });
+const Ctx = createContext<DevToolsCtx>({
+  throwTargetRef: { current: null },
+  setThrowTarget: () => {},
+});
 
 export const DevToolsProvider: FC<{ children: ReactNode }> = ({ children }) => {
-  const [throwTarget, setThrowTarget] = useState<string | null>(null);
-  return <Ctx.Provider value={{ throwTarget, setThrowTarget }}>{children}</Ctx.Provider>;
+  const throwTargetRef = useRef<string | null>(null);
+  // A plain counter state used only to trigger re-renders when the ref changes.
+  const [, rerender] = useReducer((x: number) => x + 1, 0);
+
+  const setThrowTarget = useCallback((id: string | null) => {
+    throwTargetRef.current = id;
+    rerender();
+  }, []);
+
+  return <Ctx.Provider value={{ throwTargetRef, setThrowTarget }}>{children}</Ctx.Provider>;
 };
 
 export function useDevTools(): DevToolsCtx {
@@ -35,10 +56,11 @@ export function useDevTools(): DevToolsCtx {
  * that the nearest ErrorBoundary will catch.
  */
 export const DevThrowTarget: FC<{ id: string; children: ReactNode }> = ({ id, children }) => {
-  const { throwTarget, setThrowTarget } = useDevTools();
+  const { throwTargetRef } = useDevTools();
 
-  if (throwTarget === id) {
-    setThrowTarget(null);
+  if (throwTargetRef.current === id) {
+    // Mutate the ref (not setState) — safe during render, no React warning.
+    throwTargetRef.current = null;
     throw new Error(
       `[DevTools] Force-thrown in: ${id}\n\nThis error was triggered by the DevPanel kill switch. ` +
         `It simulates a render crash in the "${id}" component tree.`

@@ -5,6 +5,7 @@ import React, {
   type FC,
   Suspense,
   useCallback,
+  useDeferredValue,
   useMemo,
   useRef,
   useState,
@@ -38,12 +39,12 @@ import { formatDuration, formatFileSize } from "~/utils/formatters.js";
 import { useLibraryStyles } from "./LibraryPage.styles.js";
 
 const LIBRARY_QUERY = graphql`
-  query LibraryPageContentQuery {
+  query LibraryPageContentQuery($search: String, $mediaType: MediaType) {
     libraries {
       id
       name
       mediaType
-      videos(first: 200) {
+      videos(first: 200, search: $search, mediaType: $mediaType) {
         edges {
           node {
             id
@@ -159,7 +160,7 @@ const FilmListRow: FC<FilmListRowProps> = ({
       <div className={styles.listCell}>
         {matched ? (
           <Link
-            to={`/player/${id}`}
+            to={`/player/${encodeURIComponent(id)}`}
             onClick={(e) => e.stopPropagation()}
             style={{
               color: "inherit",
@@ -209,12 +210,6 @@ const LibraryPage: FC = () => {
 
   useSubscription<LibraryPageContentScanSubscription>(scanConfig);
 
-  const data = useLazyLoadQuery<LibraryPageContentQuery>(
-    LIBRARY_QUERY,
-    {},
-    { fetchKey, fetchPolicy: fetchKey > 0 ? "network-only" : "store-or-network" }
-  );
-
   const [searchParams, setSearchParams] = useSearchParams();
   const [activeLibraryId, setActiveLibraryId] = useState<string | null>(null);
   const [search, setSearch] = useState("");
@@ -222,6 +217,19 @@ const LibraryPage: FC = () => {
   const [typeFilter, setTypeFilter] = useState<TypeFilter>("all");
   const [detailQueryRef, loadDetailQuery] =
     useQueryLoader<LibraryPageContentDetailQuery>(DETAIL_VIDEO_QUERY);
+
+  // Defer the search string so the UI stays responsive while the user types;
+  // the server query only re-fires once the deferred value settles.
+  const deferredSearch = useDeferredValue(search);
+
+  const data = useLazyLoadQuery<LibraryPageContentQuery>(
+    LIBRARY_QUERY,
+    {
+      search: deferredSearch || null,
+      mediaType: typeFilter !== "all" ? typeFilter : null,
+    },
+    { fetchKey, fetchPolicy: fetchKey > 0 ? "network-only" : "store-or-network" }
+  );
 
   const filmId = searchParams.get("film");
   const isPaneOpen = Boolean(filmId);
@@ -260,28 +268,14 @@ const LibraryPage: FC = () => {
     [handleSelect, closePane]
   );
 
-  // Collect all videos across libraries (or from selected library)
-  const allVideos = useMemo(() => {
+  // Server handles search + mediaType filtering; client only picks the active library chip.
+  const filteredVideos = useMemo(() => {
     if (activeLibraryId) {
       const lib = data.libraries.find((l) => l.id === activeLibraryId);
       return lib ? lib.videos.edges.map((e) => e.node) : [];
     }
     return data.libraries.flatMap((l) => l.videos.edges.map((e) => e.node));
   }, [data.libraries, activeLibraryId]);
-
-  const filteredVideos = useMemo(() => {
-    const q = search.toLowerCase();
-    return allVideos.filter((v) => {
-      if (typeFilter !== "all" && v.mediaType !== typeFilter) return false;
-      if (
-        q &&
-        !v.title.toLowerCase().includes(q) &&
-        !(v.metadata?.genre ?? "").toLowerCase().includes(q)
-      )
-        return false;
-      return true;
-    });
-  }, [allVideos, search, typeFilter]);
 
   if (data.libraries.length === 0) {
     return (

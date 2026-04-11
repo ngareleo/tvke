@@ -1,5 +1,5 @@
 import { getLibraryById } from "../../db/queries/libraries.js";
-import { getMetadataByVideoId } from "../../db/queries/videoMetadata.js";
+import { getMetadataByVideoId, hasVideoMetadata } from "../../db/queries/videoMetadata.js";
 import { getStreamsByVideoId } from "../../db/queries/videos.js";
 import { internalMediaTypeToGql } from "../mappers.js";
 import {
@@ -28,7 +28,7 @@ export const videoResolvers = {
     },
 
     matched(parent: GQLVideo): boolean {
-      return parent.matched;
+      return hasVideoMetadata(parent._raw.id);
     },
 
     videoStream(
