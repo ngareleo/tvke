@@ -252,6 +252,56 @@ those buttons are data-driven (e.g. watchlist count badge).
 
 ---
 
+## Error states
+
+### 404 — Not Found
+
+Rendered by a catch-all `<Route path="*">` inside the AppShell routes. The
+page uses the same atmospheric treatment (grain + radial gradient) as the
+Player's idle overlay to keep the error state within the design language.
+
+Key elements:
+- `404` in Bebas Neue at very low opacity (ghost mark, not a banner)
+- "PAGE NOT FOUND" heading + one-line subtitle
+- **Go back** (`navigate(-1)`) + **Browse library** (`<Link to="/">`) — never
+  hardcode a redirect destination
+
+In production, map this to a React Router `<Route path="*">` inside the app
+shell routes with a real `NotFoundPage` component.
+
+### ErrorBoundary
+
+A React class component wrapping the entire app (above `<BrowserRouter>`).
+Two display modes:
+
+**Dev** — `import.meta.env.DEV`:
+```
+┌──────────────────────────────────────────┐
+│ 🐛 Unhandled render error  [Copy] [Retry] │  ← red-tinted header
+├──────────────────────────────────────────┤
+│ Error message (monospace)                │
+├──────────────────────────────────────────┤
+│ JAVASCRIPT STACK                         │
+│ <pre> full stack trace </pre>            │
+├──────────────────────────────────────────┤
+│ REACT COMPONENT STACK                   │
+│ <pre> component tree </pre>              │
+└──────────────────────────────────────────┘
+```
+
+**Prod** — no internal details:
+- Logo shield + "Something went wrong" heading
+- Reassuring subtitle (data is safe, display issue only)
+- "Try again" and "Reload page" buttons
+
+Implementation notes:
+- `getDerivedStateFromError` captures the error for render.
+- `componentDidCatch` is where to call `logErrorToService(error, errorInfo)`.
+- "Try again" calls `setState({ hasError: false })` which re-mounts the subtree.
+- Wrapping `<BrowserRouter>` means routing state also resets on retry — intentional.
+
+---
+
 ## Design tokens (reference)
 
 ```css

@@ -289,6 +289,39 @@ design lab to replicate that delay.
 
 ---
 
+### 6 — NotFound (`*`)
+
+A catch-all route rendered inside AppShell for any unknown URL.
+
+Atmospheric treatment (grain texture + radial red-black gradient) matches the
+Player idle overlay so the error state feels native to the design language.
+
+- Large "404" in Bebas Neue at 18% opacity — a ghost mark, not a screaming banner.
+- "Page not found" title + subtitle.
+- Two actions: **Go back** (`navigate(-1)`) and **Browse library** (`<Link to="/">`).
+
+---
+
+### Error boundary (`<ErrorBoundary>`)
+
+Wraps the entire app in `main.tsx`. Catches any unhandled render error.
+
+**Dev mode** (`import.meta.env.DEV === true`):
+- Red header bar with error name + bug icon.
+- Full JavaScript stack trace in a monospace code block.
+- React component stack (dimmer, secondary).
+- Copy-to-clipboard, "Try again" (remounts subtree), and "Reload page" actions.
+
+**Prod mode**:
+- Friendly "Something went wrong" screen.
+- Moran logo shield, short reassuring message ("your library data is safe").
+- "Try again" and "Reload page" buttons — no internal detail exposed.
+
+In production, add `logErrorToService(error, errorInfo)` inside
+`componentDidCatch` to forward errors to Sentry / DataDog.
+
+---
+
 ## URL routing scheme
 
 | URL | Page | Pane state |

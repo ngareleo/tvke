@@ -7,6 +7,7 @@ import { Watchlist } from "./pages/Watchlist/Watchlist.js";
 import { Settings } from "./pages/Settings/Settings.js";
 import { Feedback } from "./pages/Feedback/Feedback.js";
 import { Player } from "./pages/Player/Player.js";
+import { NotFound } from "./pages/NotFound/NotFound.js";
 
 export const App: FC = () => {
   return (
@@ -25,6 +26,8 @@ export const App: FC = () => {
               <Route path="/watchlist" element={<Watchlist />} />
               <Route path="/settings" element={<Settings />} />
               <Route path="/feedback" element={<Feedback />} />
+              {/* Catch-all — must be last */}
+              <Route path="*" element={<NotFound />} />
             </Routes>
           </AppShell>
         }
