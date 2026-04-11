@@ -1,9 +1,10 @@
 import { mkdir } from "fs/promises";
 
 import { config } from "./config.js";
-import { getDb } from "./db/index.js";
+import { closeDb, getDb } from "./db/index.js";
 import { yoga } from "./routes/graphql.js";
 import { handleStream } from "./routes/stream.js";
+import { killAllActiveJobs } from "./services/chunker.js";
 import { restoreInterruptedJobs } from "./services/jobRestore.js";
 import { scanLibraries } from "./services/libraryScanner.js";
 
@@ -56,6 +57,21 @@ async function bootstrap(): Promise<void> {
   console.log(`[server] Listening on http://localhost:${config.port}`);
   console.log(`[server] GraphQL at http://localhost:${config.port}/graphql`);
 }
+
+function shutdown(signal: string): void {
+  console.log(`[server] ${signal} received — shutting down`);
+  killAllActiveJobs();
+  closeDb();
+  console.log("[server] Shutdown complete");
+  process.exit(0);
+}
+
+process.on("SIGTERM", () => {
+  shutdown("SIGTERM");
+});
+process.on("SIGINT", () => {
+  shutdown("SIGINT");
+});
 
 bootstrap().catch((err) => {
   console.error("[server] Fatal startup error:", err);

@@ -1,7 +1,7 @@
 import ffmpegInstaller from "@ffmpeg-installer/ffmpeg";
 import ffprobeInstaller from "@ffprobe-installer/ffprobe";
 import { createHash } from "crypto";
-import ffmpeg from "fluent-ffmpeg";
+import ffmpeg, { type FfmpegCommand } from "fluent-ffmpeg";
 import { mkdir, stat, watch } from "fs/promises";
 import { join, resolve } from "path";
 
@@ -15,6 +15,21 @@ import { getJob, setJob } from "./jobStore.js";
 
 ffmpeg.setFfmpegPath(ffmpegInstaller.path);
 ffmpeg.setFfprobePath(ffprobeInstaller.path);
+
+// Tracks all ffmpeg processes currently encoding so they can be killed on shutdown.
+const activeCommands = new Map<string, FfmpegCommand>();
+
+export function killAllActiveJobs(): void {
+  for (const [id, command] of activeCommands) {
+    console.log(`[chunker] Killing job ${id.slice(0, 8)}`);
+    try {
+      command.kill("SIGTERM");
+    } catch {
+      // process may have already exited
+    }
+  }
+  activeCommands.clear();
+}
 
 function jobId(videoPath: string, resolution: Resolution, start?: number, end?: number): string {
   return createHash("sha1")
@@ -131,6 +146,8 @@ async function runFfmpeg(
   // Calling watchSegments after .on("start") risks missing early segment events.
   void watchSegments(job, segmentDir, initPath);
 
+  activeCommands.set(job.id, command);
+
   file
     .applyOutputOptions(command, profile, segmentPattern, segmentDir)
     .output(join(segmentDir, "playlist.m3u8"))
@@ -139,6 +156,7 @@ async function runFfmpeg(
       console.log(`[chunker] cmd: ${cmd.slice(0, 120)}…`);
     })
     .on("error", (err) => {
+      activeCommands.delete(job.id);
       console.error(`[chunker] Job ${job.id.slice(0, 8)} error:`, err.message);
       job.status = "error";
       job.error = err.message;
@@ -146,6 +164,7 @@ async function runFfmpeg(
       notifySubscribers(job);
     })
     .on("end", () => {
+      activeCommands.delete(job.id);
       console.log(
         `[chunker] Job ${job.id.slice(0, 8)} complete. ${job.segments.filter(Boolean).length} segments`
       );
