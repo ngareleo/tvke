@@ -58,11 +58,12 @@ export const FilmRow: FC<Props> = ({ video, isSelected }) => {
 
   return (
     <div
-      className={mergeClasses(styles.row, isSelected && styles.rowSelected, styles.treeLine)}
+      className={mergeClasses(styles.row, isSelected && styles.rowSelected)}
       onClick={handleClick}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
     >
+      <div className={styles.treeLineEl} aria-hidden="true" />
       <div className={mergeClasses(styles.icon, isUnmatched ? "" : "")}>
         {isUnmatched ? (
           <IconWarning size={14} style={{ color: "rgba(245,197,24,0.5)" }} />

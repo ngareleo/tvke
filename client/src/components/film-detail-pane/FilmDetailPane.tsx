@@ -86,7 +86,9 @@ export const FilmDetailPane: FC<Props> = ({ video }) => {
             <IconPlay size={10} />
             Play
           </Link>
-          <div className={styles.actionSep} />
+          <div className={styles.actionSep}>
+            <div className={styles.actionSepLine} />
+          </div>
           <button className={styles.actionBtn}>
             <IconPencil size={10} />
             {data.matched ? "Re-link" : "Link"}

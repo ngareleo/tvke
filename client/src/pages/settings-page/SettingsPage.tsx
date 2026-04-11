@@ -1,10 +1,11 @@
-import { makeStyles, mergeClasses } from "@griffel/react";
+import { mergeClasses } from "@griffel/react";
 import React, { type FC, useState } from "react";
 import { graphql, useMutation } from "react-relay";
 
 import type { SettingsPageScanMutation } from "~/relay/__generated__/SettingsPageScanMutation.graphql.js";
 import type { SettingsPageSetKeyMutation } from "~/relay/__generated__/SettingsPageSetKeyMutation.graphql.js";
-import { tokens } from "~/styles/tokens.js";
+
+import { useSettingsStyles } from "./SettingsPage.styles.js";
 
 const SET_SETTING_MUTATION = graphql`
   mutation SettingsPageSetKeyMutation($key: String!, $value: String!) {
@@ -20,163 +21,10 @@ const SCAN_MUTATION = graphql`
   }
 `;
 
-const useStyles = makeStyles({
-  root: {
-    display: "flex",
-    flexDirection: "column",
-    height: "100%",
-    overflow: "hidden",
-  },
-  tabs: {
-    display: "flex",
-    alignItems: "center",
-    borderBottom: `1px solid ${tokens.colorBorder}`,
-    flexShrink: "0",
-    backgroundColor: tokens.colorSurface,
-  },
-  tab: {
-    padding: "0 18px",
-    height: "44px",
-    fontSize: "12px",
-    fontWeight: "600",
-    color: tokens.colorMuted,
-    background: "transparent",
-    border: "none",
-    borderBottom: "2px solid transparent",
-    cursor: "pointer",
-    transitionProperty: "color, border-color",
-    transitionDuration: tokens.transition,
-    ":hover": {
-      color: tokens.colorWhite,
-    },
-  },
-  tabActive: {
-    color: tokens.colorWhite,
-    borderBottom: `2px solid ${tokens.colorRed}`,
-  },
-  body: {
-    flex: "1",
-    overflowY: "auto",
-    padding: "28px",
-    maxWidth: "560px",
-  },
-  section: {
-    marginBottom: "32px",
-  },
-  sectionTitle: {
-    fontSize: "13px",
-    fontWeight: "700",
-    color: tokens.colorWhite,
-    marginBottom: "4px",
-  },
-  sectionDesc: {
-    fontSize: "12px",
-    color: tokens.colorMuted,
-    lineHeight: "1.6",
-    marginBottom: "14px",
-  },
-  label: {
-    fontSize: "10px",
-    fontWeight: "700",
-    letterSpacing: "0.12em",
-    textTransform: "uppercase",
-    color: tokens.colorMuted2,
-    marginBottom: "6px",
-    display: "block",
-  },
-  input: {
-    width: "100%",
-    padding: "9px 12px",
-    backgroundColor: tokens.colorSurface2,
-    border: `1px solid ${tokens.colorBorder}`,
-    borderRadius: tokens.radiusSm,
-    color: tokens.colorWhite,
-    fontSize: "12px",
-    fontFamily: tokens.fontBody,
-    outlineStyle: "none",
-    ":focus": {
-      border: `1px solid ${tokens.colorRed}`,
-    },
-    "::placeholder": {
-      color: tokens.colorMuted2,
-    },
-    boxSizing: "border-box",
-  },
-  btn: {
-    display: "inline-flex",
-    alignItems: "center",
-    gap: "6px",
-    padding: "8px 16px",
-    backgroundColor: tokens.colorRed,
-    border: `1px solid ${tokens.colorRed}`,
-    borderRadius: tokens.radiusSm,
-    color: tokens.colorWhite,
-    fontSize: "12px",
-    fontWeight: "700",
-    cursor: "pointer",
-    marginTop: "10px",
-    transitionProperty: "background",
-    transitionDuration: tokens.transition,
-    ":hover": {
-      backgroundColor: tokens.colorRedDark,
-    },
-    ":disabled": {
-      opacity: "0.5",
-      cursor: "default",
-    },
-  },
-  btnSecondary: {
-    backgroundColor: "transparent",
-    border: `1px solid ${tokens.colorBorder}`,
-    color: tokens.colorMuted,
-    ":hover": {
-      color: tokens.colorWhite,
-      border: `1px solid ${tokens.colorBorder2}`,
-      backgroundColor: "transparent",
-    },
-  },
-  successMsg: {
-    fontSize: "11px",
-    color: tokens.colorGreen,
-    marginTop: "8px",
-  },
-  dangerZone: {
-    border: `1px solid rgba(206,17,38,0.3)`,
-    borderRadius: tokens.radiusMd,
-    padding: "16px",
-    backgroundColor: "rgba(206,17,38,0.04)",
-  },
-  dangerTitle: {
-    fontSize: "12px",
-    fontWeight: "700",
-    color: tokens.colorRed,
-    marginBottom: "8px",
-  },
-  dangerDesc: {
-    fontSize: "11px",
-    color: "rgba(255,255,255,0.5)",
-    lineHeight: "1.6",
-    marginBottom: "12px",
-  },
-  btnDanger: {
-    display: "inline-flex",
-    alignItems: "center",
-    padding: "7px 14px",
-    backgroundColor: "transparent",
-    border: `1px solid ${tokens.colorRedBorder}`,
-    borderRadius: tokens.radiusSm,
-    color: tokens.colorRed,
-    fontSize: "12px",
-    fontWeight: "600",
-    cursor: "not-allowed",
-    opacity: "0.5",
-  },
-});
-
 type Tab = "library" | "metadata" | "danger";
 
 const LibraryTab: FC = () => {
-  const styles = useStyles();
+  const styles = useSettingsStyles();
   const [scan, isPending] = useMutation<SettingsPageScanMutation>(SCAN_MUTATION);
   const [done, setDone] = useState(false);
 
@@ -201,7 +49,7 @@ const LibraryTab: FC = () => {
 };
 
 const MetadataTab: FC = () => {
-  const styles = useStyles();
+  const styles = useSettingsStyles();
   const [apiKey, setApiKey] = useState("");
   const [save, isPending] = useMutation<SettingsPageSetKeyMutation>(SET_SETTING_MUTATION);
   const [saved, setSaved] = useState(false);
@@ -247,7 +95,7 @@ const MetadataTab: FC = () => {
 };
 
 const DangerTab: FC = () => {
-  const styles = useStyles();
+  const styles = useSettingsStyles();
   return (
     <div className={styles.section}>
       <div className={styles.dangerZone}>
@@ -265,7 +113,7 @@ const DangerTab: FC = () => {
 };
 
 export const SettingsPage: FC = () => {
-  const styles = useStyles();
+  const styles = useSettingsStyles();
   const [activeTab, setActiveTab] = useState<Tab>("library");
 
   return (

@@ -69,17 +69,14 @@ export const useFilmDetailPaneStyles = makeStyles({
   actionSep: {
     width: "12px",
     flexShrink: "0",
-    position: "relative",
-    "::after": {
-      content: "''",
-      position: "absolute",
-      left: "50%",
-      top: "50%",
-      transform: "translate(-50%, -50%)",
-      width: "1px",
-      height: "12px",
-      backgroundColor: "rgba(255,255,255,0.15)",
-    },
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  actionSepLine: {
+    width: "1px",
+    height: "12px",
+    backgroundColor: "rgba(255,255,255,0.15)",
   },
   actionSpacer: {
     flex: "1",

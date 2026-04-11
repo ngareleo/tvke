@@ -9,22 +9,37 @@ import {
   WatchlistSkeleton,
 } from "~/components/page-skeleton/PageSkeleton.js";
 
-const DashboardPage = lazy(() => import("./pages/DashboardPage.js"));
-const LibraryPage = lazy(() =>
-  import("./pages/LibraryPage.js").then((m) => ({ default: m.LibraryPage }))
+const DashboardPage = lazy(
+  () => import(/* webpackChunkName: "DashboardPage" */ "./pages/dashboard-page/DashboardPage.js")
 );
-const WatchlistPage = lazy(() => import("./pages/WatchlistPage.js"));
+const LibraryPage = lazy(
+  () => import(/* webpackChunkName: "LibraryPage" */ "./pages/library-page/LibraryPage.js")
+);
+const WatchlistPage = lazy(
+  () => import(/* webpackChunkName: "WatchlistPage" */ "./pages/watchlist-page/WatchlistPage.js")
+);
 const SettingsPage = lazy(() =>
-  import("./pages/SettingsPage.js").then((m) => ({ default: m.SettingsPage }))
+  import(/* webpackChunkName: "SettingsPage" */ "./pages/settings-page/SettingsPage.js").then(
+    (m) => ({ default: m.SettingsPage })
+  )
 );
 const FeedbackPage = lazy(() =>
-  import("./pages/FeedbackPage.js").then((m) => ({ default: m.FeedbackPage }))
+  import(/* webpackChunkName: "FeedbackPage" */ "./pages/feedback-page/FeedbackPage.js").then(
+    (m) => ({ default: m.FeedbackPage })
+  )
 );
 const PlayerPage = lazy(() =>
-  import("./pages/PlayerPage.js").then((m) => ({ default: m.PlayerPage }))
+  import(/* webpackChunkName: "PlayerPage" */ "./pages/player-page/PlayerPage.js").then((m) => ({
+    default: m.PlayerPage,
+  }))
 );
 const NotFoundPage = lazy(() =>
-  import("./pages/NotFoundPage.js").then((m) => ({ default: m.NotFoundPage }))
+  import(/* webpackChunkName: "NotFoundPage" */ "./pages/not-found-page/NotFoundPage.js").then(
+    (m) => ({ default: m.NotFoundPage })
+  )
+);
+const GoodbyePage = lazy(
+  () => import(/* webpackChunkName: "GoodbyePage" */ "./pages/goodbye-page/GoodbyePage.js")
 );
 
 function PageLoader(): JSX.Element {
@@ -116,6 +131,15 @@ export const router: ReturnType<typeof createBrowserRouter> = createBrowserRoute
     element: (
       <Suspense fallback={<PageLoader />}>
         <PlayerPage />
+      </Suspense>
+    ),
+  },
+  // Goodbye is full-screen — no AppShell
+  {
+    path: "/goodbye",
+    element: (
+      <Suspense fallback={<PageLoader />}>
+        <GoodbyePage />
       </Suspense>
     ),
   },

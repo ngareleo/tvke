@@ -29,7 +29,7 @@ const THROW_TARGETS = [
   { id: "NotFound", label: "404 page" },
 ];
 
-const DevPanelInner: FC = () => {
+export const DevPanelInner: FC = () => {
   const [open, setOpen] = useState(false);
   const { setThrowTarget } = useDevTools();
   const { pathname } = useLocation();
@@ -111,5 +111,4 @@ const DevPanelInner: FC = () => {
   );
 };
 
-export const DevPanel: FC =
-  process.env.NODE_ENV !== "production" ? DevPanelInner : (): null => null;
+// DevPanelInner is the named export consumed by DevPanelAsync for code-splitting.

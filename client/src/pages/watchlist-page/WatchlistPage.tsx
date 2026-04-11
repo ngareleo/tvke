@@ -35,7 +35,7 @@ const REMOVE_MUTATION = graphql`
   }
 `;
 
-export const WatchlistPageContent: FC = () => {
+const WatchlistPage: FC = () => {
   const styles = useWatchlistStyles();
   const data = useLazyLoadQuery<WatchlistPageContentQuery>(WATCHLIST_QUERY, {});
   const [removeItem] = useMutation<WatchlistPageContentRemoveMutation>(REMOVE_MUTATION);
@@ -167,3 +167,5 @@ export const WatchlistPageContent: FC = () => {
     </div>
   );
 };
+
+export default WatchlistPage;

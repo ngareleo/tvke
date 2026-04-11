@@ -68,8 +68,9 @@ export const mutationResolvers = {
       }: { name: string; path: string; mediaType: string; extensions: string[] }
     ): Promise<GQLLibrary> {
       const internalType = gqlMediaTypeToInternal(mediaType) as MediaType;
+      // createLibrary is a synchronous SQLite INSERT — fast for a local dev store.
       const row = createLibrary(name, path, internalType, extensions);
-      // Trigger a background scan — don't await so the mutation returns immediately
+      // Fire-and-forget background scan so the mutation resolves without waiting.
       void scanLibraries();
       return presentLibrary(row);
     },

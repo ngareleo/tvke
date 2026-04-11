@@ -29,17 +29,15 @@ export const useFilmRowStyles = makeStyles({
     // Handled by child icon/name colors below
   },
 
-  // Tree line connector
-  treeLine: {
-    "::before": {
-      content: "''",
-      position: "absolute",
-      left: "37px",
-      top: "0",
-      bottom: "0",
-      width: "1px",
-      background: "rgba(255,255,255,0.06)",
-    },
+  // Tree line connector — rendered as a real child element
+  treeLineEl: {
+    position: "absolute",
+    left: "37px",
+    top: "0",
+    bottom: "0",
+    width: "1px",
+    background: "rgba(255,255,255,0.06)",
+    pointerEvents: "none",
   },
 
   icon: {

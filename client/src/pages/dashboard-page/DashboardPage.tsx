@@ -2,7 +2,14 @@ import { mergeClasses } from "@griffel/react";
 import { NovaEventingInterceptor } from "@nova/react";
 import type { EventWrapper } from "@nova/types";
 import React, { type FC, Suspense, useCallback, useEffect, useState } from "react";
-import { graphql, useLazyLoadQuery, useMutation } from "react-relay";
+import {
+  graphql,
+  type PreloadedQuery,
+  useLazyLoadQuery,
+  useMutation,
+  usePreloadedQuery,
+  useQueryLoader,
+} from "react-relay";
 import { useSearchParams } from "react-router-dom";
 
 import { useHeaderActionStyles } from "~/components/app-header/AppHeader.styles.js";
@@ -65,27 +72,30 @@ const SCAN_MUTATION = graphql`
 `;
 
 // ─── Detail pane loader ───────────────────────────────────────────────────────
+// Uses usePreloadedQuery so the network request starts as soon as the user
+// clicks (via loadDetailQuery in the event handler) rather than waiting for
+// this component to mount.
 
 interface DetailLoaderProps {
-  filmId: string;
+  queryRef: PreloadedQuery<DashboardPageContentDetailQuery>;
 }
 
-const DetailLoader: FC<DetailLoaderProps> = ({ filmId }) => {
-  const data = useLazyLoadQuery<DashboardPageContentDetailQuery>(DETAIL_VIDEO_QUERY, {
-    videoId: filmId,
-  });
+const DetailLoader: FC<DetailLoaderProps> = ({ queryRef }) => {
+  const data = usePreloadedQuery<DashboardPageContentDetailQuery>(DETAIL_VIDEO_QUERY, queryRef);
   if (!data.video) return null;
   return <FilmDetailPaneAsync video={data.video} />;
 };
 
-// ─── Main component ───────────────────────────────────────────────────────────
+// ─── DashboardPage ────────────────────────────────────────────────────────────
 
-export const DashboardPageContent: FC = () => {
+const DashboardPage: FC = () => {
   const styles = useDashboardStyles();
   const actionStyles = useHeaderActionStyles();
   const setHeaderActions = useHeaderActions();
   const { paneWidth, containerRef, onResizeMouseDown } = useSplitResize(360);
   const data = useLazyLoadQuery<DashboardPageContentQuery>(DASHBOARD_QUERY, {});
+  const [detailQueryRef, loadDetailQuery] =
+    useQueryLoader<DashboardPageContentDetailQuery>(DETAIL_VIDEO_QUERY);
 
   const [searchParams, setSearchParams] = useSearchParams();
   const [expandedId, setExpandedId] = useState<string | null>(null);
@@ -110,10 +120,13 @@ export const DashboardPageContent: FC = () => {
       if (isPaneFilmDetail && filmIdParam === id) {
         closePane();
       } else {
+        // Kick off the network request immediately, before the URL update causes
+        // DetailLoader to mount — avoids a wasted render cycle before fetching.
+        loadDetailQuery({ videoId: id });
         setSearchParams({ pane: "film-detail", filmId: id });
       }
     },
-    [isPaneFilmDetail, filmIdParam, closePane, setSearchParams]
+    [isPaneFilmDetail, filmIdParam, closePane, loadDetailQuery, setSearchParams]
   );
 
   const [scan, isScanPending] = useMutation<DashboardPageContentScanMutation>(SCAN_MUTATION);
@@ -136,7 +149,9 @@ export const DashboardPageContent: FC = () => {
           <IconRefresh size={14} />
           {isScanPending ? "Scanning…" : "Scan All"}
         </button>
-        <div className={actionStyles.sep} />
+        <div className={actionStyles.sep}>
+          <div className={actionStyles.sepLine} />
+        </div>
         <button
           className={mergeClasses(actionStyles.btn, actionStyles.btnPrimary)}
           onClick={openNewProfile}
@@ -267,9 +282,9 @@ export const DashboardPageContent: FC = () => {
                   <NewProfilePaneAsync />
                 </Suspense>
               )}
-              {isPaneFilmDetail && filmIdParam && (
+              {isPaneFilmDetail && detailQueryRef && (
                 <Suspense fallback={null}>
-                  <DetailLoader filmId={filmIdParam} />
+                  <DetailLoader queryRef={detailQueryRef} />
                 </Suspense>
               )}
             </div>
@@ -279,3 +294,5 @@ export const DashboardPageContent: FC = () => {
     </DevThrowTarget>
   );
 };
+
+export default DashboardPage;

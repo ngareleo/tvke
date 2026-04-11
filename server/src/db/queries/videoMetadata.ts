@@ -41,6 +41,14 @@ export function getMetadataByVideoId(videoId: string): VideoMetadataRow | null {
     .get({ $video_id: videoId }) as VideoMetadataRow | null;
 }
 
+/** Cheap existence check — avoids fetching the full metadata row. */
+export function hasVideoMetadata(videoId: string): boolean {
+  const row = getDb()
+    .prepare("SELECT 1 FROM video_metadata WHERE video_id = $video_id LIMIT 1")
+    .get({ $video_id: videoId }) as { 1: number } | null;
+  return row !== null;
+}
+
 export function deleteVideoMetadata(videoId: string): void {
   getDb()
     .prepare("DELETE FROM video_metadata WHERE video_id = $video_id")

@@ -2,10 +2,13 @@ import { mergeClasses } from "@griffel/react";
 import { createContext, type FC, type ReactNode, useContext, useState } from "react";
 
 import { AppHeader } from "~/components/app-header/AppHeader.js";
-import { DevPanel } from "~/components/dev-tools/DevPanel.js";
+import { DevPanelAsync } from "~/components/dev-tools/DevPanelAsync.js";
 import { DevToolsProvider } from "~/components/dev-tools/DevToolsContext.js";
 import { LoadingBar } from "~/components/loading-bar/LoadingBar.js";
-import { LoadingBarProvider } from "~/components/loading-bar/LoadingBarContext.js";
+import {
+  LoadingBarProvider,
+  RouterNavigationLoader,
+} from "~/components/loading-bar/LoadingBarContext.js";
 import { Sidebar } from "~/components/sidebar/Sidebar.js";
 
 import { useAppShellStyles } from "./AppShell.styles.js";
@@ -49,12 +52,13 @@ export const AppShell: FC<AppShellProps> = ({ children }) => {
       <LoadingBarProvider>
         <HeaderActionsContext.Provider value={{ actions, setActions }}>
           <div className={mergeClasses(styles.root, collapsed && styles.rootCollapsed)}>
+            <RouterNavigationLoader />
             <LoadingBar />
             <AppHeader actions={actions} />
             <Sidebar collapsed={collapsed} onToggle={() => setCollapsed((c) => !c)} />
             <div className={styles.main}>{children}</div>
           </div>
-          <DevPanel />
+          <DevPanelAsync />
         </HeaderActionsContext.Provider>
       </LoadingBarProvider>
     </DevToolsProvider>

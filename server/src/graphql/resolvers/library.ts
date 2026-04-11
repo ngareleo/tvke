@@ -1,4 +1,4 @@
-import { countMatchedByLibrary, getMetadataByVideoId } from "../../db/queries/videoMetadata.js";
+import { countMatchedByLibrary } from "../../db/queries/videoMetadata.js";
 import {
   countVideosByLibrary,
   getVideosByLibrary,
@@ -55,13 +55,10 @@ export const libraryResolvers = {
       const rows = getVideosByLibrary(libraryId, limit, offset);
       const total = countVideosByLibrary(libraryId);
 
-      const edges = rows.map((row, i) => {
-        const meta = getMetadataByVideoId(row.id);
-        return {
-          node: presentVideo(row, meta !== null),
-          cursor: encodeCursor(offset + i),
-        };
-      });
+      const edges = rows.map((row, i) => ({
+        node: presentVideo(row),
+        cursor: encodeCursor(offset + i),
+      }));
 
       return {
         edges,

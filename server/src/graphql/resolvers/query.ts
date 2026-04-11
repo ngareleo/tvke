@@ -1,6 +1,6 @@
 import { getJobById } from "../../db/queries/jobs.js";
 import { getAllLibraries, getLibraryById } from "../../db/queries/libraries.js";
-import { getMetadataByVideoId } from "../../db/queries/videoMetadata.js";
+import { getMetadataByVideoId, hasVideoMetadata } from "../../db/queries/videoMetadata.js";
 import { getVideoById } from "../../db/queries/videos.js";
 import { getWatchlist, getWatchlistItemById } from "../../db/queries/watchlist.js";
 import { searchOmdbList } from "../../services/omdbService.js";
@@ -8,10 +8,12 @@ import {
   type GQLLibrary,
   type GQLTranscodeJob,
   type GQLVideo,
+  type GQLVideoMetadata,
   type GQLWatchlistItem,
   presentJob,
   presentLibrary,
   presentVideo,
+  presentVideoMetadata,
   presentWatchlistItem,
 } from "../presenters.js";
 import { fromGlobalId } from "../relay.js";
@@ -31,9 +33,7 @@ export const queryResolvers = {
       }
       if (type === "Video") {
         const row = getVideoById(localId);
-        if (!row) return null;
-        const meta = getMetadataByVideoId(localId);
-        return { __typename: "Video", ...presentVideo(row, meta !== null) };
+        return row ? { __typename: "Video", ...presentVideo(row) } : null;
       }
       if (type === "TranscodeJob") {
         const row = getJobById(localId);
@@ -53,9 +53,7 @@ export const queryResolvers = {
     video(_: unknown, { id }: { id: string }): GQLVideo | null {
       const { id: localId } = fromGlobalId(id);
       const row = getVideoById(localId);
-      if (!row) return null;
-      const meta = getMetadataByVideoId(localId);
-      return presentVideo(row, meta !== null);
+      return row ? presentVideo(row) : null;
     },
 
     transcodeJob(_: unknown, { id }: { id: string }): GQLTranscodeJob | null {
@@ -91,13 +89,22 @@ export const queryResolvers = {
     },
   },
 
+  // Video sub-resolvers — metadata and matched are fetched lazily only when requested
+  Video: {
+    matched(parent: GQLVideo): boolean {
+      return hasVideoMetadata(parent._raw.id);
+    },
+    metadata(parent: GQLVideo): GQLVideoMetadata | null {
+      const meta = getMetadataByVideoId(parent._raw.id);
+      return meta ? presentVideoMetadata(meta) : null;
+    },
+  },
+
   // WatchlistItem sub-resolvers
   WatchlistItem: {
     video(parent: GQLWatchlistItem): GQLVideo | null {
       const row = getVideoById(parent._raw.video_id);
-      if (!row) return null;
-      const meta = getMetadataByVideoId(parent._raw.video_id);
-      return presentVideo(row, meta !== null);
+      return row ? presentVideo(row) : null;
     },
   },
 };

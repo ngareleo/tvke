@@ -21,6 +21,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { useNavigation } from "react-router-dom";
 
 interface LoadingBarCtx {
   isLoading: boolean;
@@ -64,3 +65,15 @@ export function usePageLoading(loading: boolean): void {
 export function useLoadingBarState(): boolean {
   return useContext(Ctx).isLoading;
 }
+
+/**
+ * Renders nothing but bridges React Router's navigation state into the
+ * LoadingBar. Mount once inside LoadingBarProvider (AppShell does this).
+ * Route transitions automatically show the loading bar without any
+ * per-page usePageLoading() calls.
+ */
+export const RouterNavigationLoader: FC = () => {
+  const { state } = useNavigation();
+  usePageLoading(state === "loading");
+  return null;
+};
