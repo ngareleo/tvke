@@ -17,7 +17,7 @@ import { lazyNamedExport } from "~/utils/lazy.js";
 import type { DevPanelInner as DevPanelInnerType } from "./DevPanel.js";
 
 const Inner: LazyExoticComponent<typeof DevPanelInnerType> = lazyNamedExport(
-  () => import("./DevPanel.js"),
+  () => import(/* webpackChunkName: "DevPanel" */ "./DevPanel.js"),
   (m) => m.DevPanelInner
 );
 

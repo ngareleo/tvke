@@ -97,6 +97,13 @@ export default defineConfig({
             name: "vendor-react",
             chunks: "all" as const,
           },
+          // Remaining node_modules (Griffel, Nova, router, etc.)
+          vendor: {
+            test: /[\\/]node_modules[\\/]/,
+            name: "vendor-misc",
+            chunks: "all" as const,
+            priority: -10,
+          },
         },
       },
     },

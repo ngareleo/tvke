@@ -5,6 +5,6 @@ import { lazyNamedExport } from "~/utils/lazy.js";
 import type { PlayerSidebar as PlayerSidebarType } from "./PlayerSidebar.js";
 
 export const PlayerSidebarAsync: LazyExoticComponent<typeof PlayerSidebarType> = lazyNamedExport(
-  () => import("./PlayerSidebar.js"),
+  () => import(/* webpackChunkName: "PlayerSidebar" */ "./PlayerSidebar.js"),
   (m) => m.PlayerSidebar
 );

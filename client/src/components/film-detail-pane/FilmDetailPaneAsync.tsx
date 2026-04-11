@@ -5,6 +5,6 @@ import { lazyNamedExport } from "~/utils/lazy.js";
 import type { FilmDetailPane as FilmDetailPaneType } from "./FilmDetailPane.js";
 
 export const FilmDetailPaneAsync: LazyExoticComponent<typeof FilmDetailPaneType> = lazyNamedExport(
-  () => import("./FilmDetailPane.js"),
+  () => import(/* webpackChunkName: "FilmDetailPane" */ "./FilmDetailPane.js"),
   (m) => m.FilmDetailPane
 );
