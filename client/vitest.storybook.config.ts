@@ -17,6 +17,13 @@ export default defineConfig({
       },
     }),
   ],
+  resolve: {
+    alias: {
+      // Mirror the ~ → src/ alias from rsbuild.config.ts so Vite resolves
+      // ~/hooks/..., ~/components/... etc. in story browser tests.
+      "~": path.resolve(dirname, "src"),
+    },
+  },
   test: {
     projects: [
       {

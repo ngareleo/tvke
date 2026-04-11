@@ -39,6 +39,8 @@ jobs:
   client:
     name: Client — lint, test, relay, build
     runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
     defaults:
       run:
         working-directory: client
@@ -74,9 +76,34 @@ jobs:
       - name: Build
         run: bun run build
 
-      - name: Upload bundle stats
-        uses: actions/upload-artifact@v4
+      # Per-PR deployment: each PR gets its own stable subdomain so reports
+      # from concurrent PRs never overwrite each other.
+      - name: Deploy bundle report (PR)
+        if: github.event_name == 'pull_request'
+        env:
+          SURGE_TOKEN: ${{ secrets.SURGE_TOKEN }}
+        run: bunx surge dist/ tvke-pr-${{ github.event.pull_request.number }}.surge.sh --token $SURGE_TOKEN
+
+      - name: Comment bundle report link on PR
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
         with:
-          name: bundle-stats
-          path: client/dist/stats.html
-          retention-days: 30
+          script: |
+            const prNumber = context.issue.number;
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: prNumber,
+              body: [
+                '## Bundle Report',
+                '',
+                `[View interactive bundle report](https://tvke-pr-${prNumber}.surge.sh/stats.html)`,
+              ].join('\n'),
+            });
+
+      # Keep a stable post-merge report at a fixed URL.
+      - name: Deploy bundle report (main)
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        env:
+          SURGE_TOKEN: ${{ secrets.SURGE_TOKEN }}
+        run: bunx surge dist/ tvke-bundle.surge.sh --token $SURGE_TOKEN
