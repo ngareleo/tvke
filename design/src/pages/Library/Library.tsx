@@ -39,6 +39,7 @@ import {
   IconPencil,
 } from "../../lib/icons.js";
 import { profiles, films, type Film } from "../../data/mock.js";
+import { useSimulatedLoad } from "../../hooks/useSimulatedLoad.js";
 import "./Library.css";
 
 type ViewMode = "grid" | "list";
@@ -165,6 +166,51 @@ const DetailPane: FC<{ film: Film; onClose: () => void }> = ({ film, onClose }) 
   </div>
 );
 
+// ── LibrarySkeleton ───────────────────────────────────────────────────────
+// Mirrors the filter bar + poster grid layout.
+const POSTER_WIDTHS = [0, 1, 2, 3, 4, 5]; // 6 per row placeholder
+
+const LibrarySkeleton: FC = () => (
+  <>
+    <AppHeader collapsed={false}>
+      <span className="topbar-title">Library</span>
+    </AppHeader>
+    <div className="main">
+      <div className="split-body">
+        <div className="split-left">
+          {/* Filter bar — non-interactive shimmer */}
+          <div className="filter-bar">
+            <div className="skeleton" style={{ flex: 1, height: 32, borderRadius: 4 }} />
+            <div className="skeleton" style={{ width: 110, height: 32, borderRadius: 4 }} />
+            <div className="skeleton" style={{ width: 68, height: 32, borderRadius: 4 }} />
+          </div>
+          {/* Two profile sections with poster grids */}
+          {[6, 4].map((count, si) => (
+            <div key={si} className="profile-section">
+              <div className="profile-section-head">
+                <div className="skeleton" style={{ width: 18, height: 18, borderRadius: "50%" }} />
+                <div className="skeleton" style={{ width: 160, height: 14 }} />
+                <div className="skeleton" style={{ width: 50, height: 12 }} />
+              </div>
+              <div className="films-grid">
+                {Array.from({ length: count }).map((_, i) => (
+                  <div key={i} className="poster-card" style={{ pointerEvents: "none" }}>
+                    <div className="skeleton poster-img" style={{ borderRadius: "4px 4px 0 0" }} />
+                    <div className="poster-info" style={{ gap: 6 }}>
+                      <div className="skeleton" style={{ width: "80%", height: 13 }} />
+                      <div className="skeleton" style={{ width: "55%", height: 11 }} />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  </>
+);
+
 // ── Library (page root) ───────────────────────────────────────────────────
 export const Library: FC = () => {
   // Search and view-mode are local transient state — not URL-encoded because
@@ -173,6 +219,8 @@ export const Library: FC = () => {
   const [viewMode, setViewMode] = React.useState<ViewMode>("grid");
 
   // Selected film drives the right pane; encoded in the URL for Back support.
+  const loading = useSimulatedLoad();
+
   const [searchParams, setSearchParams] = useSearchParams();
   const selectedFilmId = searchParams.get("film");
   const selectedFilm   = selectedFilmId ? films.find((f) => f.id === selectedFilmId) : null;
@@ -189,6 +237,8 @@ export const Library: FC = () => {
 
   // Client-side search: filters by title, filename, or genre.
   // In production this would filter the already-loaded relay store data.
+  if (loading) return <LibrarySkeleton />;
+
   const filterFilms = (profileFilms: Film[]) => {
     if (!search.trim()) return profileFilms;
     const q = search.toLowerCase();

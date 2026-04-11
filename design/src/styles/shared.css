@@ -400,6 +400,24 @@ code { font-family: 'SF Mono', 'Fira Code', monospace; }
 
 .content { flex: 1; padding: 24px; overflow-y: auto; }
 
+/* ─── Skeleton / shimmer loading ─────────────────────────────────────────── */
+@keyframes shimmer {
+  0%   { background-position: -200% 0; }
+  100% { background-position:  200% 0; }
+}
+
+.skeleton {
+  background: linear-gradient(
+    90deg,
+    var(--surface2) 25%,
+    var(--surface3) 50%,
+    var(--surface2) 75%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.6s ease-in-out infinite;
+  border-radius: var(--radius-sm);
+}
+
 /* ─── Split Layout (main content + right pane) ───────────────────────────── */
 .split-body {
   display: grid;

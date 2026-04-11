@@ -54,6 +54,7 @@ import {
   type Profile,
   type Film,
 } from "../../data/mock.js";
+import { useSimulatedLoad } from "../../hooks/useSimulatedLoad.js";
 import "./Dashboard.css";
 
 function getGreeting(): string {
@@ -455,8 +456,67 @@ const FilmDetailPane: FC<{ film: Film; onClose: () => void }> = ({ film, onClose
   );
 };
 
+// ── DashboardSkeleton ─────────────────────────────────────────────────────
+// Shown while data is loading (Relay Suspense fallback in production).
+// Mirrors the real layout: hero → location bar → column headers → profile rows.
+const DashboardSkeleton: FC = () => (
+  <>
+    <AppHeader collapsed={false}>
+      <span className="topbar-sub" />
+      <div className="header-actions" style={{ gap: 8 }}>
+        <div className="skeleton" style={{ width: 80, height: 28, borderRadius: 4 }} />
+        <div className="skeleton" style={{ width: 110, height: 28, borderRadius: 4 }} />
+      </div>
+    </AppHeader>
+    <div className="main">
+      <div className="split-body">
+        <div className="split-left" style={{ padding: 0, display: "flex", flexDirection: "column", minHeight: 0 }}>
+          {/* Hero shimmer */}
+          <div className="skeleton" style={{ height: 220, borderRadius: 0, flexShrink: 0 }} />
+          {/* Location bar shimmer */}
+          <div style={{ height: 38, borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", padding: "0 24px", flexShrink: 0 }}>
+            <div className="skeleton" style={{ width: 120, height: 14 }} />
+          </div>
+          {/* Column header row */}
+          <div className="dir-header">
+            <div /><div /><div /><div /><div /><div />
+          </div>
+          {/* Profile row shimmers */}
+          <div className="dir-list">
+            {[260, 180, 220].map((w, i) => (
+              <div key={i} className="dir-row" style={{ pointerEvents: "none" }}>
+                <div className="dir-icon">
+                  <div className="skeleton" style={{ width: 12, height: 12, borderRadius: "50%" }} />
+                </div>
+                <div className="dir-name-cell" style={{ paddingLeft: 4, gap: 5 }}>
+                  <div className="skeleton" style={{ width: w, height: 13 }} />
+                  <div className="skeleton" style={{ width: w * 0.6, height: 11 }} />
+                </div>
+                <div className="dir-cell dir-files">
+                  <div className="skeleton" style={{ width: 60, height: 13 }} />
+                </div>
+                <div className="dir-cell dir-matched">
+                  <div className="skeleton" style={{ width: 100, height: 13 }} />
+                </div>
+                <div className="dir-cell mono dir-size">
+                  <div className="skeleton" style={{ width: 55, height: 13 }} />
+                </div>
+                <div className="dir-actions">
+                  <div className="skeleton" style={{ width: 28, height: 28, borderRadius: 4 }} />
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  </>
+);
+
 // ── Dashboard (page root) ─────────────────────────────────────────────────
 export const Dashboard: FC = () => {
+  const loading = useSimulatedLoad();
+
   // Profile rows that are expanded (showing their child film list).
   // Local state only — not URL-encoded because expansion is transient UX.
   const [expandedIds,       setExpandedIds]       = useState<Set<string>>(new Set());
@@ -497,6 +557,8 @@ export const Dashboard: FC = () => {
 
   const totalFiles = profiles.reduce((s, p) => s + (p.filmCount ?? p.episodeCount ?? 0), 0);
   const totalSize  = "4.3 TB";
+
+  if (loading) return <DashboardSkeleton />;
 
   return (
     <>
