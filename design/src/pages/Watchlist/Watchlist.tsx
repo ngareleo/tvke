@@ -2,10 +2,74 @@ import { type FC, useState } from "react";
 import { AppHeader } from "../../components/AppHeader/AppHeader.js";
 import { IconSearch, IconFilm, IconPlay, IconClose } from "../../lib/icons.js";
 import { watchlist, films } from "../../data/mock.js";
+import { useSimulatedLoad } from "../../hooks/useSimulatedLoad.js";
 import "./Watchlist.css";
 
+// ── WatchlistSkeleton ─────────────────────────────────────────────────────
+// Mirrors the wl-stats row, section heading, and list items.
+const WatchlistSkeleton: FC = () => (
+  <>
+    <AppHeader collapsed={false}>
+      <span className="topbar-title">Watchlist</span>
+    </AppHeader>
+    <div className="main">
+      <div className="content">
+        {/* Stats row */}
+        <div className="wl-stats">
+          {[1, 2, 3].map((i) => (
+            <div key={i} style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+              <div className="skeleton" style={{ width: 32, height: 26 }} />
+              <div className="skeleton" style={{ width: 64, height: 12 }} />
+            </div>
+          ))}
+        </div>
+        <div className="wl-layout">
+          <div>
+            {/* Section heading */}
+            <div className="skeleton" style={{ width: 160, height: 13, marginBottom: 14 }} />
+            {/* List item shimmers */}
+            {[240, 190, 210, 175, 230].map((w, i) => (
+              <div key={i} className="wl-item" style={{ pointerEvents: "none" }}>
+                <div className="skeleton wl-thumb" style={{ borderRadius: 4 }} />
+                <div style={{ display: "flex", flexDirection: "column", gap: 7, flex: 1 }}>
+                  <div className="skeleton" style={{ width: w, height: 13 }} />
+                  <div className="skeleton" style={{ width: w * 0.65, height: 11 }} />
+                </div>
+                <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                  <div className="skeleton" style={{ width: 48, height: 20, borderRadius: 3 }} />
+                  <div className="skeleton" style={{ width: 56, height: 28, borderRadius: 4 }} />
+                </div>
+              </div>
+            ))}
+          </div>
+          {/* Add panel skeleton */}
+          <div className="add-panel">
+            <div className="add-panel-head">
+              <div className="skeleton" style={{ width: 130, height: 14, marginBottom: 10 }} />
+              <div className="skeleton" style={{ height: 32, borderRadius: 4 }} />
+            </div>
+            <div className="add-panel-body" style={{ display: "flex", flexDirection: "column", gap: 10, padding: "12px 0" }}>
+              {[180, 150, 200].map((w, i) => (
+                <div key={i} style={{ display: "flex", gap: 10, alignItems: "center" }}>
+                  <div className="skeleton" style={{ width: 48, height: 28, borderRadius: 3, flexShrink: 0 }} />
+                  <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                    <div className="skeleton" style={{ width: w, height: 12 }} />
+                    <div className="skeleton" style={{ width: w * 0.6, height: 10 }} />
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </>
+);
+
+// ── Watchlist (page root) ─────────────────────────────────────────────────
 export const Watchlist: FC = () => {
-  const [search, setSearch] = useState("");
+  const loading = useSimulatedLoad();
+  const [search,  setSearch]  = useState("");
   const [removed, setRemoved] = useState<Set<string>>(new Set());
 
   const visible = watchlist.filter(
@@ -15,11 +79,13 @@ export const Watchlist: FC = () => {
   );
 
   const inProgress = visible.filter((i) => i.progress != null);
-  const queued = visible.filter((i) => i.progress == null);
+  const queued     = visible.filter((i) => i.progress == null);
 
   const searchResults = search.trim()
     ? films.filter((f) => f.title?.toLowerCase().includes(search.toLowerCase()))
     : [];
+
+  if (loading) return <WatchlistSkeleton />;
 
   return (
     <>
@@ -92,7 +158,9 @@ export const Watchlist: FC = () => {
                       <div className="wl-title">{item.title}</div>
                       <div className="wl-meta">{item.year} · {item.genre} · {item.duration}</div>
                       {item.notes && (
-                        <div style={{ fontSize: 10, color: "var(--muted2)", marginTop: 2, fontStyle: "italic" }}>{item.notes}</div>
+                        <div style={{ fontSize: 10, color: "var(--muted2)", marginTop: 2, fontStyle: "italic" }}>
+                          {item.notes}
+                        </div>
                       )}
                     </div>
                     <div className="wl-right">
@@ -119,7 +187,6 @@ export const Watchlist: FC = () => {
               )}
             </div>
 
-            {/* Add panel */}
             <div className="add-panel">
               <div className="add-panel-head">
                 <div className="add-panel-title">Add to Watchlist</div>

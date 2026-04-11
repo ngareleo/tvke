@@ -226,6 +226,69 @@ never self-hides.
 
 ---
 
+### 4 — Watchlist (`/watchlist`)
+
+A two-column layout: a sortable list of queued/in-progress films on the left,
+and an "Add to Watchlist" search panel on the right.
+
+**Stats row:** three counters at the top — Queued, In Progress, Watched.
+
+**List sections:**
+- _Continue Watching_ — items with `progress != null`, shown with a red
+  progress bar.
+- _Up Next_ — items with no progress yet.
+- Removing an item hides it locally; in production this fires a mutation.
+
+**Add panel:** live-search of the film library. Results show "On disk" in green
+when the file exists locally. In production, adding a film fires a watchlist
+mutation and the item appears in the list via a `watchlistItemAdded` subscription.
+
+---
+
+### 5 — Settings (`/settings`)
+
+A two-column layout: a nav sidebar on the left (6 sections) and a content
+panel on the right. Section switching is local state — no URL change.
+
+Sections: General, Library, Playback, Metadata, Account, Danger Zone.
+
+The Danger Zone section uses red accent colours and destructive-action button
+styling. All inputs and toggles are visual-only in the design lab.
+
+---
+
+## Loading states (skeleton screens)
+
+Every page implements a shimmer skeleton that is shown for `~700 ms` while data
+loads. In production this replaces Relay's Suspense fallback.
+
+**Shared utility:**
+
+```ts
+// src/hooks/useSimulatedLoad.ts
+const loading = useSimulatedLoad();   // 700 ms default
+if (loading) return <PageSkeleton />;
+```
+
+**Shimmer animation** is defined once in `shared.css` as a `.skeleton` utility
+class — a `background-size: 200%` linear gradient animated with `@keyframes shimmer`.
+
+| Page | Skeleton mirrors |
+|---|---|
+| Profiles | Hero (220px block) + breadcrumb bar + 3 profile-row shimmers |
+| Library | Filter bar + 2 profile sections with 6+4 poster-card grid shimmers |
+| Watchlist | Stats row + 5 list-item shimmers + add-panel shimmer (right column) |
+| Settings | 6 nav-item shimmers (left) + 3 setting-row shimmers with toggle pills (right) |
+
+Each skeleton matches the geometry of the real page so there is no layout shift
+when content appears.
+
+In production, the skeleton is the Suspense `fallback` rendered by Relay while
+the page query is in-flight. The `useSimulatedLoad` hook is only needed in the
+design lab to replicate that delay.
+
+---
+
 ## URL routing scheme
 
 | URL | Page | Pane state |

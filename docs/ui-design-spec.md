@@ -198,6 +198,60 @@ and the `scanProgress` subscription.
 
 ---
 
+## Loading states (skeleton screens)
+
+Every page shows a shimmer skeleton while the Relay query is in-flight. The
+skeleton is the Suspense `fallback` — it renders until the query resolves.
+
+### Implementation pattern
+
+```tsx
+// Design lab: useSimulatedLoad replicates the Relay Suspense delay
+const loading = useSimulatedLoad(); // 700 ms
+if (loading) return <PageSkeleton />;
+```
+
+In production, remove `useSimulatedLoad` and wrap the page content component in
+a `<Suspense fallback={<PageSkeleton />}>` boundary instead.
+
+### Shimmer utility
+
+One shared `.skeleton` class handles all shimmer elements:
+
+```css
+/* shared.css */
+@keyframes shimmer {
+  0%   { background-position: -200% 0; }
+  100% { background-position:  200% 0; }
+}
+.skeleton {
+  background: linear-gradient(90deg, var(--surface2) 25%, var(--surface3) 50%, var(--surface2) 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.6s ease-in-out infinite;
+  border-radius: var(--radius-sm);
+}
+```
+
+Apply `className="skeleton"` to any placeholder element. Do not add per-page
+keyframe definitions.
+
+### Per-page skeleton geometry
+
+Each skeleton must match the real page's layout geometry to prevent layout shift
+when content appears. Key rules:
+
+| Page | What to mirror |
+|---|---|
+| Profiles | 220px hero block + 38px breadcrumb bar + 3 profile rows (icon + name shimmer + count shimmer + action shimmers) |
+| Library | Full-width filter bar + profile-section headings + poster card grid (same column count as real grid, aspect-ratio `2/3`) |
+| Watchlist | Three stat blocks (number + label) + list items (thumbnail + two text lines + badge + play button) + add-panel (heading + search bar + 3 result rows) |
+| Settings | 200px nav column with 6 nav items (icon circle + label) + content column with 3 setting blocks (title + description + toggle/select pill) |
+
+The skeleton for AppHeader buttons (top-right) should also be shimmered since
+those buttons are data-driven (e.g. watchlist count badge).
+
+---
+
 ## Design tokens (reference)
 
 ```css
