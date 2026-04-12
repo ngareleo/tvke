@@ -1,7 +1,7 @@
 import { mergeClasses } from "@griffel/react";
 import { NovaEventingInterceptor, useNovaEventing } from "@nova/react";
 import type { EventWrapper } from "@nova/types";
-import React, { type FC, useCallback } from "react";
+import { type FC, useCallback } from "react";
 import { graphql, useFragment, useMutation } from "react-relay";
 import { Link } from "react-router-dom";
 
@@ -109,7 +109,7 @@ interface Props {
 export const FilmDetailPane: FC<Props> = ({ video, searchRef, linking = false }) => {
   const data = useFragment(DETAIL_FRAGMENT, video);
   const styles = useFilmDetailPaneStyles();
-  const { bubble } = useNovaEventing();
+  const { bubble, generateEvent } = useNovaEventing();
   const [commitMatch] = useMutation<FilmDetailPaneMatchMutation>(MATCH_MUTATION);
   const [commitUnmatch] = useMutation<FilmDetailPaneUnmatchMutation>(UNMATCH_MUTATION);
 
@@ -119,26 +119,19 @@ export const FilmDetailPane: FC<Props> = ({ video, searchRef, linking = false })
 
   const linkSearchInterceptor = useCallback(
     async (wrapper: EventWrapper): Promise<EventWrapper | undefined> => {
-      const syntheticEvent = new MouseEvent("click") as unknown as React.MouseEvent;
       if (isSuggestionSelectedEvent(wrapper) && wrapper.event.data) {
         const suggestion = wrapper.event.data() as SuggestionSelectedData;
-        void bubble({
-          reactEvent: syntheticEvent,
-          event: createFilmDetailPaneLinkingChangedEvent(false),
-        });
+        void generateEvent({ event: createFilmDetailPaneLinkingChangedEvent(false) });
         commitMatch({ variables: { videoId: data.id, imdbId: suggestion.imdbId } });
         return undefined;
       }
       if (isLinkSearchCancelledEvent(wrapper)) {
-        void bubble({
-          reactEvent: syntheticEvent,
-          event: createFilmDetailPaneLinkingChangedEvent(false),
-        });
+        void generateEvent({ event: createFilmDetailPaneLinkingChangedEvent(false) });
         return undefined;
       }
       return wrapper;
     },
-    [bubble, commitMatch, data.id]
+    [generateEvent, commitMatch, data.id]
   );
 
   const meta = data.metadata;

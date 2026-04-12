@@ -30,15 +30,12 @@ interface Props {
 
 export const FilmDetailLoader: FC<Props> = ({ queryRef, linking = false }) => {
   const data = usePreloadedQuery<FilmDetailLoaderQuery>(FILM_DETAIL_QUERY, queryRef);
-  const { bubble } = useNovaEventing();
+  const { generateEvent } = useNovaEventing();
 
   const libraryId = data.video?.library?.id;
   useEffect(() => {
     if (libraryId) {
-      // Use a synthetic event since this is a data event, not a user interaction.
-      // NovaEventing requires a reactEvent; we pass a minimal synthetic object.
-      const syntheticEvent = new MouseEvent("load") as unknown as React.MouseEvent;
-      void bubble({ reactEvent: syntheticEvent, event: createLibraryIdResolvedEvent(libraryId) });
+      void generateEvent({ event: createLibraryIdResolvedEvent(libraryId) });
     }
     // Intentionally only run when libraryId first resolves
     // eslint-disable-next-line react-hooks/exhaustive-deps
