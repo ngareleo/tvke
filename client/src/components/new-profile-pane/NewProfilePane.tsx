@@ -10,7 +10,6 @@ import {
 } from "~/components/directory-browser/DirectoryBrowser.events.js";
 import { DirectoryBrowser } from "~/components/directory-browser/DirectoryBrowser.js";
 import { IconClose, IconFolder } from "~/lib/icons.js";
-import type { DirectoryBrowser_query$key } from "~/relay/__generated__/DirectoryBrowser_query.graphql.js";
 import type { NewProfilePaneCreateLibraryMutation } from "~/relay/__generated__/NewProfilePaneCreateLibraryMutation.graphql.js";
 
 import {
@@ -41,11 +40,7 @@ const EXTENSION_PRESETS: Record<string, string[]> = {
 
 const ALL_EXTENSIONS = [".mkv", ".mp4", ".avi", ".mov", ".m4v", ".wmv", ".flv", ".ts"];
 
-interface Props {
-  directoryRef: DirectoryBrowser_query$key;
-}
-
-export const NewProfilePane: FC<Props> = ({ directoryRef }) => {
+export const NewProfilePane: FC = () => {
   const styles = useNewProfilePaneStyles();
   const [name, setName] = useState("");
   const [path, setPath] = useState("");
@@ -157,7 +152,7 @@ export const NewProfilePane: FC<Props> = ({ directoryRef }) => {
           </div>
           {browseOpen && (
             <NovaEventingInterceptor interceptor={browserInterceptor}>
-              <DirectoryBrowser queryRef={directoryRef} initialPath={path.trim() || "/"} />
+              <DirectoryBrowser initialPath={path.trim() || "/"} />
             </NovaEventingInterceptor>
           )}
         </div>

@@ -10,7 +10,6 @@ import {
 } from "~/components/directory-browser/DirectoryBrowser.events.js";
 import { DirectoryBrowser } from "~/components/directory-browser/DirectoryBrowser.js";
 import { IconClose, IconFolder } from "~/lib/icons.js";
-import type { DirectoryBrowser_query$key } from "~/relay/__generated__/DirectoryBrowser_query.graphql.js";
 import type { EditProfilePane_library$key } from "~/relay/__generated__/EditProfilePane_library.graphql.js";
 import type { EditProfilePaneDeleteLibraryMutation } from "~/relay/__generated__/EditProfilePaneDeleteLibraryMutation.graphql.js";
 import type { EditProfilePaneUpdateLibraryMutation } from "~/relay/__generated__/EditProfilePaneUpdateLibraryMutation.graphql.js";
@@ -67,10 +66,9 @@ const ALL_EXTENSIONS = [".mkv", ".mp4", ".avi", ".mov", ".m4v", ".wmv", ".flv", 
 
 interface Props {
   library: EditProfilePane_library$key;
-  directoryRef: DirectoryBrowser_query$key;
 }
 
-export const EditProfilePane: FC<Props> = ({ library, directoryRef }) => {
+export const EditProfilePane: FC<Props> = ({ library }) => {
   const data = useFragment(LIBRARY_FRAGMENT, library);
   const styles = useEditProfilePaneStyles();
   const { bubble } = useNovaEventing();
@@ -203,7 +201,7 @@ export const EditProfilePane: FC<Props> = ({ library, directoryRef }) => {
 
           {browseOpen && (
             <NovaEventingInterceptor interceptor={browserInterceptor}>
-              <DirectoryBrowser queryRef={directoryRef} initialPath={path.trim() || "/"} />
+              <DirectoryBrowser initialPath={path.trim() || "/"} />
             </NovaEventingInterceptor>
           )}
         </div>

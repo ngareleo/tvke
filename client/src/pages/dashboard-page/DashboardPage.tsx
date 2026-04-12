@@ -68,7 +68,6 @@ import {
 import type { DashboardPageContentQuery } from "~/relay/__generated__/DashboardPageContentQuery.graphql.js";
 import type { DashboardPageContentScanMutation } from "~/relay/__generated__/DashboardPageContentScanMutation.graphql.js";
 import type { DashboardPageScanProgressSubscription } from "~/relay/__generated__/DashboardPageScanProgressSubscription.graphql.js";
-import type { DirectoryBrowser_query$key } from "~/relay/__generated__/DirectoryBrowser_query.graphql.js";
 import type { FilmDetailLoaderQuery } from "~/relay/__generated__/FilmDetailLoaderQuery.graphql.js";
 
 import { strings } from "./DashboardPage.strings.js";
@@ -86,7 +85,6 @@ const DASHBOARD_QUERY = graphql`
       ...ProfileExplorer_library
       ...EditProfilePane_library
     }
-    ...DirectoryBrowser_query @arguments(path: "/")
   }
 `;
 
@@ -366,7 +364,7 @@ const DashboardPage: FC = () => {
               <div className={styles.rightPane}>
                 {isPaneNewProfile && (
                   <Suspense fallback={null}>
-                    <NewProfilePaneAsync directoryRef={data as DirectoryBrowser_query$key} />
+                    <NewProfilePaneAsync />
                   </Suspense>
                 )}
               </div>
@@ -412,7 +410,7 @@ const DashboardPage: FC = () => {
             <div className={styles.rightPane}>
               {isPaneNewProfile && (
                 <Suspense fallback={null}>
-                  <NewProfilePaneAsync directoryRef={data as DirectoryBrowser_query$key} />
+                  <NewProfilePaneAsync />
                 </Suspense>
               )}
               {isPaneFilmDetail && detailQueryRef && (
@@ -430,10 +428,7 @@ const DashboardPage: FC = () => {
                   const lib = data.libraries.find((l) => l.id === libraryIdParam);
                   return lib ? (
                     <Suspense fallback={null}>
-                      <EditProfilePaneAsync
-                        library={lib}
-                        directoryRef={data as DirectoryBrowser_query$key}
-                      />
+                      <EditProfilePaneAsync library={lib} />
                     </Suspense>
                   ) : null;
                 })()}

@@ -1,19 +1,16 @@
 import { mergeClasses } from "@griffel/react";
 import { useNovaEventing } from "@nova/react";
-import { type FC, useCallback, useEffect, useRef, useState } from "react";
-import { graphql, useRefetchableFragment } from "react-relay";
+import { type FC, useCallback, useEffect, useState } from "react";
+import { fetchQuery, graphql, useRelayEnvironment } from "react-relay";
 
-import type { DirectoryBrowser_query$key } from "~/relay/__generated__/DirectoryBrowser_query.graphql.js";
-import type { DirectoryBrowserRefetchQuery } from "~/relay/__generated__/DirectoryBrowserRefetchQuery.graphql.js";
+import type { DirectoryBrowserQuery } from "~/relay/__generated__/DirectoryBrowserQuery.graphql.js";
 
 import { createFolderSelectedEvent } from "./DirectoryBrowser.events.js";
 import { strings } from "./DirectoryBrowser.strings.js";
 import { useDirectoryBrowserStyles } from "./DirectoryBrowser.styles.js";
 
-const DIRECTORY_FRAGMENT = graphql`
-  fragment DirectoryBrowser_query on Query
-  @refetchable(queryName: "DirectoryBrowserRefetchQuery")
-  @argumentDefinitions(path: { type: "String!" }) {
+const DIRECTORY_QUERY = graphql`
+  query DirectoryBrowserQuery($path: String!) {
     listDirectory(path: $path) {
       name
       path
@@ -21,46 +18,43 @@ const DIRECTORY_FRAGMENT = graphql`
   }
 `;
 
+interface DirectoryEntry {
+  name: string;
+  path: string;
+}
+
 interface Props {
-  queryRef: DirectoryBrowser_query$key;
   initialPath: string;
 }
 
-export const DirectoryBrowser: FC<Props> = ({ queryRef, initialPath }) => {
+export const DirectoryBrowser: FC<Props> = ({ initialPath }) => {
   const styles = useDirectoryBrowserStyles();
   const { bubble } = useNovaEventing();
-
-  const [data, refetch] = useRefetchableFragment<
-    DirectoryBrowserRefetchQuery,
-    DirectoryBrowser_query$key
-  >(DIRECTORY_FRAGMENT, queryRef);
+  const environment = useRelayEnvironment();
 
   const [browsePath, setBrowsePath] = useState(initialPath || "/");
-  const [loading, setLoading] = useState(false);
-  const initialised = useRef(false);
+  const [entries, setEntries] = useState<DirectoryEntry[]>([]);
+  const [loading, setLoading] = useState(true);
 
   const navigate = useCallback(
     (path: string): void => {
       setBrowsePath(path);
       setLoading(true);
-      refetch({ path }, { onComplete: () => setLoading(false) });
+      fetchQuery<DirectoryBrowserQuery>(environment, DIRECTORY_QUERY, { path }).subscribe({
+        next: (data) => {
+          setEntries((data.listDirectory ?? []) as DirectoryEntry[]);
+          setLoading(false);
+        },
+        error: () => setLoading(false),
+      });
     },
-    [refetch]
+    [environment]
   );
 
-  // On first mount, load the actual initial path (the parent query starts at "/")
   useEffect(() => {
-    if (!initialised.current) {
-      initialised.current = true;
-      const target = initialPath || "/";
-      if (target !== "/") {
-        navigate(target);
-      }
-    }
+    navigate(initialPath || "/");
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-
-  const entries = data.listDirectory ?? [];
 
   const navigateUp = (): void => {
     const parent = browsePath.replace(/\/?[^/]+$/, "") || "/";
