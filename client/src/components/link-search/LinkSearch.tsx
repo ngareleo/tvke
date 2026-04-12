@@ -1,10 +1,9 @@
 import { useNovaEventing } from "@nova/react";
 import { type FC, useEffect, useRef, useState } from "react";
-import { graphql, useRefetchableFragment } from "react-relay";
+import { fetchQuery, graphql, useRelayEnvironment } from "react-relay";
 
 import { IconClose, IconSearch, IconSpinner } from "~/lib/icons.js";
-import type { LinkSearch_query$key } from "~/relay/__generated__/LinkSearch_query.graphql.js";
-import type { LinkSearchRefetchQuery } from "~/relay/__generated__/LinkSearchRefetchQuery.graphql.js";
+import type { LinkSearchQuery } from "~/relay/__generated__/LinkSearchQuery.graphql.js";
 
 import {
   createLinkSearchCancelledEvent,
@@ -13,11 +12,9 @@ import {
 import { strings } from "./LinkSearch.strings.js";
 import { useLinkSearchStyles } from "./LinkSearch.styles.js";
 
-const SEARCH_FRAGMENT = graphql`
-  fragment LinkSearch_query on Query
-  @refetchable(queryName: "LinkSearchRefetchQuery")
-  @argumentDefinitions(query: { type: "String!" }, skip: { type: "Boolean!" }) {
-    searchOmdb(query: $query) @skip(if: $skip) {
+const SEARCH_QUERY = graphql`
+  query LinkSearchQuery($query: String!) {
+    searchOmdb(query: $query) {
       imdbId
       title
       year
@@ -34,25 +31,19 @@ export interface OmdbSuggestion {
 }
 
 interface Props {
-  queryRef: LinkSearch_query$key;
   filename: string;
 }
 
 type SearchStatus = "idle" | "searching" | "results";
 
-export const LinkSearch: FC<Props> = ({ queryRef, filename }) => {
+export const LinkSearch: FC<Props> = ({ filename }) => {
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState<SearchStatus>("idle");
+  const [suggestions, setSuggestions] = useState<OmdbSuggestion[]>([]);
   const inputRef = useRef<HTMLInputElement>(null);
   const styles = useLinkSearchStyles();
   const { bubble } = useNovaEventing();
-
-  const [data, refetch] = useRefetchableFragment<LinkSearchRefetchQuery, LinkSearch_query$key>(
-    SEARCH_FRAGMENT,
-    queryRef
-  );
-
-  const suggestions: OmdbSuggestion[] = (data.searchOmdb ?? []) as OmdbSuggestion[];
+  const environment = useRelayEnvironment();
 
   useEffect(() => {
     inputRef.current?.focus();
@@ -61,18 +52,32 @@ export const LinkSearch: FC<Props> = ({ queryRef, filename }) => {
   useEffect(() => {
     if (!query.trim()) {
       setStatus("idle");
-      refetch({ query: "", skip: true });
+      setSuggestions([]);
       return;
     }
 
     setStatus("searching");
+    let sub: { unsubscribe: () => void } | null = null;
+
     const id = setTimeout(() => {
-      refetch({ query: query.trim(), skip: false });
-      setStatus("results");
+      sub = fetchQuery<LinkSearchQuery>(environment, SEARCH_QUERY, {
+        query: query.trim(),
+      }).subscribe({
+        next: (data) => {
+          setSuggestions((data.searchOmdb ?? []) as OmdbSuggestion[]);
+          setStatus("results");
+        },
+        error: () => {
+          setStatus("results");
+        },
+      });
     }, 500);
 
-    return () => clearTimeout(id);
-  }, [query, refetch]);
+    return () => {
+      clearTimeout(id);
+      sub?.unsubscribe();
+    };
+  }, [query, environment]);
 
   return (
     <div className={styles.root}>
