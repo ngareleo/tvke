@@ -43,6 +43,7 @@ const config: StorybookConfig = {
     const __filename = fileURLToPath(import.meta.url);
     const __dirname = dirname(__filename);
     config.source ??= {};
+    config.source.alias ??= {};
     (config.source.alias as Record<string, string>)["~"] = resolve(__dirname, "../src");
 
     return config;
