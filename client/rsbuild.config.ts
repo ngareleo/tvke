@@ -31,10 +31,11 @@ export default defineConfig({
       // Generate an interactive HTML bundle report in CI. Output lands at
       // dist/stats.html, which the CI workflow uploads as an artifact.
       if (process.env.CI) {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        // require() rather than import() because rsbuild.config.ts runs in a
+        // CommonJS context at build time; the package ships no type declarations.
+        // eslint-disable-next-line @typescript-eslint/no-require-imports, @typescript-eslint/no-explicit-any
         const { BundleAnalyzerPlugin } = require("webpack-bundle-analyzer") as any;
         config.plugins ??= [];
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-call
         config.plugins.push(
           new BundleAnalyzerPlugin({ analyzerMode: "static", openAnalyzer: false, reportFilename: "stats.html" })
         );

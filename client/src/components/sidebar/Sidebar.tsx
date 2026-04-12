@@ -1,5 +1,5 @@
 import { mergeClasses } from "@griffel/react";
-import { type FC, useCallback, useEffect, useRef, useState } from "react";
+import { type FC, Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { NavLink, useNavigate } from "react-router-dom";
 
 import {
@@ -13,10 +13,10 @@ import {
   IconSignOut,
   IconSquares,
   IconUser,
-  IconWarning,
 } from "~/lib/icons.js";
 
 import { useSidebarStyles } from "./Sidebar.styles.js";
+import { SignOutDialogAsync } from "./SignOutDialogAsync.js";
 
 interface SidebarProps {
   collapsed: boolean;
@@ -109,39 +109,6 @@ const ProfileMenu: FC<ProfileMenuProps> = ({ collapsed, onClose, onSignOut }) =>
         <IconSignOut size={13} />
         <span className={styles.pmItemName}>Sign out</span>
       </button>
-    </div>
-  );
-};
-
-// ─── SignOutDialog ────────────────────────────────────────────────────────────
-
-interface SignOutDialogProps {
-  onCancel: () => void;
-  onConfirm: () => void;
-}
-
-const SignOutDialog: FC<SignOutDialogProps> = ({ onCancel, onConfirm }) => {
-  const styles = useSidebarStyles();
-  return (
-    <div className={styles.dialogOverlay} onClick={onCancel}>
-      <div className={styles.dialog} onClick={(e) => e.stopPropagation()}>
-        <div className={styles.dialogIcon}>
-          <IconWarning size={20} />
-        </div>
-        <div className={styles.dialogTitle}>Sign out of Moran?</div>
-        <div className={styles.dialogBody}>
-          You&apos;ll need to sign back in to access your library. Any active streams will stop.
-        </div>
-        <div className={styles.dialogActions}>
-          <button className={styles.btnGhost} onClick={onCancel} type="button">
-            Cancel
-          </button>
-          <button className={styles.btnDanger} onClick={onConfirm} type="button">
-            <IconSignOut size={12} />
-            Sign out
-          </button>
-        </div>
-      </div>
     </div>
   );
 };
@@ -300,7 +267,9 @@ export const Sidebar: FC<SidebarProps> = ({ collapsed, onToggle }) => {
       </nav>
 
       {confirmSignOut && (
-        <SignOutDialog onCancel={() => setConfirmSignOut(false)} onConfirm={handleSignOut} />
+        <Suspense fallback={null}>
+          <SignOutDialogAsync onCancel={() => setConfirmSignOut(false)} onConfirm={handleSignOut} />
+        </Suspense>
       )}
     </>
   );

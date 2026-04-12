@@ -31,26 +31,22 @@ import {
   isProfileRowToggledEvent,
   type ProfileRowToggledData,
 } from "~/components/profile-row/ProfileRow.events.js";
-import { ProfileRow } from "~/components/profile-row/ProfileRow.js";
-import { Slideshow } from "~/components/slideshow/Slideshow.js";
 import { useSplitResize } from "~/hooks/useSplitResize.js";
 import { IconPlus, IconRefresh } from "~/lib/icons.js";
 import type { DashboardPageContentDetailQuery } from "~/relay/__generated__/DashboardPageContentDetailQuery.graphql.js";
 import type { DashboardPageContentQuery } from "~/relay/__generated__/DashboardPageContentQuery.graphql.js";
 import type { DashboardPageContentScanMutation } from "~/relay/__generated__/DashboardPageContentScanMutation.graphql.js";
-import { formatFileSize } from "~/utils/formatters.js";
 
+import { DashboardHero } from "./DashboardHero.js";
+import { DashboardLibraryList } from "./DashboardLibraryList.js";
 import { useDashboardStyles } from "./DashboardPage.styles.js";
 
 const DASHBOARD_QUERY = graphql`
   query DashboardPageContentQuery {
     libraries {
       id
-      stats {
-        totalCount
-        totalSizeBytes
-      }
-      ...ProfileRow_library
+      ...DashboardHero_library
+      ...DashboardLibraryList_library
     }
   }
 `;
@@ -196,9 +192,6 @@ const DashboardPage: FC = () => {
     [openFilmDetail, closePane]
   );
 
-  const totalFiles = data.libraries.reduce((s, l) => s + l.stats.totalCount, 0);
-  const totalBytes = data.libraries.reduce((s, l) => s + l.stats.totalSizeBytes, 0);
-
   return (
     <DevThrowTarget id="Dashboard">
       <div className={styles.pageRoot}>
@@ -210,66 +203,13 @@ const DashboardPage: FC = () => {
           >
             {/* Left column */}
             <div className={styles.splitLeft}>
-              {/* Hero */}
-              <div className={styles.hero}>
-                <Slideshow />
-                <div className={styles.greeting}>
-                  <div className={styles.greetingText}>
-                    Your <span className={styles.greetingName}>Library</span>
-                  </div>
-                  <div className={styles.greetingSub}>
-                    {totalFiles} files · {formatFileSize(totalBytes)}
-                  </div>
-                </div>
-              </div>
-
-              {/* Location bar */}
-              <div className={styles.locationBar}>
-                <span
-                  style={{ fontSize: 11, color: "rgba(255,255,255,0.35)", letterSpacing: "0.08em" }}
-                >
-                  Profiles
-                </span>
-                <span className={styles.locSep}>/</span>
-                <span className={styles.locCurrent}>All Libraries</span>
-              </div>
-
-              {/* Column headers */}
-              <div className={styles.dirHeader}>
-                <div />
-                <div className={styles.dirCol}>Name</div>
-                <div className={styles.dirCol}>Count</div>
-                <div className={styles.dirCol}>Match</div>
-                <div className={styles.dirCol}>Size</div>
-                <div className={styles.dirCol}>Actions</div>
-              </div>
-
-              {/* Library rows */}
-              <div className={styles.dirList}>
-                {data.libraries.map((lib) => (
-                  <ProfileRow
-                    key={lib.id}
-                    library={lib}
-                    expanded={expandedId === lib.id}
-                    selected={isPaneFilmDetail}
-                    selectedFilmId={filmIdParam}
-                  />
-                ))}
-              </div>
-
-              {/* Footer */}
-              <div className={styles.dirFooter}>
-                <span className={styles.dirFooterStat}>
-                  Libraries <span className={styles.dirFooterStatNum}>{data.libraries.length}</span>
-                </span>
-                <span className={styles.dirFooterStat}>
-                  Files <span className={styles.dirFooterStatNum}>{totalFiles}</span>
-                </span>
-                <span className={styles.dirFooterStat}>
-                  Total{" "}
-                  <span className={styles.dirFooterStatNum}>{formatFileSize(totalBytes)}</span>
-                </span>
-              </div>
+              <DashboardHero libraries={data.libraries} />
+              <DashboardLibraryList
+                libraries={data.libraries}
+                expandedId={expandedId}
+                isPaneFilmDetail={isPaneFilmDetail}
+                selectedFilmId={filmIdParam}
+              />
             </div>
 
             {/* Resize handle */}

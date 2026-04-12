@@ -29,6 +29,7 @@ import { useCallback, useRef, useState } from "react";
 
 const MIN_PANE_WIDTH = 240;
 const MAX_PANE_WIDTH = 640;
+const STORAGE_KEY = "tvke:pane-width";
 
 export interface SplitResizeResult {
   paneWidth: number;
@@ -37,7 +38,16 @@ export interface SplitResizeResult {
 }
 
 export function useSplitResize(defaultWidth = 360): SplitResizeResult {
-  const [paneWidth, setPaneWidth] = useState(defaultWidth);
+  const [paneWidth, setPaneWidth] = useState(() => {
+    const stored = localStorage.getItem(STORAGE_KEY);
+    if (stored) {
+      const parsed = Number(stored);
+      if (!Number.isNaN(parsed)) {
+        return Math.max(MIN_PANE_WIDTH, Math.min(MAX_PANE_WIDTH, parsed));
+      }
+    }
+    return defaultWidth;
+  });
   // Ref tracks the live value so the stable mousedown handler always reads the
   // latest width without needing to re-create the handler on every state update.
   const paneWidthRef = useRef(defaultWidth);
@@ -67,6 +77,7 @@ export function useSplitResize(defaultWidth = 360): SplitResizeResult {
       if (containerRef.current) containerRef.current.style.transition = "";
       document.documentElement.style.cursor = "";
       document.body.style.userSelect = "";
+      localStorage.setItem(STORAGE_KEY, String(paneWidthRef.current));
       document.removeEventListener("mousemove", onMouseMove);
       document.removeEventListener("mouseup", onMouseUp);
     };

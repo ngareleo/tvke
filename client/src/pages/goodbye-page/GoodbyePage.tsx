@@ -6,28 +6,21 @@
  * Outside AppShell — no sidebar or header.
  */
 
-import React, { type FC, useEffect, useState } from "react";
+import React, { type FC, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 
 import { LogoShield } from "~/lib/icons.js";
 
 import { useGoodbyeStyles } from "./GoodbyePage.styles.js";
 
-const REDIRECT_DELAY = 4;
-
 const GoodbyePage: FC = () => {
   const navigate = useNavigate();
   const styles = useGoodbyeStyles();
-  const [countdown, setCountdown] = useState(REDIRECT_DELAY);
 
   useEffect(() => {
-    if (countdown <= 0) {
-      void navigate("/", { replace: true });
-      return;
-    }
-    const id = setTimeout(() => setCountdown((c) => c - 1), 1000);
+    const id = setTimeout(() => void navigate("/", { replace: true }), 4000);
     return () => clearTimeout(id);
-  }, [countdown, navigate]);
+  }, [navigate]);
 
   return (
     <div className={styles.root}>
@@ -50,7 +43,7 @@ const GoodbyePage: FC = () => {
           >
             Back to home
           </button>
-          <span className={styles.countdown}>Redirecting in {countdown}s…</span>
+          <span className={styles.countdown}>Redirecting shortly…</span>
         </div>
       </div>
     </div>

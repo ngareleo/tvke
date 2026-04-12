@@ -12,7 +12,6 @@ export const FeedbackPage: FC = () => {
 
   const handleSubmit = (): void => {
     if (!message.trim()) return;
-    window.alert("Thanks for your feedback!");
     setMessage("");
     setCategory("bug");
     setSubmitted(true);

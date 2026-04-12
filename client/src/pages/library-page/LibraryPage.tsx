@@ -19,7 +19,7 @@ import {
   useQueryLoader,
   useSubscription,
 } from "react-relay";
-import { Link, useSearchParams } from "react-router-dom";
+import { useSearchParams } from "react-router-dom";
 
 import { DevThrowTarget } from "~/components/dev-tools/DevToolsContext.js";
 import { isFilmDetailPaneClosedEvent } from "~/components/film-detail-pane/FilmDetailPane.events.js";
@@ -30,12 +30,12 @@ import {
 } from "~/components/poster-card/PosterCard.events.js";
 import { PosterCard } from "~/components/poster-card/PosterCard.js";
 import { useSplitResize } from "~/hooks/useSplitResize.js";
-import { IconBars, IconPlay, IconSquares } from "~/lib/icons.js";
 import type { LibraryPageContentDetailQuery } from "~/relay/__generated__/LibraryPageContentDetailQuery.graphql.js";
 import type { LibraryPageContentQuery } from "~/relay/__generated__/LibraryPageContentQuery.graphql.js";
 import type { LibraryPageContentScanSubscription } from "~/relay/__generated__/LibraryPageContentScanSubscription.graphql.js";
-import { formatDuration, formatFileSize } from "~/utils/formatters.js";
 
+import { LibraryFilmListRow } from "./LibraryFilmListRow.js";
+import { LibraryFilterBar, type TypeFilter } from "./LibraryFilterBar.js";
 import { useLibraryStyles } from "./LibraryPage.styles.js";
 
 const LIBRARY_QUERY = graphql`
@@ -43,26 +43,12 @@ const LIBRARY_QUERY = graphql`
     libraries {
       id
       name
-      mediaType
       videos(first: 200, search: $search, mediaType: $mediaType) {
         edges {
           node {
             id
-            title
-            matched
-            mediaType
-            durationSeconds
-            fileSizeBytes
-            metadata {
-              year
-              genre
-              rating
-              posterUrl
-            }
-            videoStream {
-              height
-            }
             ...PosterCard_video
+            ...LibraryFilmListRow_video
           }
         }
         totalCount
@@ -102,88 +88,7 @@ const DetailLoader: FC<DetailLoaderProps> = ({ queryRef }) => {
   return <FilmDetailPaneAsync video={data.video} />;
 };
 
-// ─── FilmListRow ──────────────────────────────────────────────────────────────
-
-interface FilmListRowProps {
-  id: string;
-  title: string;
-  matched: boolean;
-  durationSeconds: number;
-  fileSizeBytes: number;
-  height: number | null;
-  posterUrl: string | null;
-  year: number | null;
-  genre: string | null;
-  rating: number | null;
-  isSelected: boolean;
-  onSelect: (id: string) => void;
-}
-
-const FilmListRow: FC<FilmListRowProps> = ({
-  id,
-  title,
-  matched,
-  durationSeconds,
-  fileSizeBytes,
-  height,
-  posterUrl,
-  year,
-  genre,
-  rating,
-  isSelected,
-  onSelect,
-}) => {
-  const styles = useLibraryStyles();
-  const is4k = (height ?? 0) >= 2160;
-  const thumbStyle = posterUrl ? { backgroundImage: `url(${posterUrl})` } : undefined;
-
-  return (
-    <div
-      className={mergeClasses(styles.listRow, isSelected && styles.listRowSelected)}
-      onClick={() => onSelect(id)}
-      role="button"
-      tabIndex={0}
-      onKeyDown={(e) => {
-        if (e.key === "Enter" || e.key === " ") onSelect(id);
-      }}
-    >
-      <div className={styles.listThumb} style={thumbStyle} />
-      <div className={styles.listInfo}>
-        <div className={styles.listTitle}>{title}</div>
-        {(year ?? genre) && (
-          <div className={styles.listMeta}>{[year, genre].filter(Boolean).join(" · ")}</div>
-        )}
-      </div>
-      <div className={styles.listCell}>{is4k ? "4K" : "HD"}</div>
-      <div className={styles.listCell}>{rating != null ? `★ ${rating.toFixed(1)}` : "—"}</div>
-      <div className={styles.listCell}>{formatDuration(durationSeconds)}</div>
-      <div className={styles.listCell}>
-        {matched ? (
-          <Link
-            to={`/player/${encodeURIComponent(id)}`}
-            onClick={(e) => e.stopPropagation()}
-            style={{
-              color: "inherit",
-              textDecoration: "none",
-              display: "inline-flex",
-              alignItems: "center",
-              gap: "4px",
-            }}
-          >
-            <IconPlay size={9} />
-            {formatFileSize(fileSizeBytes)}
-          </Link>
-        ) : (
-          formatFileSize(fileSizeBytes)
-        )}
-      </div>
-    </div>
-  );
-};
-
 // ─── LibraryPage ──────────────────────────────────────────────────────────────
-
-type TypeFilter = "all" | "MOVIES" | "TV_SHOWS";
 
 const LibraryPage: FC = () => {
   const styles = useLibraryStyles();
@@ -294,45 +199,15 @@ const LibraryPage: FC = () => {
     <DevThrowTarget id="Library">
       <NovaEventingInterceptor interceptor={interceptor}>
         <div className={styles.root}>
-          {/* Filter bar */}
-          <div className={styles.filterBar}>
-            <input
-              className={styles.searchInput}
-              placeholder="Search titles, genres…"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-            />
-            <div className={styles.filterSep} />
-            <select
-              className={styles.filterSelect}
-              value={typeFilter}
-              onChange={(e) => setTypeFilter(e.target.value as TypeFilter)}
-            >
-              <option value="all">All Types</option>
-              <option value="MOVIES">Movies</option>
-              <option value="TV_SHOWS">TV Shows</option>
-            </select>
-            <div className={styles.filterSep} />
-            <button
-              className={mergeClasses(styles.toggleBtn, isGrid && styles.toggleBtnActive)}
-              onClick={() => setIsGrid(true)}
-              title="Grid view"
-              type="button"
-            >
-              <IconSquares size={13} />
-            </button>
-            <button
-              className={mergeClasses(styles.toggleBtn, !isGrid && styles.toggleBtnActive)}
-              onClick={() => setIsGrid(false)}
-              title="List view"
-              type="button"
-            >
-              <IconBars size={13} />
-            </button>
-            <span className={styles.filterCount}>
-              {filteredVideos.length} title{filteredVideos.length !== 1 ? "s" : ""}
-            </span>
-          </div>
+          <LibraryFilterBar
+            search={search}
+            onSearchChange={setSearch}
+            typeFilter={typeFilter}
+            onTypeFilterChange={setTypeFilter}
+            isGrid={isGrid}
+            onIsGridChange={setIsGrid}
+            count={filteredVideos.length}
+          />
 
           {/* Profile chips */}
           {data.libraries.length > 1 && (
@@ -403,18 +278,9 @@ const LibraryPage: FC = () => {
                     </div>
                   </div>
                   {filteredVideos.map((video) => (
-                    <FilmListRow
+                    <LibraryFilmListRow
                       key={video.id}
-                      id={video.id}
-                      title={video.title}
-                      matched={video.matched}
-                      durationSeconds={video.durationSeconds}
-                      fileSizeBytes={video.fileSizeBytes}
-                      height={video.videoStream?.height ?? null}
-                      posterUrl={video.metadata?.posterUrl ?? null}
-                      year={video.metadata?.year ?? null}
-                      genre={video.metadata?.genre ?? null}
-                      rating={video.metadata?.rating ?? null}
+                      video={video}
                       isSelected={video.id === filmId}
                       onSelect={handleSelect}
                     />
