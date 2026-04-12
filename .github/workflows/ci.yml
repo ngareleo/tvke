@@ -76,50 +76,48 @@ jobs:
       - name: Build
         run: bun run build
 
-      # Stage stats.html as index.html so GitHub Pages serves it at the root URL.
-      - name: Prepare Pages artifact
-        run: |
-          mkdir -p /tmp/pages-out
-          cp dist/stats.html /tmp/pages-out/index.html
+      # Each PR gets its own stable subdomain — no conflicts between concurrent PRs.
+      - name: Deploy bundle report (PR)
+        if: github.event_name == 'pull_request'
+        env:
+          SURGE_TOKEN: ${{ secrets.SURGE_TOKEN }}
+        run: bunx surge dist/stats.html tvke-pr-${{ github.event.pull_request.number }}.surge.sh --token $SURGE_TOKEN
 
-      - name: Upload Pages artifact
-        uses: actions/upload-pages-artifact@v3
-        with:
-          path: /tmp/pages-out
-
-  deploy-pages:
-    name: Deploy bundle report to Pages
-    needs: client
-    runs-on: ubuntu-latest
-    # Newer pushes cancel in-flight deployments so Pages always reflects
-    # the latest PR build.
-    concurrency:
-      group: pages
-      cancel-in-progress: true
-    permissions:
-      pages: write
-      id-token: write
-      pull-requests: write
-    environment:
-      name: github-pages
-      url: ${{ steps.deploy.outputs.page_url }}
-    steps:
-      - name: Deploy to GitHub Pages
-        id: deploy
-        uses: actions/deploy-pages@v4
-
-      - name: Comment Pages link on PR
+      - name: Comment bundle report link on PR
         if: github.event_name == 'pull_request'
         uses: actions/github-script@v7
         with:
           script: |
-            await github.rest.issues.createComment({
+            const prNumber = context.issue.number;
+            const url = `https://tvke-pr-${prNumber}.surge.sh`;
+            const marker = '<!-- bundle-report -->';
+            const body = [marker, '## Bundle Report', '', `[View interactive bundle report](${url})`].join('\n');
+
+            const { data: comments } = await github.rest.issues.listComments({
               owner: context.repo.owner,
               repo: context.repo.repo,
-              issue_number: context.issue.number,
-              body: [
-                '## Bundle Report',
-                '',
-                `[View interactive bundle report](${{ steps.deploy.outputs.page_url }})`,
-              ].join('\n'),
+              issue_number: prNumber,
             });
+            const existing = comments.find(c => c.body?.includes(marker));
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: existing.id,
+                body,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: prNumber,
+                body,
+              });
+            }
+
+      # Keep a stable post-merge report at a fixed URL.
+      - name: Deploy bundle report (main)
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        env:
+          SURGE_TOKEN: ${{ secrets.SURGE_TOKEN }}
+        run: bunx surge dist/stats.html tvke-bundle.surge.sh --token $SURGE_TOKEN
