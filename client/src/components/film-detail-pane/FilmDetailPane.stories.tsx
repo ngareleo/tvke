@@ -5,6 +5,7 @@ import type { Meta, StoryObj } from "storybook-react-rsbuild";
 
 import type { FilmDetailPane_video$key } from "~/relay/__generated__/FilmDetailPane_video.graphql.js";
 import type { FilmDetailPaneStoryQuery } from "~/relay/__generated__/FilmDetailPaneStoryQuery.graphql.js";
+import type { LinkSearch_query$key } from "~/relay/__generated__/LinkSearch_query.graphql.js";
 import { withNovaEventing } from "~/storybook/withNovaEventing.js";
 import { withRelay } from "~/storybook/withRelay.js";
 
@@ -15,16 +16,18 @@ const STORY_QUERY = graphql`
     video(id: $videoId) {
       ...FilmDetailPane_video
     }
+    ...LinkSearch_query @arguments(query: "", skip: true)
   }
 `;
 
 interface WrapperProps {
   video: FilmDetailPane_video$key;
+  searchRef: LinkSearch_query$key;
 }
 
-const FilmDetailPaneWrapper = ({ video }: WrapperProps): JSX.Element => (
+const FilmDetailPaneWrapper = ({ video, searchRef }: WrapperProps): JSX.Element => (
   <div style={{ width: 360, height: 600, background: "#0f0f0f", overflow: "hidden" }}>
-    <FilmDetailPane video={video} />
+    <FilmDetailPane video={video} searchRef={searchRef} />
   </div>
 );
 
@@ -37,7 +40,10 @@ const meta: Meta<WrapperProps> = {
     relay: {
       query: STORY_QUERY,
       variables: { videoId: "Video:mock" },
-      getReferenceEntry: (result: FilmDetailPaneStoryQuery["response"]) => ["video", result.video],
+      getReferenceEntries: (result: FilmDetailPaneStoryQuery["response"]) => [
+        ["video", result.video],
+        ["searchRef", result],
+      ],
       mockResolvers: {
         Video: () => ({
           id: "mock-1",
@@ -84,7 +90,10 @@ export const Unmatched: Story = {
     relay: {
       query: STORY_QUERY,
       variables: { videoId: "Video:mock" },
-      getReferenceEntry: (result: FilmDetailPaneStoryQuery["response"]) => ["video", result.video],
+      getReferenceEntries: (result: FilmDetailPaneStoryQuery["response"]) => [
+        ["video", result.video],
+        ["searchRef", result],
+      ],
       mockResolvers: {
         Video: () => ({
           id: "mock-2",
@@ -109,7 +118,10 @@ export const NoCast: Story = {
     relay: {
       query: STORY_QUERY,
       variables: { videoId: "Video:mock" },
-      getReferenceEntry: (result: FilmDetailPaneStoryQuery["response"]) => ["video", result.video],
+      getReferenceEntries: (result: FilmDetailPaneStoryQuery["response"]) => [
+        ["video", result.video],
+        ["searchRef", result],
+      ],
       mockResolvers: {
         Video: () => ({
           id: "mock-3",

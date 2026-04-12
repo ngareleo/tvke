@@ -22,6 +22,7 @@ import { Component, type ErrorInfo, type FC, type ReactNode, useState } from "re
 
 import { IconBug, IconChat, IconClose, IconRefresh, LogoShield } from "~/lib/icons.js";
 
+import { strings } from "./ErrorBoundary.strings.js";
 import { useErrorBoundaryStyles } from "./ErrorBoundary.styles.js";
 
 // ── DevErrorScreen ────────────────────────────────────────────────────────────
@@ -56,13 +57,13 @@ const DevErrorScreen: FC<{
     return (
       <div style={{ position: "relative" }}>
         <div className={styles.previewBanner}>
-          <span className={styles.previewLabel}>DEV PREVIEW</span>
-          <span className={styles.previewSub}>Customer view — no stack traces are shown below</span>
+          <span className={styles.previewLabel}>{strings.devPreviewBanner}</span>
+          <span className={styles.previewSub}>{strings.devPreviewSub}</span>
           <button
             className={mergeClasses(styles.actionBtn, styles.previewBack)}
             onClick={() => setPreviewProd(false)}
           >
-            ← Back to dev view
+            {strings.devPreviewBack}
           </button>
         </div>
         <ProdErrorScreen onReset={onReset} />
@@ -81,7 +82,7 @@ const DevErrorScreen: FC<{
               <IconBug size={16} />
             </span>
             <div>
-              <div className={styles.label}>Unhandled render error</div>
+              <div className={styles.label}>{strings.devUnhandledError}</div>
               <div className={styles.errorName}>{error.name}</div>
             </div>
           </div>
@@ -89,42 +90,33 @@ const DevErrorScreen: FC<{
             <button
               className={mergeClasses(styles.actionBtn, styles.actionPreview)}
               onClick={() => setPreviewProd(true)}
-              title="See what a customer would see"
             >
-              Preview customer view
+              {strings.devPreviewCustomerView}
             </button>
-            <button
-              className={styles.actionBtn}
-              onClick={handleCopy}
-              title="Copy error to clipboard"
-            >
-              {copied ? "Copied!" : "Copy"}
+            <button className={styles.actionBtn} onClick={handleCopy}>
+              {copied ? strings.devCopied : strings.devCopy}
             </button>
             <button
               className={mergeClasses(styles.actionBtn, styles.actionPrimary)}
               onClick={onReset}
             >
               <IconRefresh size={12} />
-              Try again
+              {strings.devTryAgain}
             </button>
-            <button
-              className={styles.actionBtn}
-              onClick={() => window.location.reload()}
-              title="Hard reload"
-            >
-              Reload page
+            <button className={styles.actionBtn} onClick={() => window.location.reload()}>
+              {strings.devReloadPage}
             </button>
           </div>
         </div>
 
         <div className={styles.message}>{error.message}</div>
 
-        <div className={styles.sectionLabel}>JavaScript stack</div>
+        <div className={styles.sectionLabel}>{strings.devJsStack}</div>
         <pre className={styles.code}>{error.stack}</pre>
 
         {errorInfo.componentStack && (
           <>
-            <div className={styles.sectionLabel}>React component stack</div>
+            <div className={styles.sectionLabel}>{strings.devComponentStack}</div>
             <pre className={mergeClasses(styles.code, styles.componentStack)}>
               {errorInfo.componentStack.trim()}
             </pre>
@@ -144,33 +136,30 @@ const ProdErrorScreen: FC<{ onReset: () => void }> = ({ onReset }) => {
       <div className={styles.grain} />
       <div className={styles.prodBody}>
         <LogoShield />
-        <div className={styles.prodTitle}>Something went wrong</div>
-        <div className={styles.prodSub}>
-          Moran ran into an unexpected problem. Your library and watchlist are safe — this is a
-          display issue only.
-        </div>
+        <div className={styles.prodTitle}>{strings.prodTitle}</div>
+        <div className={styles.prodSub}>{strings.prodSub}</div>
 
         <div className={styles.prodSteps}>
-          <div className={styles.prodStepLabel}>Things to try</div>
+          <div className={styles.prodStepLabel}>{strings.prodThingsToTry}</div>
           <div className={styles.prodStep}>
             <span className={styles.prodStepNum}>1</span>
             <div className={styles.prodStepBody}>
-              <span className={styles.prodStepEmphasis}>Retry</span> — tap the button below to
-              reload just this screen without a full page refresh.
+              <span className={styles.prodStepEmphasis}>{strings.prodStep1Label}</span>{" "}
+              {strings.prodStep1Body}
             </div>
           </div>
           <div className={styles.prodStep}>
             <span className={styles.prodStepNum}>2</span>
             <div className={styles.prodStepBody}>
-              <span className={styles.prodStepEmphasis}>Reload the page</span> — a full browser
-              reload clears any stale state.
+              <span className={styles.prodStepEmphasis}>{strings.prodStep2Label}</span>{" "}
+              {strings.prodStep2Body}
             </div>
           </div>
           <div className={styles.prodStep}>
             <span className={styles.prodStepNum}>3</span>
             <div className={styles.prodStepBody}>
-              <span className={styles.prodStepEmphasis}>Clear your cache</span> — open your
-              browser&apos;s history settings, clear cached files, then reload.
+              <span className={styles.prodStepEmphasis}>{strings.prodStep3Label}</span>{" "}
+              {strings.prodStep3Body}
             </div>
           </div>
         </div>
@@ -178,17 +167,17 @@ const ProdErrorScreen: FC<{ onReset: () => void }> = ({ onReset }) => {
         <div className={styles.prodActions}>
           <button className={styles.btnPrimary} onClick={onReset}>
             <IconRefresh size={14} />
-            Try again
+            {strings.prodTryAgain}
           </button>
           <button className={styles.btnGhost} onClick={() => window.location.reload()}>
             <IconClose size={14} />
-            Reload page
+            {strings.prodReloadPage}
           </button>
         </div>
 
         <div className={styles.prodContact}>
           <IconChat size={13} />
-          <span>Still having trouble? Contact your system administrator.</span>
+          <span>{strings.prodContact}</span>
         </div>
       </div>
     </div>

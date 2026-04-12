@@ -15,6 +15,7 @@ import { IconClose, IconEdit, IconPlay } from "~/lib/icons.js";
 import type { FilmDetailPane_video$key } from "~/relay/__generated__/FilmDetailPane_video.graphql.js";
 import type { FilmDetailPaneMatchMutation } from "~/relay/__generated__/FilmDetailPaneMatchMutation.graphql.js";
 import type { FilmDetailPaneUnmatchMutation } from "~/relay/__generated__/FilmDetailPaneUnmatchMutation.graphql.js";
+import type { LinkSearch_query$key } from "~/relay/__generated__/LinkSearch_query.graphql.js";
 import { formatDuration, formatFileSize, upgradePosterUrl } from "~/utils/formatters.js";
 
 import {
@@ -101,10 +102,11 @@ const DETAIL_FRAGMENT = graphql`
 
 interface Props {
   video: FilmDetailPane_video$key;
+  searchRef: LinkSearch_query$key;
   linking?: boolean;
 }
 
-export const FilmDetailPane: FC<Props> = ({ video, linking = false }) => {
+export const FilmDetailPane: FC<Props> = ({ video, searchRef, linking = false }) => {
   const data = useFragment(DETAIL_FRAGMENT, video);
   const styles = useFilmDetailPaneStyles();
   const { bubble } = useNovaEventing();
@@ -221,7 +223,7 @@ export const FilmDetailPane: FC<Props> = ({ video, linking = false }) => {
       {/* Body — switches between detail view and link search */}
       {linking ? (
         <NovaEventingInterceptor interceptor={linkSearchInterceptor}>
-          <LinkSearch filename={data.filename} />
+          <LinkSearch queryRef={searchRef} filename={data.filename} />
         </NovaEventingInterceptor>
       ) : null}
       <div className={styles.body} style={linking ? { display: "none" } : undefined}>

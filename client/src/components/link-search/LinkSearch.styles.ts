@@ -112,25 +112,11 @@ export const useLinkSearchStyles = makeStyles({
   },
   year: { fontSize: "11px", color: tokens.colorMuted2 },
 
-  omdbHint: {
-    flex: "1",
-    display: "flex",
-    flexDirection: "column",
-    alignItems: "center",
-    justifyContent: "center",
-    padding: "20px 18px",
-    gap: "10px",
-    textAlign: "center",
-  },
-  omdbHintTitle: {
-    fontSize: "13px",
-    fontWeight: "600",
-    color: tokens.colorMuted,
-  },
-  omdbHintBody: {
-    fontSize: "11px",
+  noResults: {
+    padding: "12px 0",
+    fontSize: "12px",
     color: tokens.colorMuted2,
-    lineHeight: "1.55",
+    textAlign: "center",
   },
 
   cancelBtn: {

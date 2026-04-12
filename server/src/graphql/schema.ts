@@ -154,7 +154,6 @@ export const typeDefs = /* GraphQL */ `
     transcodeJob(id: ID!): TranscodeJob
     watchlist: [WatchlistItem!]!
     searchOmdb(query: String!, year: Int): [OmdbSearchResult!]!
-    omdbConfigured: Boolean!
     listDirectory(path: String!): [DirEntry!]!
   }
 

@@ -16,10 +16,6 @@ import { useSearchParams } from "react-router-dom";
 
 import { DevThrowTarget } from "~/components/dev-throw-target/DevThrowTarget.js";
 import {
-  FILM_DETAIL_QUERY,
-  FilmDetailLoader,
-} from "~/components/film-detail-loader/FilmDetailLoader.js";
-import {
   type FilmDetailPaneLinkingChangedData,
   isFilmDetailPaneClosedEvent,
   isFilmDetailPaneLinkingChangedEvent,
@@ -44,12 +40,17 @@ import {
   type ViewChangedData,
 } from "~/components/library-filter-bar/LibraryFilterBar.events.js";
 import { LibraryFilterBar } from "~/components/library-filter-bar/LibraryFilterBar.js";
+import { LibraryListHeader } from "~/components/library-list-header/LibraryListHeader.js";
 import {
   isPosterCardFilmSelectedEvent,
   type PosterCardFilmSelectedData,
 } from "~/components/poster-card/PosterCard.events.js";
 import { PosterCard } from "~/components/poster-card/PosterCard.js";
 import { useSplitResize } from "~/hooks/useSplitResize.js";
+import {
+  FILM_DETAIL_QUERY,
+  FilmDetailLoader,
+} from "~/pages/film-detail-loader/FilmDetailLoader.js";
 import type { FilmDetailLoaderQuery } from "~/relay/__generated__/FilmDetailLoaderQuery.graphql.js";
 import type { LibraryPageContentQuery } from "~/relay/__generated__/LibraryPageContentQuery.graphql.js";
 import type { LibraryPageContentScanSubscription } from "~/relay/__generated__/LibraryPageContentScanSubscription.graphql.js";
@@ -264,22 +265,7 @@ const LibraryPage: FC = () => {
                 </div>
               ) : (
                 <div className={styles.listArea}>
-                  <div className={styles.listHeader}>
-                    <div />
-                    <div className={styles.listHeaderCell}>{strings.colTitle}</div>
-                    <div className={styles.listHeaderCell} style={{ textAlign: "right" }}>
-                      {strings.colFormat}
-                    </div>
-                    <div className={styles.listHeaderCell} style={{ textAlign: "right" }}>
-                      {strings.colRating}
-                    </div>
-                    <div className={styles.listHeaderCell} style={{ textAlign: "right" }}>
-                      {strings.colDuration}
-                    </div>
-                    <div className={styles.listHeaderCell} style={{ textAlign: "right" }}>
-                      {strings.colSize}
-                    </div>
-                  </div>
+                  <LibraryListHeader />
                   {videos.map((video) => (
                     <LibraryFilmListRow
                       key={video.id}

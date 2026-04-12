@@ -1,9 +1,10 @@
 import { useNovaEventing } from "@nova/react";
 import { type FC, useEffect, useRef, useState } from "react";
-import { fetchQuery, graphql } from "relay-runtime";
+import { graphql, useRefetchableFragment } from "react-relay";
 
 import { IconClose, IconSearch, IconSpinner } from "~/lib/icons.js";
-import { environment } from "~/relay/environment.js";
+import type { LinkSearch_query$key } from "~/relay/__generated__/LinkSearch_query.graphql.js";
+import type { LinkSearchRefetchQuery } from "~/relay/__generated__/LinkSearchRefetchQuery.graphql.js";
 
 import {
   createLinkSearchCancelledEvent,
@@ -12,20 +13,16 @@ import {
 import { strings } from "./LinkSearch.strings.js";
 import { useLinkSearchStyles } from "./LinkSearch.styles.js";
 
-const SEARCH_QUERY = graphql`
-  query LinkSearchOmdbQuery($query: String!) {
-    searchOmdb(query: $query) {
+const SEARCH_FRAGMENT = graphql`
+  fragment LinkSearch_query on Query
+  @refetchable(queryName: "LinkSearchRefetchQuery")
+  @argumentDefinitions(query: { type: "String!" }, skip: { type: "Boolean!" }) {
+    searchOmdb(query: $query) @skip(if: $skip) {
       imdbId
       title
       year
       posterUrl
     }
-  }
-`;
-
-const OMDB_CONFIG_QUERY = graphql`
-  query LinkSearchOmdbConfigQuery {
-    omdbConfigured
   }
 `;
 
@@ -37,62 +34,45 @@ export interface OmdbSuggestion {
 }
 
 interface Props {
+  queryRef: LinkSearch_query$key;
   filename: string;
 }
 
 type SearchStatus = "idle" | "searching" | "results";
 
-export const LinkSearch: FC<Props> = ({ filename }) => {
+export const LinkSearch: FC<Props> = ({ queryRef, filename }) => {
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState<SearchStatus>("idle");
-  const [suggestions, setSuggestions] = useState<OmdbSuggestion[]>([]);
-  const [omdbConfigured, setOmdbConfigured] = useState<boolean | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const styles = useLinkSearchStyles();
   const { bubble } = useNovaEventing();
 
-  useEffect(() => {
-    fetchQuery(environment, OMDB_CONFIG_QUERY, {}).subscribe({
-      next: (data) => {
-        const d = data as { omdbConfigured: boolean };
-        setOmdbConfigured(d.omdbConfigured);
-      },
-      error: () => {
-        setOmdbConfigured(false);
-      },
-    });
-  }, []);
+  const [data, refetch] = useRefetchableFragment<LinkSearchRefetchQuery, LinkSearch_query$key>(
+    SEARCH_FRAGMENT,
+    queryRef
+  );
+
+  const suggestions: OmdbSuggestion[] = (data.searchOmdb ?? []) as OmdbSuggestion[];
 
   useEffect(() => {
-    if (omdbConfigured) {
-      inputRef.current?.focus();
-    }
-  }, [omdbConfigured]);
+    inputRef.current?.focus();
+  }, []);
 
   useEffect(() => {
     if (!query.trim()) {
       setStatus("idle");
-      setSuggestions([]);
+      refetch({ query: "", skip: true });
       return;
     }
 
     setStatus("searching");
     const id = setTimeout(() => {
-      fetchQuery(environment, SEARCH_QUERY, { query: query.trim() }).subscribe({
-        next: (data) => {
-          const d = data as { searchOmdb: OmdbSuggestion[] };
-          setSuggestions(d.searchOmdb ?? []);
-          setStatus("results");
-        },
-        error: () => {
-          setSuggestions([]);
-          setStatus("results");
-        },
-      });
+      refetch({ query: query.trim(), skip: false });
+      setStatus("results");
     }, 500);
 
     return () => clearTimeout(id);
-  }, [query]);
+  }, [query, refetch]);
 
   return (
     <div className={styles.root}>
@@ -104,60 +84,55 @@ export const LinkSearch: FC<Props> = ({ filename }) => {
         </div>
       </div>
 
-      {omdbConfigured === false ? (
-        <div className={styles.omdbHint}>
-          <div className={styles.omdbHintTitle}>{strings.omdbNotConfiguredTitle}</div>
-          <div className={styles.omdbHintBody}>{strings.omdbNotConfiguredBody}</div>
-        </div>
-      ) : (
-        <>
-          {/* Search input */}
-          <div className={styles.inputWrap}>
-            <IconSearch size={13} className={styles.searchIcon} />
-            <input
-              ref={inputRef}
-              type="text"
-              className={styles.input}
-              placeholder={strings.searchPlaceholder}
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-            />
-            {status === "searching" && <IconSpinner size={13} className={styles.spinner} />}
-            {query && status !== "searching" && (
-              <button
-                className={styles.clearBtn}
-                onClick={() => setQuery("")}
-                aria-label={strings.clearSearch}
-              >
-                <IconClose size={11} />
-              </button>
-            )}
-          </div>
+      {/* Search input */}
+      <div className={styles.inputWrap}>
+        <IconSearch size={13} className={styles.searchIcon} />
+        <input
+          ref={inputRef}
+          type="text"
+          className={styles.input}
+          placeholder={strings.searchPlaceholder}
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+        />
+        {status === "searching" && <IconSpinner size={13} className={styles.spinner} />}
+        {query && status !== "searching" && (
+          <button
+            className={styles.clearBtn}
+            onClick={() => setQuery("")}
+            aria-label={strings.clearSearch}
+          >
+            <IconClose size={11} />
+          </button>
+        )}
+      </div>
 
-          {/* Suggestions */}
-          {status === "results" && (
-            <div className={styles.suggestions}>
-              {suggestions.map((s) => (
-                <button
-                  key={s.imdbId}
-                  className={styles.item}
-                  onClick={(e) => {
-                    void bubble({ reactEvent: e, event: createSuggestionSelectedEvent(s) });
-                  }}
-                >
-                  <div
-                    className={styles.thumb}
-                    style={s.posterUrl ? { backgroundImage: `url(${s.posterUrl})` } : undefined}
-                  />
-                  <div className={styles.info}>
-                    <div className={styles.title}>{s.title}</div>
-                    {s.year != null && <div className={styles.year}>{s.year}</div>}
-                  </div>
-                </button>
-              ))}
-            </div>
+      {/* Suggestions */}
+      {status === "results" && (
+        <div className={styles.suggestions}>
+          {suggestions.length === 0 ? (
+            <div className={styles.noResults}>{strings.noResults}</div>
+          ) : (
+            suggestions.map((s) => (
+              <button
+                key={s.imdbId}
+                className={styles.item}
+                onClick={(e) => {
+                  void bubble({ reactEvent: e, event: createSuggestionSelectedEvent(s) });
+                }}
+              >
+                <div
+                  className={styles.thumb}
+                  style={s.posterUrl ? { backgroundImage: `url(${s.posterUrl})` } : undefined}
+                />
+                <div className={styles.info}>
+                  <div className={styles.title}>{s.title}</div>
+                  {s.year != null && <div className={styles.year}>{s.year}</div>}
+                </div>
+              </button>
+            ))
           )}
-        </>
+        </div>
       )}
 
       {/* Cancel */}

@@ -5,6 +5,7 @@ import {
   createContext,
   type FC,
   type ReactNode,
+  Suspense,
   useCallback,
   useContext,
   useEffect,
@@ -18,7 +19,7 @@ import { LoadingBar } from "~/components/loading-bar/LoadingBar.js";
 import { LoadingBarProvider } from "~/components/loading-bar/LoadingBarContext.js";
 import { RouterNavigationLoader } from "~/components/router-navigation-loader/RouterNavigationLoader.js";
 import { isSidebarToggledEvent } from "~/components/sidebar/Sidebar.events.js";
-import { Sidebar } from "~/components/sidebar/Sidebar.js";
+import { SidebarAsync } from "~/components/sidebar/SidebarAsync.js";
 
 import { useAppShellStyles } from "./AppShell.styles.js";
 
@@ -103,7 +104,9 @@ export const AppShell: FC<AppShellProps> = ({ children }) => {
                 <LoadingBar />
                 <AppHeader actions={actions} />
                 <NovaEventingInterceptor interceptor={sidebarInterceptor}>
-                  <Sidebar collapsed={collapsed} />
+                  <Suspense fallback={null}>
+                    <SidebarAsync collapsed={collapsed} />
+                  </Suspense>
                 </NovaEventingInterceptor>
                 <div className={styles.main}>{children}</div>
               </div>

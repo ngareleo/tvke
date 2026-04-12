@@ -19,6 +19,7 @@ export const FILM_DETAIL_QUERY = graphql`
       }
       ...FilmDetailPane_video
     }
+    ...LinkSearch_query @arguments(query: "", skip: true)
   }
 `;
 
@@ -44,5 +45,5 @@ export const FilmDetailLoader: FC<Props> = ({ queryRef, linking = false }) => {
   }, [libraryId]);
 
   if (!data.video) return null;
-  return <FilmDetailPaneAsync video={data.video} linking={linking} />;
+  return <FilmDetailPaneAsync video={data.video} linking={linking} searchRef={data} />;
 };
