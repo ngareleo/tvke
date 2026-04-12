@@ -34,35 +34,40 @@ const MOCK_UP_NEXT = [
 ];
 
 // Relay's MockPayloadGenerator applies the Video resolver to every Video
-// instance in the response tree, including Up Next nodes. A stateful counter
-// lets us return distinct IDs so the `v.id !== data.id` filter in
-// PlayerSidebar doesn't remove all Up Next items.
-const makeWithMetadataResolvers = (): Record<string, unknown> => {
-  const responses = [
-    {
-      id: "v-1",
-      title: "mad.max.fury.road.2015.4k.mkv",
-      durationSeconds: 7200,
-      metadata: {
-        title: "Mad Max: Fury Road",
-        year: 2015,
-        genre: "Action, Adventure",
-        plot: "In a post-apocalyptic wasteland, Max teams up with Furiosa to outrun a warlord in a desperate bid for freedom.",
-        posterUrl: null,
-      },
-      library: { videos: { edges: MOCK_UP_NEXT.map((v) => ({ node: v })) } },
-      videoStream: { height: 2160, width: 3840 },
-    },
-    ...MOCK_UP_NEXT.map((v) => ({
-      ...v,
+// instance in the response tree, including Up Next nodes. We use context.path
+// to distinguish the root video from nested Up Next nodes — no stateful
+// counter needed, so the mock works correctly on re-renders.
+const withMetadataResolvers = {
+  Video: (context: { path?: readonly string[] }) => {
+    const isUpNext = (context.path ?? []).includes("edges");
+    if (!isUpNext) {
+      return {
+        id: "v-1",
+        title: "mad.max.fury.road.2015.4k.mkv",
+        durationSeconds: 7200,
+        metadata: {
+          title: "Mad Max: Fury Road",
+          year: 2015,
+          genre: "Action, Adventure",
+          plot: "In a post-apocalyptic wasteland, Max teams up with Furiosa to outrun a warlord in a desperate bid for freedom.",
+          posterUrl: null,
+        },
+        library: { videos: { edges: MOCK_UP_NEXT.map((v) => ({ node: v })) } },
+        videoStream: { height: 2160, width: 3840 },
+      };
+    }
+    // Up Next node — return a distinct id so the v.id !== data.id filter keeps it.
+    // Relay fills in id from the mock resolver; we embed the path to make it unique.
+    const pathKey = (context.path ?? []).join("_");
+    return {
+      id: `up-${pathKey}`,
+      title: "Up Next Film",
       durationSeconds: 5400,
-      metadata: { ...v.metadata, genre: "Action", plot: null },
+      metadata: { title: null, year: 2020, genre: "Action", plot: null, posterUrl: null },
       library: { videos: { edges: [] } },
       videoStream: { height: 1080, width: 1920 },
-    })),
-  ];
-  let i = 0;
-  return { Video: () => responses[i++] ?? responses[0] };
+    };
+  },
 };
 
 const meta: Meta<WrapperProps> = {
@@ -75,7 +80,7 @@ const meta: Meta<WrapperProps> = {
       query: STORY_QUERY,
       variables: { videoId: "Video:mock" },
       getReferenceEntry: (result: PlayerSidebarStoryQuery["response"]) => ["video", result.video],
-      mockResolvers: makeWithMetadataResolvers(),
+      mockResolvers: withMetadataResolvers,
     },
   },
 };
