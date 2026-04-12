@@ -76,37 +76,31 @@ jobs:
       - name: Build
         run: bun run build
 
-      # Per-PR deployment: each PR gets its own stable subdomain so reports
-      # from concurrent PRs never overwrite each other.
-      - name: Deploy bundle report (PR)
-        if: github.event_name == 'pull_request'
-        continue-on-error: true
-        env:
-          SURGE_TOKEN: ${{ secrets.SURGE_TOKEN }}
-        run: bunx surge dist/ tvke-pr-${{ github.event.pull_request.number }}.surge.sh --token $SURGE_TOKEN
-
-      - name: Comment bundle report link on PR
-        if: github.event_name == 'pull_request'
-        continue-on-error: true
-        uses: actions/github-script@v7
-        with:
-          script: |
-            const prNumber = context.issue.number;
-            await github.rest.issues.createComment({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              issue_number: prNumber,
-              body: [
-                '## Bundle Report',
-                '',
-                `[View interactive bundle report](https://tvke-pr-${prNumber}.surge.sh/stats.html)`,
-              ].join('\n'),
-            });
-
-      # Keep a stable post-merge report at a fixed URL.
-      - name: Deploy bundle report (main)
+      # Stage stats.html as index.html so GitHub Pages serves it at the root URL.
+      - name: Prepare Pages artifact
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-        continue-on-error: true
-        env:
-          SURGE_TOKEN: ${{ secrets.SURGE_TOKEN }}
-        run: bunx surge dist/ tvke-bundle.surge.sh --token $SURGE_TOKEN
+        run: |
+          mkdir -p /tmp/pages-out
+          cp dist/stats.html /tmp/pages-out/index.html
+
+      - name: Upload Pages artifact
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: /tmp/pages-out
+
+  deploy-pages:
+    name: Deploy bundle report to Pages
+    needs: client
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deploy
+        uses: actions/deploy-pages@v4
