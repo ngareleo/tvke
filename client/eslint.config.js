@@ -20,6 +20,18 @@ export default tseslint.config(
       "react-hooks/exhaustive-deps": "warn",
       // no-floating-promises requires type info (parserOptions.project)
       "@typescript-eslint/no-floating-promises": "error",
+      // All component styles must use Griffel (makeStyles/mergeClasses).
+      // Literal strings in className props indicate a global CSS class was used
+      // instead — define the style in a colocated ComponentName.styles.ts file.
+      // Only body-level utilities (body.resizing, .is-resizing) are exempt.
+      "no-restricted-syntax": [
+        "error",
+        {
+          selector: "JSXAttribute[name.name='className'] > Literal",
+          message:
+            "Use Griffel (makeStyles/mergeClasses) instead of literal className strings. Define styles in a colocated ComponentName.styles.ts file.",
+        },
+      ],
       // Cross-module imports must use the ~ alias, not relative parent paths.
       // Same-directory imports (./X) are still allowed for colocated files.
       "no-restricted-imports": [

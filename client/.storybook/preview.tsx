@@ -1,7 +1,6 @@
 import type { Preview } from "storybook-react-rsbuild";
-import { ChakraProvider, defaultSystem } from "@chakra-ui/react";
 import React, { Suspense } from "react";
-import { MemoryRouter } from "react-router-dom";
+import { createMemoryRouter, RouterProvider } from "react-router-dom";
 
 import { withRelay } from "../src/storybook/withRelay.js";
 
@@ -10,15 +9,14 @@ const preview: Preview = {
     withRelay,
     (Story, context) => {
       const initialEntries: string[] = context.parameters.router?.initialEntries ?? ["/"];
-      return (
-        <MemoryRouter initialEntries={initialEntries}>
-          <ChakraProvider value={defaultSystem}>
-            <Suspense fallback={<div style={{ padding: 16, color: "#aaa" }}>Loading…</div>}>
-              <Story />
-            </Suspense>
-          </ChakraProvider>
-        </MemoryRouter>
+      // createMemoryRouter (data router) is required so that hooks like
+      // useNavigation() and useLocation() work inside stories. Plain
+      // MemoryRouter does not create a data-router context.
+      const router = createMemoryRouter(
+        [{ path: "*", element: <Suspense fallback={<div style={{ padding: 16, color: "#aaa" }}>Loading…</div>}><Story /></Suspense> }],
+        { initialEntries }
       );
+      return <RouterProvider router={router} />;
     },
   ],
   parameters: {

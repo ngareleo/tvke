@@ -7,7 +7,13 @@
  * Resolver files should import from here instead of calling toGlobalId or
  * the mapper functions directly.
  */
-import type { LibraryRow, TranscodeJobRow, VideoRow } from "../types.js";
+import type {
+  LibraryRow,
+  TranscodeJobRow,
+  VideoMetadataRow,
+  VideoRow,
+  WatchlistItemRow,
+} from "../types.js";
 import type { ActiveJob } from "../types.js";
 import { internalMediaTypeToGql, internalResolutionToGql, internalStatusToGql } from "./mappers.js";
 import { toGlobalId } from "./relay.js";
@@ -19,8 +25,21 @@ export interface GQLLibrary {
   name: string;
   path: string;
   mediaType: string;
+  videoExtensions: string[];
   /** Internal row — available to sub-resolvers via parent argument */
   _raw: LibraryRow;
+}
+
+export interface GQLVideoMetadata {
+  imdbId: string;
+  title: string;
+  year: number | null;
+  genre: string | null;
+  director: string | null;
+  cast: string[];
+  rating: number | null;
+  plot: string | null;
+  posterUrl: string | null;
 }
 
 export interface GQLVideo {
@@ -30,7 +49,16 @@ export interface GQLVideo {
   durationSeconds: number;
   fileSizeBytes: number;
   bitrate: number;
+  matched: boolean;
   _raw: VideoRow;
+}
+
+export interface GQLWatchlistItem {
+  id: string;
+  addedAt: string;
+  progressSeconds: number;
+  notes: string | null;
+  _raw: WatchlistItemRow;
 }
 
 export interface GQLTranscodeJob {
@@ -49,16 +77,23 @@ export interface GQLTranscodeJob {
 // ── Presenter functions ───────────────────────────────────────────────────────
 
 export function presentLibrary(row: LibraryRow): GQLLibrary {
+  let videoExtensions: string[] = [];
+  try {
+    videoExtensions = JSON.parse(row.video_extensions) as string[];
+  } catch {
+    // Fall through with empty array
+  }
   return {
     id: toGlobalId("Library", row.id),
     name: row.name,
     path: row.path,
     mediaType: internalMediaTypeToGql(row.media_type),
+    videoExtensions,
     _raw: row,
   };
 }
 
-export function presentVideo(row: VideoRow): GQLVideo {
+export function presentVideo(row: VideoRow, matched = false): GQLVideo {
   return {
     id: toGlobalId("Video", row.id),
     title: row.title ?? row.filename,
@@ -66,6 +101,37 @@ export function presentVideo(row: VideoRow): GQLVideo {
     durationSeconds: row.duration_seconds,
     fileSizeBytes: row.file_size_bytes,
     bitrate: row.bitrate,
+    matched,
+    _raw: row,
+  };
+}
+
+export function presentVideoMetadata(row: VideoMetadataRow): GQLVideoMetadata {
+  let cast: string[] = [];
+  try {
+    if (row.cast_list) cast = JSON.parse(row.cast_list) as string[];
+  } catch {
+    // Fall through
+  }
+  return {
+    imdbId: row.imdb_id,
+    title: row.title,
+    year: row.year,
+    genre: row.genre,
+    director: row.director,
+    cast,
+    rating: row.rating,
+    plot: row.plot,
+    posterUrl: row.poster_url,
+  };
+}
+
+export function presentWatchlistItem(row: WatchlistItemRow): GQLWatchlistItem {
+  return {
+    id: toGlobalId("WatchlistItem", row.id),
+    addedAt: row.added_at,
+    progressSeconds: row.progress_seconds,
+    notes: row.notes,
     _raw: row,
   };
 }

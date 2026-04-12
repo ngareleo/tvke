@@ -37,6 +37,11 @@ const MEDIA_TYPE_TO_GQL: Record<MediaType, string> = {
   tvShows: "TV_SHOWS",
 };
 
+const GQL_TO_MEDIA_TYPE: Record<string, MediaType> = {
+  MOVIES: "movies",
+  TV_SHOWS: "tvShows",
+};
+
 export function gqlResolutionToInternal(gql: string): Resolution {
   const r = GQL_TO_RESOLUTION[gql];
   if (!r) throw new Error(`Unknown resolution enum: ${gql}`);
@@ -59,4 +64,10 @@ export function internalStatusToGql(s: JobStatus): string {
 
 export function internalMediaTypeToGql(m: MediaType): string {
   return MEDIA_TYPE_TO_GQL[m];
+}
+
+export function gqlMediaTypeToInternal(gql: string): MediaType {
+  const m = GQL_TO_MEDIA_TYPE[gql];
+  if (!m) throw new Error(`Unknown media type enum: ${gql}`);
+  return m;
 }

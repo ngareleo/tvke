@@ -1,4 +1,3 @@
-import { Box, Text } from "@chakra-ui/react";
 import { NovaEventingInterceptor } from "@nova/react";
 import type { EventWrapper } from "@nova/types";
 import React, { type FC, useCallback, useEffect, useRef, useState } from "react";
@@ -18,9 +17,12 @@ import { ControlBar } from "~/components/control-bar/ControlBar.js";
 import type { JobProgress } from "~/hooks/useJobSubscription.js";
 import { useJobSubscription } from "~/hooks/useJobSubscription.js";
 import { useVideoPlayback } from "~/hooks/useVideoPlayback.js";
+import { IconPlay } from "~/lib/icons.js";
 import type { VideoPlayer_video$key } from "~/relay/__generated__/VideoPlayer_video.graphql.js";
 import type { Resolution } from "~/types.js";
 import { maxResolutionForHeight } from "~/utils/formatters.js";
+
+import { useVideoPlayerStyles } from "./VideoPlayer.styles.js";
 
 const VIDEO_FRAGMENT = graphql`
   fragment VideoPlayer_video on Video {
@@ -41,6 +43,7 @@ const HIDE_DELAY_MS = 3000;
 
 export const VideoPlayer: FC<Props> = ({ video }) => {
   const data = useFragment(VIDEO_FRAGMENT, video);
+  const styles = useVideoPlayerStyles();
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -117,78 +120,37 @@ export const VideoPlayer: FC<Props> = ({ video }) => {
   return (
     <div
       ref={containerRef}
+      className={styles.root}
       onMouseMove={showControls}
       onMouseEnter={showControls}
       onMouseLeave={() => {
         if (hideTimerRef.current !== null) clearTimeout(hideTimerRef.current);
         setControlsVisible(false);
       }}
-      style={{ position: "relative", width: "100%", height: "100%", background: "#000" }}
     >
-      <video
-        ref={videoRef}
-        style={{ width: "100%", height: "100%", display: "block", objectFit: "contain" }}
-        controls={false}
-      />
+      <video ref={videoRef} className={styles.video} controls={false} />
 
-      {/* Big play overlay — shown in idle state; clicking starts playback */}
+      {/* Pre-play overlay — shown in idle state */}
       {status === "idle" && (
-        <div
-          onClick={handlePlay}
-          style={{
-            position: "absolute",
-            inset: 0,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            cursor: "pointer",
-          }}
-        >
-          <div
-            style={{
-              width: 72,
-              height: 72,
-              borderRadius: "50%",
-              background: "#d4a84b",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              fontSize: 26,
-              color: "#141420",
-              paddingLeft: 4,
-            }}
-          >
-            ▶
-          </div>
+        <div className={styles.idleOverlay} onClick={handlePlay}>
+          <button className={styles.playBtn} onClick={handlePlay} aria-label="Play" type="button">
+            <IconPlay size={32} />
+          </button>
+        </div>
+      )}
+
+      {/* Loading spinner overlay */}
+      {status === "loading" && (
+        <div className={styles.loadingOverlay}>
+          <div className={styles.loadingSpinner} />
         </div>
       )}
 
       {/* Transcode progress label */}
-      {progressLabel && (
-        <Box
-          position="absolute"
-          top={4}
-          left={4}
-          right={4}
-          bg="gray.900"
-          p={2}
-          borderRadius="md"
-          opacity={0.85}
-        >
-          <Text color="gray.300" fontSize="xs">
-            {progressLabel}
-          </Text>
-        </Box>
-      )}
+      {progressLabel && <div className={styles.progressLabel}>{progressLabel}</div>}
 
       {/* Error overlay */}
-      {error && (
-        <Box position="absolute" top={4} left={4} right={4} bg="red.800" p={3} borderRadius="md">
-          <Text color="white" fontSize="sm">
-            {error}
-          </Text>
-        </Box>
-      )}
+      {error && <div className={styles.errorOverlay}>{error}</div>}
 
       <NovaEventingInterceptor interceptor={interceptor}>
         <ControlBar

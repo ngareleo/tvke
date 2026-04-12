@@ -13,7 +13,7 @@ export default defineConfig({
     pluginReact(),
     // Apply babel-plugin-relay so graphql template literals are compiled at build time.
     pluginBabel({
-      include: /\.(?:jsx|tsx)$/,
+      include: /\.(?:ts|jsx|tsx)$/,
       babelLoaderOptions(opts) {
         opts.plugins ??= [];
         opts.plugins.unshift("relay");
@@ -21,25 +21,11 @@ export default defineConfig({
     }),
   ],
 
-  tools: {
-    rspack: (config) => {
-      // Generate an interactive HTML bundle report in CI. Output lands at
-      // dist/stats.html, which the CI workflow uploads as an artifact.
-      if (process.env.CI) {
-        // eslint-disable-next-line @typescript-eslint/no-require-imports, @typescript-eslint/no-explicit-any
-        const { BundleAnalyzerPlugin } = require("webpack-bundle-analyzer") as any;
-        config.plugins ??= [];
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-call
-        config.plugins.push(
-          new BundleAnalyzerPlugin({ analyzerMode: "static", openAnalyzer: false, reportFilename: "stats.html" })
-        );
-      }
-      return config;
-    },
-  },
-
   source: {
     entry: { index: "./src/main.tsx" },
+  },
+
+  resolve: {
     // ~ → src/ — mirrors the tsconfig paths alias
     alias: {
       "~": path.resolve(dirname, "src"),
@@ -53,7 +39,7 @@ export default defineConfig({
   server: {
     port: 5173,
     proxy: {
-      "/graphql": { target: "http://localhost:3001" },
+      "/graphql": { target: "http://localhost:3001", ws: true },
       "/stream": { target: "http://localhost:3001" },
     },
   },
@@ -66,6 +52,18 @@ export default defineConfig({
       compressed: true,
     },
 
+    // Generate an interactive HTML bundle report in CI. Output lands at
+    // dist/stats.html, which the CI workflow uploads as an artifact.
+    ...(process.env.CI
+      ? {
+          bundleAnalyze: {
+            analyzerMode: "static",
+            openAnalyzer: false,
+            reportFilename: "stats.html",
+          },
+        }
+      : {}),
+
     /**
      * Split vendor dependencies into stable, independently-cacheable chunks.
      * Grouping by library means a UI-only change doesn't bust the relay or
@@ -75,13 +73,6 @@ export default defineConfig({
       strategy: "custom",
       splitChunks: {
         cacheGroups: {
-          // Chakra UI pulls in @emotion, @ark-ui, and @zag-js — group them all
-          // together since they're always co-loaded and change together.
-          chakra: {
-            test: /@chakra-ui|@emotion|@ark-ui|@zag-js/,
-            name: "vendor-chakra",
-            chunks: "all" as const,
-          },
           // Relay + GraphQL are tightly coupled; bundle them as one cacheable unit.
           relay: {
             test: /relay-runtime|react-relay|[/+]graphql[/+]/,
@@ -93,6 +84,13 @@ export default defineConfig({
             test: /[/+]react@|[/+]react-dom@|\/scheduler\//,
             name: "vendor-react",
             chunks: "all" as const,
+          },
+          // Remaining node_modules (Griffel, Nova, router, etc.)
+          vendor: {
+            test: /[\\/]node_modules[\\/]/,
+            name: "vendor-misc",
+            chunks: "all" as const,
+            priority: -10,
           },
         },
       },

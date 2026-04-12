@@ -3,27 +3,46 @@
  * subscribers when the state changes. Mirrors the jobStore.ts pattern.
  */
 
+export interface ScanProgress {
+  scanning: boolean;
+  libraryId: string | null;
+  done: number | null;
+  total: number | null;
+}
+
 let scanning = false;
-const listeners = new Set<(scanning: boolean) => void>();
+let currentProgress: ScanProgress = { scanning: false, libraryId: null, done: null, total: null };
+const listeners = new Set<(progress: ScanProgress) => void>();
 
 export function isScanRunning(): boolean {
   return scanning;
 }
 
+export function getCurrentScanProgress(): ScanProgress {
+  return currentProgress;
+}
+
 export function markScanStarted(): void {
   scanning = true;
+  currentProgress = { scanning: true, libraryId: null, done: null, total: null };
+  notify();
+}
+
+export function markScanProgress(libraryId: string, done: number, total: number): void {
+  currentProgress = { scanning: true, libraryId, done, total };
   notify();
 }
 
 export function markScanEnded(): void {
   scanning = false;
+  currentProgress = { scanning: false, libraryId: null, done: null, total: null };
   notify();
 }
 
 function notify(): void {
   for (const fn of listeners) {
     try {
-      fn(scanning);
+      fn(currentProgress);
     } catch {
       listeners.delete(fn);
     }
@@ -31,21 +50,17 @@ function notify(): void {
 }
 
 /**
- * Returns an async iterable that emits the current scan state whenever it
- * changes. The iterable runs until the subscriber disposes the iterator via
- * return().
+ * Returns an async iterable that emits progress updates whenever the scan
+ * state changes. The iterable runs until the subscriber disposes it via return().
  */
-export function subscribeToScan(): AsyncIterable<boolean> {
+export function subscribeToScan(): AsyncIterable<ScanProgress> {
   return {
     [Symbol.asyncIterator]() {
       let done = false;
-      let resolve: ((result: IteratorResult<boolean>) => void) | undefined;
-      // Holds a state change that arrived before next() was awaiting, so it
-      // isn't dropped. A new change overwrites the previous pending value
-      // (only the latest state matters for scan progress).
-      let pending: { value: boolean } | undefined;
+      let resolve: ((result: IteratorResult<ScanProgress>) => void) | undefined;
+      let pending: { value: ScanProgress } | undefined;
 
-      function listener(value: boolean): void {
+      function listener(value: ScanProgress): void {
         if (done) return;
         if (resolve) {
           const r = resolve;
@@ -60,23 +75,22 @@ export function subscribeToScan(): AsyncIterable<boolean> {
       listeners.add(listener);
 
       return {
-        async next(): Promise<IteratorResult<boolean>> {
+        async next(): Promise<IteratorResult<ScanProgress>> {
           if (done) return { value: undefined as never, done: true };
           if (pending) {
             const { value } = pending;
             pending = undefined;
             return { value, done: false };
           }
-          return new Promise<IteratorResult<boolean>>((r) => {
+          return new Promise<IteratorResult<ScanProgress>>((r) => {
             resolve = r;
           });
         },
 
-        async return(): Promise<IteratorResult<boolean>> {
+        async return(): Promise<IteratorResult<ScanProgress>> {
           done = true;
           listeners.delete(listener);
           pending = undefined;
-          // Unblock any pending next() so it doesn't hang after the for-await exits
           resolve?.({ value: undefined as never, done: true });
           resolve = undefined;
           return { value: undefined as never, done: true };

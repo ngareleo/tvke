@@ -6,12 +6,20 @@ import { createReadStream } from "fs";
 import { access, readdir, stat } from "fs/promises";
 import { basename, extname, join } from "path";
 
-import { loadMediaConfig } from "../config.js";
 import { getAllLibraries, upsertLibrary } from "../db/queries/libraries.js";
+import { getUnmatchedVideoIds, upsertVideoMetadata } from "../db/queries/videoMetadata.js";
 import { replaceVideoStreams, upsertVideo } from "../db/queries/videos.js";
-import type { LibraryRow, MediaLibraryEntry, VideoRow, VideoStreamRow } from "../types.js";
+import { getVideoById } from "../db/queries/videos.js";
+import type {
+  LibraryRow,
+  MediaLibraryEntry,
+  VideoMetadataRow,
+  VideoRow,
+  VideoStreamRow,
+} from "../types.js";
 import { DEFAULT_VIDEO_EXTENSIONS } from "../types.js";
-import { isScanRunning, markScanEnded, markScanStarted } from "./scanStore.js";
+import { isOmdbConfigured, searchOmdb } from "./omdbService.js";
+import { isScanRunning, markScanEnded, markScanProgress, markScanStarted } from "./scanStore.js";
 
 ffmpeg.setFfmpegPath(ffmpegInstaller.path);
 ffmpeg.setFfprobePath(ffprobeInstaller.path);
@@ -145,6 +153,7 @@ async function scanLibraryEntry(entry: MediaLibraryEntry): Promise<LibraryRow> {
     path: entry.path,
     media_type: entry.mediaType,
     env: entry.env,
+    video_extensions: JSON.stringify(entry.videoExtensions ?? DEFAULT_VIDEO_EXTENSIONS),
   };
   upsertLibrary(libraryRow);
 
@@ -153,18 +162,115 @@ async function scanLibraryEntry(entry: MediaLibraryEntry): Promise<LibraryRow> {
   );
 
   // Collect all file paths first, then process with bounded concurrency.
-  // probeVideo + computeContentFingerprint run concurrently within each task;
-  // at most SCAN_CONCURRENCY tasks run simultaneously to avoid exhausting
-  // file descriptors and CPU on large libraries.
-  const taskFns: (() => Promise<void>)[] = [];
+  const filePaths: string[] = [];
   for await (const filePath of walkDirectory(entry.path, extensions)) {
-    taskFns.push(() => processFile(filePath, libraryId));
+    filePaths.push(filePath);
   }
 
-  console.log(`[scanner] Found ${taskFns.length} video(s) in "${entry.name}"`);
+  const total = filePaths.length;
+  let done = 0;
+
+  // Emit immediately so the client sees this library enter scanning state.
+  markScanProgress(libraryId, 0, total);
+  console.log(`[scanner] Found ${total} video(s) in "${entry.name}"`);
+
+  // Wrap each file task to emit a progress event after it completes.
+  const taskFns = filePaths.map((filePath) => async () => {
+    await processFile(filePath, libraryId);
+    done += 1;
+    markScanProgress(libraryId, done, total);
+  });
+
   await runConcurrently(taskFns, SCAN_CONCURRENCY);
 
   return libraryRow;
+}
+
+/**
+ * Parses a typical torrent filename to extract a human-readable title and
+ * optional release year. Handles common patterns:
+ *   Dune.Part.Two.2024.2160p.mkv  →  "Dune Part Two", 2024
+ *   The.Shining.1980.1080p.mkv    →  "The Shining", 1980
+ *   Parasite.Korean.2019.mkv      →  "Parasite", 2019
+ */
+export function parseTitleFromFilename(filename: string): {
+  title: string;
+  year: number | undefined;
+} {
+  // Strip extension
+  const base = basename(filename, extname(filename));
+
+  // Try to find a year (4-digit number between 1900 and 2099).
+  // Handles: "Title (2024) 4K", "Title.2024.1080p", "Title 2024" (year at end).
+  // Allows ( and ) as separators in addition to . _ - and whitespace.
+  const yearMatch = base.match(/(?:[.\s_(-])((19|20)\d{2})(?:[.\s_)-]|$)/);
+  let title: string;
+  let year: number | undefined;
+
+  if (yearMatch?.index !== undefined) {
+    title = base.slice(0, yearMatch.index);
+    year = parseInt(yearMatch[1], 10);
+  } else {
+    // No year — strip quality/codec tokens that follow a resolution pattern
+    const resMatch = base.match(/[.\s_-]\d{3,4}[pP]/);
+    title = resMatch?.index !== undefined ? base.slice(0, resMatch.index) : base;
+    year = undefined;
+  }
+
+  // Replace separators with spaces and normalise
+  return {
+    title: title.replace(/[._]/g, " ").replace(/\s+/g, " ").trim(),
+    year,
+  };
+}
+
+/**
+ * Attempts to auto-match all unmatched videos in a library against OMDb.
+ * Only runs if OMDB_API_KEY is configured. Emits progress via scanStore.
+ */
+async function autoMatchLibrary(libraryId: string, libraryName: string): Promise<void> {
+  if (!isOmdbConfigured()) return;
+
+  const unmatchedIds = getUnmatchedVideoIds(libraryId);
+  if (unmatchedIds.length === 0) return;
+
+  console.log(
+    `[scanner] Auto-matching ${unmatchedIds.length} unmatched video(s) in "${libraryName}"`
+  );
+
+  let done = 0;
+  const total = unmatchedIds.length;
+
+  const tasks = unmatchedIds.map((videoId) => async () => {
+    const video = getVideoById(videoId);
+    if (!video) return;
+
+    const { title, year } = parseTitleFromFilename(video.filename);
+    const result = await searchOmdb(title, year);
+
+    if (result) {
+      const metadata: VideoMetadataRow = {
+        video_id: videoId,
+        imdb_id: result.imdbId,
+        title: result.title,
+        year: result.year,
+        genre: result.genre,
+        director: result.director,
+        cast_list: result.actors.length > 0 ? JSON.stringify(result.actors) : null,
+        rating: result.imdbRating,
+        plot: result.plot,
+        poster_url: result.posterUrl,
+        matched_at: new Date().toISOString(),
+      };
+      upsertVideoMetadata(metadata);
+      console.log(`[scanner] Matched: "${video.filename}" → "${result.title}" (${result.imdbId})`);
+    }
+
+    done++;
+    markScanProgress(libraryId, done, total);
+  });
+
+  await runConcurrently(tasks, SCAN_CONCURRENCY);
 }
 
 /**
@@ -184,7 +290,21 @@ export async function scanLibraries(): Promise<LibraryRow[]> {
   markScanStarted();
 
   try {
-    const entries = loadMediaConfig();
+    const existingLibraries = getAllLibraries();
+    const entries: MediaLibraryEntry[] = existingLibraries.map((lib) => ({
+      name: lib.name,
+      path: lib.path,
+      mediaType: lib.media_type,
+      env: lib.env as "dev" | "prod" | "user",
+      videoExtensions: (() => {
+        try {
+          return JSON.parse(lib.video_extensions) as string[];
+        } catch {
+          return DEFAULT_VIDEO_EXTENSIONS;
+        }
+      })(),
+    }));
+
     const results: LibraryRow[] = [];
 
     for (const entry of entries) {
@@ -196,6 +316,8 @@ export async function scanLibraries(): Promise<LibraryRow[]> {
       }
       const row = await scanLibraryEntry(entry);
       results.push(row);
+      // Auto-match unmatched videos after each library is fully indexed
+      await autoMatchLibrary(row.id, row.name);
     }
 
     return results;

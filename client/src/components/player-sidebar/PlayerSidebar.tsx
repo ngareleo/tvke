@@ -1,13 +1,41 @@
+import { mergeClasses } from "@griffel/react";
 import React, { type FC } from "react";
 import { graphql, useFragment } from "react-relay";
+import { Link, useNavigate } from "react-router-dom";
 
+import { IconArrowLeft, IconPlay } from "~/lib/icons.js";
 import type { PlayerSidebar_video$key } from "~/relay/__generated__/PlayerSidebar_video.graphql.js";
-import { formatDuration, maxResolutionForHeight } from "~/utils/formatters.js";
+import { formatDuration } from "~/utils/formatters.js";
+
+import { strings } from "./PlayerSidebar.strings.js";
+import { usePlayerSidebarStyles } from "./PlayerSidebar.styles.js";
 
 const VIDEO_FRAGMENT = graphql`
   fragment PlayerSidebar_video on Video {
+    id
     title
     durationSeconds
+    metadata {
+      title
+      year
+      genre
+      plot
+      posterUrl
+    }
+    library {
+      videos(first: 6) {
+        edges {
+          node {
+            id
+            title
+            metadata {
+              year
+              posterUrl
+            }
+          }
+        }
+      }
+    }
     videoStream {
       height
       width
@@ -17,117 +45,69 @@ const VIDEO_FRAGMENT = graphql`
 
 interface Props {
   video: PlayerSidebar_video$key;
+  hidden?: boolean;
 }
 
-export const PlayerSidebar: FC<Props> = ({ video }) => {
+export const PlayerSidebar: FC<Props> = ({ video, hidden }) => {
   const data = useFragment(VIDEO_FRAGMENT, video);
+  const styles = usePlayerSidebarStyles();
+  const navigate = useNavigate();
 
-  const resolution = maxResolutionForHeight(data.videoStream?.height, data.videoStream?.width);
+  const meta = data.metadata;
+  const displayTitle = meta?.title ?? data.title;
+  const metaLine = [meta?.year, meta?.genre, formatDuration(data.durationSeconds)]
+    .filter(Boolean)
+    .join(" · ");
+
+  // Up Next: other videos from the same library, excluding current
+  const upNext = (data.library?.videos.edges ?? [])
+    .map((e) => e.node)
+    .filter((v) => v.id !== data.id)
+    .slice(0, 4);
 
   return (
-    <div
-      style={{
-        width: 360,
-        flexShrink: 0,
-        background: "#141420",
-        borderLeft: "1px solid #2a2a40",
-        overflowY: "auto",
-        display: "flex",
-        flexDirection: "column",
-      }}
-    >
-      {/* Media Info section */}
-      <div style={{ padding: 20, borderBottom: "1px solid #2a2a40" }}>
-        <div
-          style={{
-            fontSize: 11,
-            fontWeight: 600,
-            color: "#555570",
-            textTransform: "uppercase",
-            letterSpacing: "0.5px",
-            marginBottom: 16,
-          }}
-        >
-          Now Playing
-        </div>
+    <div className={mergeClasses(styles.root, hidden === true && styles.rootHidden)}>
+      {/* Now Playing */}
+      <div className={styles.section}>
+        <div className={styles.sectionLabel}>{strings.nowPlaying}</div>
+        <div className={styles.title}>{displayTitle}</div>
+        {metaLine && <div className={styles.meta}>{metaLine}</div>}
+        {meta?.plot && <div className={styles.plot}>{meta.plot}</div>}
+      </div>
 
-        {/* Poster placeholder */}
-        <div
-          style={{
-            width: "100%",
-            aspectRatio: "16/9",
-            background: "#1a1a2e",
-            borderRadius: 12,
-            overflow: "hidden",
-            marginBottom: 16,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            backgroundImage: "linear-gradient(135deg, #1a1a2e, #232340)",
-          }}
-        >
-          <svg
-            viewBox="0 0 48 48"
-            style={{ width: 48, height: 48, fill: "#555570" }}
-            aria-hidden="true"
-          >
-            <path d="M8 8h32a2 2 0 0 1 2 2v28a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2V10a2 2 0 0 1 2-2zm0 2v28h32V10H8zm12 7l12 7-12 7V17z" />
-          </svg>
-        </div>
-
-        {/* Title */}
-        <div
-          style={{
-            fontSize: 20,
-            fontWeight: 700,
-            color: "#f0f0f5",
-            marginBottom: 12,
-            lineHeight: 1.3,
-          }}
-        >
-          {data.title}
-        </div>
-
-        {/* Meta row */}
-        <div
-          style={{
-            display: "flex",
-            flexWrap: "wrap",
-            gap: 12,
-            fontSize: 13,
-            color: "#8888a0",
-            marginBottom: 16,
-          }}
-        >
-          {/* Duration */}
-          <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
-            <svg
-              viewBox="0 0 16 16"
-              style={{ width: 16, height: 16, fill: "currentColor" }}
-              aria-hidden="true"
-            >
-              <path d="M8 1a7 7 0 1 0 0 14A7 7 0 0 0 8 1zm0 1.5a5.5 5.5 0 1 1 0 11 5.5 5.5 0 0 1 0-11zM7.25 4v4.25l3.25 1.95-.5.83L6.5 8.75V4h.75z" />
-            </svg>
-            {formatDuration(data.durationSeconds)}
+      {/* Scrollable body */}
+      <div className={styles.body}>
+        {/* Up Next */}
+        {upNext.length > 0 && (
+          <div className={styles.upNextSection}>
+            <div className={styles.sectionLabel}>{strings.upNext}</div>
+            {upNext.map((v) => {
+              const thumbStyle = v.metadata?.posterUrl
+                ? { backgroundImage: `url(${v.metadata.posterUrl})` }
+                : undefined;
+              return (
+                <Link key={v.id} to={`/player/${v.id}`} className={styles.upNextItem}>
+                  <div className={styles.upNextThumb} style={thumbStyle} />
+                  <div className={styles.upNextInfo}>
+                    <div className={styles.upNextTitle}>{v.title}</div>
+                    {v.metadata?.year && <div className={styles.upNextYear}>{v.metadata.year}</div>}
+                  </div>
+                  <span className={styles.upNextPlay}>
+                    <IconPlay size={9} />
+                  </span>
+                </Link>
+              );
+            })}
           </div>
-        </div>
+        )}
+      </div>
 
-        {/* Resolution badge */}
-        <div
-          style={{
-            display: "inline-flex",
-            alignItems: "center",
-            gap: 4,
-            padding: "4px 10px",
-            background: "rgba(212, 168, 75, 0.15)",
-            color: "#d4a84b",
-            borderRadius: 20,
-            fontSize: 12,
-            fontWeight: 600,
-          }}
-        >
-          {resolution}
-        </div>
+      {/* Footer */}
+      <div className={styles.footer}>
+        <button className={styles.backBtn} onClick={() => navigate(-1)} type="button">
+          <IconArrowLeft size={12} />
+          {strings.back}
+        </button>
       </div>
     </div>
   );

@@ -1,4 +1,5 @@
-import { ChakraProvider, defaultSystem } from "@chakra-ui/react";
+import "./styles/global.css";
+
 import { mapEventMetadata, NovaEventingProvider } from "@nova/react";
 import type { EventWrapper } from "@nova/types";
 import React, { type FC, type ReactNode, useMemo } from "react";
@@ -6,16 +7,13 @@ import ReactDOM from "react-dom/client";
 import { RelayEnvironmentProvider } from "react-relay";
 import { RouterProvider } from "react-router-dom";
 
+import { ErrorBoundary } from "./components/error-boundary/ErrorBoundary.js";
 import { environment } from "./relay/environment.js";
 import { router } from "./router.js";
 
 /**
- * Root eventing handler. Lives inside RelayEnvironmentProvider + ChakraProvider
- * so that the bubble handler has access to Relay and Chakra contexts when needed
- * (e.g. to dispatch Relay mutations or show Chakra toasts in response to events).
- *
- * Components handle their own events via NovaEventingInterceptor closer to the
- * source; this provider is the terminal handler for any event not consumed there.
+ * Root eventing handler. Terminal handler for any event not consumed by an
+ * intermediate NovaEventingInterceptor.
  */
 const AppEventing: FC<{ children: ReactNode }> = ({ children }) => {
   const eventing = useMemo(
@@ -37,12 +35,12 @@ if (!rootEl) throw new Error("Root element #root not found");
 
 ReactDOM.createRoot(rootEl).render(
   <React.StrictMode>
-    <RelayEnvironmentProvider environment={environment}>
-      <ChakraProvider value={defaultSystem}>
+    <ErrorBoundary>
+      <RelayEnvironmentProvider environment={environment}>
         <AppEventing>
           <RouterProvider router={router} />
         </AppEventing>
-      </ChakraProvider>
-    </RelayEnvironmentProvider>
+      </RelayEnvironmentProvider>
+    </ErrorBoundary>
   </React.StrictMode>
 );

@@ -1,59 +1,155 @@
-import { Box, Spinner } from "@chakra-ui/react";
-import React, { lazy, Suspense } from "react";
-import { createBrowserRouter } from "react-router-dom";
+import React, { type FC, lazy, Suspense } from "react";
+import { createBrowserRouter, Outlet } from "react-router-dom";
 
-const ProfilesPage = lazy(() =>
-  import("./pages/ProfilesPage.js").then((m) => ({ default: m.ProfilesPage }))
+import { AppShell } from "~/components/app-shell/AppShell.js";
+import { ErrorBoundary } from "~/components/error-boundary/ErrorBoundary.js";
+import {
+  DashboardSkeleton,
+  LibrarySkeleton,
+  SettingsSkeleton,
+  WatchlistSkeleton,
+} from "~/components/page-skeleton/PageSkeleton.js";
+
+const DashboardPage = lazy(
+  () => import(/* webpackChunkName: "DashboardPage" */ "./pages/dashboard-page/DashboardPage.js")
+);
+const LibraryPage = lazy(
+  () => import(/* webpackChunkName: "LibraryPage" */ "./pages/library-page/LibraryPage.js")
+);
+const WatchlistPage = lazy(
+  () => import(/* webpackChunkName: "WatchlistPage" */ "./pages/watchlist-page/WatchlistPage.js")
+);
+const SettingsPage = lazy(() =>
+  import(/* webpackChunkName: "SettingsPage" */ "./pages/settings-page/SettingsPage.js").then(
+    (m) => ({ default: m.SettingsPage })
+  )
+);
+const FeedbackPage = lazy(() =>
+  import(/* webpackChunkName: "FeedbackPage" */ "./pages/feedback-page/FeedbackPage.js").then(
+    (m) => ({ default: m.FeedbackPage })
+  )
 );
 const PlayerPage = lazy(() =>
-  import("./pages/PlayerPage.js").then((m) => ({ default: m.PlayerPage }))
+  import(/* webpackChunkName: "PlayerPage" */ "./pages/player-page/PlayerPage.js").then((m) => ({
+    default: m.PlayerPage,
+  }))
 );
-const SetupPage = lazy(() =>
-  import("./pages/SetupPage.js").then((m) => ({ default: m.SetupPage }))
+const NotFoundPage = lazy(() =>
+  import(/* webpackChunkName: "NotFoundPage" */ "./pages/not-found-page/NotFoundPage.js").then(
+    (m) => ({ default: m.NotFoundPage })
+  )
 );
-const LibraryPage = lazy(() =>
-  import("./pages/LibraryPage.js").then((m) => ({ default: m.LibraryPage }))
+const GoodbyePage = lazy(
+  () => import(/* webpackChunkName: "GoodbyePage" */ "./pages/goodbye-page/GoodbyePage.js")
 );
 
 function PageLoader(): JSX.Element {
   return (
-    <Box display="flex" justifyContent="center" alignItems="center" minH="100vh">
-      <Spinner size="xl" />
-    </Box>
+    <div
+      style={{
+        display: "flex",
+        justifyContent: "center",
+        alignItems: "center",
+        height: "100%",
+        color: "#444",
+        fontSize: 13,
+      }}
+    />
   );
 }
 
+const ShellLayout: FC = () => (
+  <AppShell>
+    <ErrorBoundary>
+      <Outlet />
+    </ErrorBoundary>
+  </AppShell>
+);
+
 export const router: ReturnType<typeof createBrowserRouter> = createBrowserRouter([
   {
-    path: "/",
-    element: (
-      <Suspense fallback={<PageLoader />}>
-        <ProfilesPage />
-      </Suspense>
-    ),
+    element: <ShellLayout />,
+    children: [
+      {
+        path: "/",
+        element: (
+          <Suspense fallback={<DashboardSkeleton />}>
+            <DashboardPage />
+          </Suspense>
+        ),
+      },
+      {
+        path: "/library",
+        element: (
+          <Suspense fallback={<LibrarySkeleton />}>
+            <LibraryPage />
+          </Suspense>
+        ),
+      },
+      {
+        path: "/watchlist",
+        element: (
+          <Suspense fallback={<WatchlistSkeleton />}>
+            <WatchlistPage />
+          </Suspense>
+        ),
+      },
+      {
+        path: "/settings",
+        element: (
+          <Suspense fallback={<SettingsSkeleton />}>
+            <SettingsPage />
+          </Suspense>
+        ),
+      },
+      {
+        path: "/feedback",
+        element: (
+          <Suspense fallback={<PageLoader />}>
+            <FeedbackPage />
+          </Suspense>
+        ),
+      },
+      {
+        path: "*",
+        element: (
+          <Suspense fallback={<PageLoader />}>
+            <NotFoundPage />
+          </Suspense>
+        ),
+      },
+    ],
   },
-  {
-    path: "/setup",
-    element: (
-      <Suspense fallback={<PageLoader />}>
-        <SetupPage />
-      </Suspense>
-    ),
-  },
-  {
-    path: "/library",
-    element: (
-      <Suspense fallback={<PageLoader />}>
-        <LibraryPage />
-      </Suspense>
-    ),
-  },
+  // Player is full-screen — no AppShell
   {
     path: "/play/:videoId",
     element: (
-      <Suspense fallback={<PageLoader />}>
-        <PlayerPage />
-      </Suspense>
+      <ErrorBoundary>
+        <Suspense fallback={<PageLoader />}>
+          <PlayerPage />
+        </Suspense>
+      </ErrorBoundary>
+    ),
+  },
+  {
+    path: "/player/:videoId",
+    element: (
+      <ErrorBoundary>
+        <Suspense fallback={<PageLoader />}>
+          <PlayerPage />
+        </Suspense>
+      </ErrorBoundary>
+    ),
+  },
+  // Goodbye is full-screen — no AppShell
+  {
+    path: "/goodbye",
+    element: (
+      <ErrorBoundary>
+        <Suspense fallback={<PageLoader />}>
+          <GoodbyePage />
+        </Suspense>
+      </ErrorBoundary>
     ),
   },
 ]);
