@@ -14,7 +14,7 @@ import { useSearchParams } from "react-router-dom";
 import { useHeaderActionStyles } from "~/components/app-header/AppHeader.styles.js";
 import { useHeaderActions, useProvideLibraries } from "~/components/app-shell/AppShell.js";
 import { DashboardHero } from "~/components/dashboard-hero/DashboardHero.js";
-import { DevThrowTarget } from "~/components/dev-tools/DevToolsContext.js";
+import { DevThrowTarget } from "~/components/dev-throw-target/DevThrowTarget.js";
 import {
   isEditProfilePaneClosedEvent,
   isEditProfilePaneDeletedEvent,
@@ -22,24 +22,29 @@ import {
 } from "~/components/edit-profile-pane/EditProfilePane.events.js";
 import { EditProfilePaneAsync } from "~/components/edit-profile-pane/EditProfilePaneAsync.js";
 import {
+  isLibraryIdResolvedEvent,
+  type LibraryIdResolvedData,
+} from "~/components/film-detail-loader/FilmDetailLoader.events.js";
+import {
   FILM_DETAIL_QUERY,
   FilmDetailLoader,
-} from "~/components/film-detail-pane/FilmDetailLoader.js";
+} from "~/components/film-detail-loader/FilmDetailLoader.js";
 import {
   type FilmDetailPaneLinkingChangedData,
   isFilmDetailPaneClosedEvent,
   isFilmDetailPaneLinkingChangedEvent,
 } from "~/components/film-detail-pane/FilmDetailPane.events.js";
 import {
+  FilmRowEventTypes,
+  type FilmSelectedData,
+  isFilmRowEvent,
+} from "~/components/film-row/FilmRow.events.js";
+import {
   isNewProfilePaneClosedEvent,
   isNewProfilePaneLibraryCreatedEvent,
 } from "~/components/new-profile-pane/NewProfilePane.events.js";
 import { NewProfilePaneAsync } from "~/components/new-profile-pane/NewProfilePaneAsync.js";
-import {
-  FilmRowEventTypes,
-  type FilmSelectedData,
-  isFilmRowEvent,
-} from "~/components/profile-explorer/FilmRow.events.js";
+import { isProfileClearedEvent } from "~/components/profile-explorer/ProfileExplorer.events.js";
 import { ProfileExplorer } from "~/components/profile-explorer/ProfileExplorer.js";
 import {
   isProfileRowEditRequestedEvent,
@@ -48,7 +53,7 @@ import {
   type ProfileRowEditRequestedData,
   type ProfileRowScanRequestedData,
   type ProfileRowToggledData,
-} from "~/components/profile-explorer/ProfileRow.events.js";
+} from "~/components/profile-row/ProfileRow.events.js";
 import { useSplitResize } from "~/hooks/useSplitResize.js";
 import { IconPlus, IconRefresh } from "~/lib/icons.js";
 import type { DashboardPageContentQuery } from "~/relay/__generated__/DashboardPageContentQuery.graphql.js";
@@ -257,6 +262,15 @@ const DashboardPage: FC = () => {
         if (payload) openFilmDetail(payload.videoId);
         return undefined;
       }
+      if (isLibraryIdResolvedEvent(wrapper)) {
+        const payload = wrapper.event.data?.() as LibraryIdResolvedData | undefined;
+        if (payload) setExpandedId((prev) => prev ?? payload.libraryId);
+        return undefined;
+      }
+      if (isProfileClearedEvent(wrapper)) {
+        setSearchParams({});
+        return undefined;
+      }
       if (isFilmDetailPaneClosedEvent(wrapper)) {
         closePane();
         return undefined;
@@ -288,7 +302,7 @@ const DashboardPage: FC = () => {
       }
       return wrapper;
     },
-    [openFilmDetail, closePane, isScanPending, scan, setSearchParams]
+    [openFilmDetail, closePane, isScanPending, scan, setSearchParams, filmIdParam]
   );
 
   return (
@@ -316,7 +330,6 @@ const DashboardPage: FC = () => {
                     ? (data.libraries.find((l) => l.id === libraryIdParam)?.name ?? null)
                     : null
                 }
-                onClearProfile={() => setSearchParams({})}
               />
             </div>
 
@@ -332,11 +345,7 @@ const DashboardPage: FC = () => {
               )}
               {isPaneFilmDetail && detailQueryRef && (
                 <Suspense fallback={null}>
-                  <FilmDetailLoader
-                    queryRef={detailQueryRef}
-                    linking={linkingParam}
-                    onLibraryId={(id) => setExpandedId((prev) => prev ?? id)}
-                  />
+                  <FilmDetailLoader queryRef={detailQueryRef} linking={linkingParam} />
                 </Suspense>
               )}
               {isPaneEditProfile &&

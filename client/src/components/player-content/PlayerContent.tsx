@@ -3,7 +3,7 @@ import { type FC, Suspense, useCallback, useEffect, useRef, useState } from "rea
 import { graphql, useFragment } from "react-relay";
 import { useNavigate } from "react-router-dom";
 
-import { DevThrowTarget } from "~/components/dev-tools/DevToolsContext.js";
+import { DevThrowTarget } from "~/components/dev-throw-target/DevThrowTarget.js";
 import { PlayerSidebarAsync } from "~/components/player-sidebar/PlayerSidebarAsync.js";
 import { VideoPlayerAsync } from "~/components/video-player/VideoPlayerAsync.js";
 import { IconArrowLeft } from "~/lib/icons.js";

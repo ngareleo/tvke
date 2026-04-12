@@ -1,10 +1,10 @@
 import { type FC, useState } from "react";
 import { graphql, useMutation } from "react-relay";
 
+import { useSettingsTabStyles } from "~/components/settings-tabs/SettingsTabs.styles.js";
 import type { LibraryTabScanMutation } from "~/relay/__generated__/LibraryTabScanMutation.graphql.js";
 
 import { strings } from "./LibraryTab.strings.js";
-import { useSettingsTabStyles } from "./SettingsTabs.styles.js";
 
 const SCAN_MUTATION = graphql`
   mutation LibraryTabScanMutation {

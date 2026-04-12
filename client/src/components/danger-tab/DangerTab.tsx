@@ -1,7 +1,8 @@
 import { type FC } from "react";
 
+import { useSettingsTabStyles } from "~/components/settings-tabs/SettingsTabs.styles.js";
+
 import { strings } from "./DangerTab.strings.js";
-import { useSettingsTabStyles } from "./SettingsTabs.styles.js";
 
 export const DangerTab: FC = () => {
   const styles = useSettingsTabStyles();

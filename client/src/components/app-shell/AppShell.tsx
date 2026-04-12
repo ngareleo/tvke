@@ -1,14 +1,23 @@
 import { mergeClasses } from "@griffel/react";
-import { createContext, type FC, type ReactNode, useContext, useEffect, useState } from "react";
+import { NovaEventingInterceptor } from "@nova/react";
+import type { EventWrapper } from "@nova/types";
+import {
+  createContext,
+  type FC,
+  type ReactNode,
+  useCallback,
+  useContext,
+  useEffect,
+  useState,
+} from "react";
 
 import { AppHeader } from "~/components/app-header/AppHeader.js";
 import { DevPanelAsync } from "~/components/dev-tools/DevPanelAsync.js";
 import { DevToolsProvider } from "~/components/dev-tools/DevToolsContext.js";
 import { LoadingBar } from "~/components/loading-bar/LoadingBar.js";
-import {
-  LoadingBarProvider,
-  RouterNavigationLoader,
-} from "~/components/loading-bar/LoadingBarContext.js";
+import { LoadingBarProvider } from "~/components/loading-bar/LoadingBarContext.js";
+import { RouterNavigationLoader } from "~/components/router-navigation-loader/RouterNavigationLoader.js";
+import { isSidebarToggledEvent } from "~/components/sidebar/Sidebar.events.js";
 import { Sidebar } from "~/components/sidebar/Sidebar.js";
 
 import { useAppShellStyles } from "./AppShell.styles.js";
@@ -72,6 +81,17 @@ export const AppShell: FC<AppShellProps> = ({ children }) => {
   const [libraries, setLibraries] = useState<LibraryInfo[]>([]);
   const styles = useAppShellStyles();
 
+  const sidebarInterceptor = useCallback(
+    async (wrapper: EventWrapper): Promise<EventWrapper | undefined> => {
+      if (isSidebarToggledEvent(wrapper)) {
+        setCollapsed((c) => !c);
+        return undefined;
+      }
+      return wrapper;
+    },
+    []
+  );
+
   return (
     <DevToolsProvider>
       <LoadingBarProvider>
@@ -82,7 +102,9 @@ export const AppShell: FC<AppShellProps> = ({ children }) => {
                 <RouterNavigationLoader />
                 <LoadingBar />
                 <AppHeader actions={actions} />
-                <Sidebar collapsed={collapsed} onToggle={() => setCollapsed((c) => !c)} />
+                <NovaEventingInterceptor interceptor={sidebarInterceptor}>
+                  <Sidebar collapsed={collapsed} />
+                </NovaEventingInterceptor>
                 <div className={styles.main}>{children}</div>
               </div>
               <DevPanelAsync />

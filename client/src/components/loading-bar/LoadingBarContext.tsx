@@ -1,15 +1,3 @@
-/**
- * LoadingBarContext — shared loading state between pages and the LoadingBar.
- *
- * Pages call `usePageLoading(loading)` to signal that data is being fetched.
- * The LoadingBar component (rendered once in AppShell) reads `isLoading` and
- * drives its animation state machine.
- *
- * Multiple pages can signal loading simultaneously (e.g. during tab switches
- * before the previous page unmounts). The context counts active loaders so the
- * bar stays visible until all loaders have resolved.
- */
-
 import {
   createContext,
   type FC,
@@ -21,7 +9,6 @@ import {
   useRef,
   useState,
 } from "react";
-import { useNavigation } from "react-router-dom";
 
 interface LoadingBarCtx {
   isLoading: boolean;
@@ -65,15 +52,3 @@ export function usePageLoading(loading: boolean): void {
 export function useLoadingBarState(): boolean {
   return useContext(Ctx).isLoading;
 }
-
-/**
- * Renders nothing but bridges React Router's navigation state into the
- * LoadingBar. Mount once inside LoadingBarProvider (AppShell does this).
- * Route transitions automatically show the loading bar without any
- * per-page usePageLoading() calls.
- */
-export const RouterNavigationLoader: FC = () => {
-  const { state } = useNavigation();
-  usePageLoading(state === "loading");
-  return null;
-};

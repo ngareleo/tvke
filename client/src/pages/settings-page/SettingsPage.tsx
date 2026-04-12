@@ -1,9 +1,9 @@
 import { mergeClasses } from "@griffel/react";
 import { type FC, useState } from "react";
 
-import { DangerTab } from "~/components/settings-tabs/DangerTab.js";
-import { LibraryTab } from "~/components/settings-tabs/LibraryTab.js";
-import { MetadataTab } from "~/components/settings-tabs/MetadataTab.js";
+import { DangerTab } from "~/components/danger-tab/DangerTab.js";
+import { LibraryTab } from "~/components/library-tab/LibraryTab.js";
+import { MetadataTab } from "~/components/metadata-tab/MetadataTab.js";
 
 import { strings } from "./SettingsPage.strings.js";
 import { useSettingsStyles } from "./SettingsPage.styles.js";

@@ -1,9 +1,11 @@
+import { useNovaEventing } from "@nova/react";
 import { type FC, useEffect } from "react";
 import { graphql, type PreloadedQuery, usePreloadedQuery } from "react-relay";
 
+import { FilmDetailPaneAsync } from "~/components/film-detail-pane/FilmDetailPaneAsync.js";
 import type { FilmDetailLoaderQuery } from "~/relay/__generated__/FilmDetailLoaderQuery.graphql.js";
 
-import { FilmDetailPaneAsync } from "./FilmDetailPaneAsync.js";
+import { createLibraryIdResolvedEvent } from "./FilmDetailLoader.events.js";
 
 // Shared preloaded-query bridge used by any page that opens a film detail pane.
 // The caller issues loadQuery(FILM_DETAIL_QUERY, { videoId }) on card-click so
@@ -23,16 +25,20 @@ export const FILM_DETAIL_QUERY = graphql`
 interface Props {
   queryRef: PreloadedQuery<FilmDetailLoaderQuery>;
   linking?: boolean;
-  /** Called once with the library ID when the query resolves — used to auto-expand the library row. */
-  onLibraryId?: (libraryId: string) => void;
 }
 
-export const FilmDetailLoader: FC<Props> = ({ queryRef, linking = false, onLibraryId }) => {
+export const FilmDetailLoader: FC<Props> = ({ queryRef, linking = false }) => {
   const data = usePreloadedQuery<FilmDetailLoaderQuery>(FILM_DETAIL_QUERY, queryRef);
+  const { bubble } = useNovaEventing();
 
   const libraryId = data.video?.library?.id;
   useEffect(() => {
-    if (libraryId && onLibraryId) onLibraryId(libraryId);
+    if (libraryId) {
+      // Use a synthetic event since this is a data event, not a user interaction.
+      // NovaEventing requires a reactEvent; we pass a minimal synthetic object.
+      const syntheticEvent = new MouseEvent("load") as unknown as React.MouseEvent;
+      void bubble({ reactEvent: syntheticEvent, event: createLibraryIdResolvedEvent(libraryId) });
+    }
     // Intentionally only run when libraryId first resolves
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [libraryId]);

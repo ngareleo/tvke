@@ -2,7 +2,7 @@ import { type FC, Suspense } from "react";
 import { graphql, useLazyLoadQuery } from "react-relay";
 import { useParams } from "react-router-dom";
 
-import { DevThrowTarget } from "~/components/dev-tools/DevToolsContext.js";
+import { DevThrowTarget } from "~/components/dev-throw-target/DevThrowTarget.js";
 import { PlayerContent } from "~/components/player-content/PlayerContent.js";
 import type { PlayerPageQuery } from "~/relay/__generated__/PlayerPageQuery.graphql.js";
 

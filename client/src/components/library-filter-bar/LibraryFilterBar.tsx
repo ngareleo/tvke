@@ -1,33 +1,30 @@
 import { mergeClasses } from "@griffel/react";
+import { useNovaEventing } from "@nova/react";
 import { type FC } from "react";
 
 import { IconBars, IconSquares } from "~/lib/icons.js";
 
+import {
+  createSearchChangedEvent,
+  createTypeFilterChangedEvent,
+  createViewChangedEvent,
+  type TypeFilter,
+} from "./LibraryFilterBar.events.js";
 import { strings } from "./LibraryFilterBar.strings.js";
 import { useLibraryFilterBarStyles } from "./LibraryFilterBar.styles.js";
 
-export type TypeFilter = "all" | "MOVIES" | "TV_SHOWS";
+export type { TypeFilter };
 
 interface Props {
   search: string;
-  onSearchChange: (value: string) => void;
   typeFilter: TypeFilter;
-  onTypeFilterChange: (value: TypeFilter) => void;
   isGrid: boolean;
-  onIsGridChange: (value: boolean) => void;
   count: number;
 }
 
-export const LibraryFilterBar: FC<Props> = ({
-  search,
-  onSearchChange,
-  typeFilter,
-  onTypeFilterChange,
-  isGrid,
-  onIsGridChange,
-  count,
-}) => {
+export const LibraryFilterBar: FC<Props> = ({ search, typeFilter, isGrid, count }) => {
   const styles = useLibraryFilterBarStyles();
+  const { bubble } = useNovaEventing();
 
   return (
     <div className={styles.filterBar}>
@@ -35,13 +32,23 @@ export const LibraryFilterBar: FC<Props> = ({
         className={styles.searchInput}
         placeholder={strings.searchPlaceholder}
         value={search}
-        onChange={(e) => onSearchChange(e.target.value)}
+        onChange={(e) => {
+          void bubble({
+            reactEvent: e as unknown as React.MouseEvent,
+            event: createSearchChangedEvent(e.target.value),
+          });
+        }}
       />
       <div className={styles.filterSep} />
       <select
         className={styles.filterSelect}
         value={typeFilter}
-        onChange={(e) => onTypeFilterChange(e.target.value as TypeFilter)}
+        onChange={(e) => {
+          void bubble({
+            reactEvent: e as unknown as React.MouseEvent,
+            event: createTypeFilterChangedEvent(e.target.value as TypeFilter),
+          });
+        }}
       >
         <option value="all">{strings.filterAll}</option>
         <option value="MOVIES">{strings.filterMovies}</option>
@@ -50,7 +57,9 @@ export const LibraryFilterBar: FC<Props> = ({
       <div className={styles.filterSep} />
       <button
         className={mergeClasses(styles.toggleBtn, isGrid && styles.toggleBtnActive)}
-        onClick={() => onIsGridChange(true)}
+        onClick={(e) => {
+          void bubble({ reactEvent: e, event: createViewChangedEvent(true) });
+        }}
         title={strings.gridViewTitle}
         type="button"
       >
@@ -58,7 +67,9 @@ export const LibraryFilterBar: FC<Props> = ({
       </button>
       <button
         className={mergeClasses(styles.toggleBtn, !isGrid && styles.toggleBtnActive)}
-        onClick={() => onIsGridChange(false)}
+        onClick={(e) => {
+          void bubble({ reactEvent: e, event: createViewChangedEvent(false) });
+        }}
         title={strings.listViewTitle}
         type="button"
       >

@@ -14,22 +14,36 @@ import {
 import { graphql, useLazyLoadQuery, useQueryLoader, useSubscription } from "react-relay";
 import { useSearchParams } from "react-router-dom";
 
-import { DevThrowTarget } from "~/components/dev-tools/DevToolsContext.js";
+import { DevThrowTarget } from "~/components/dev-throw-target/DevThrowTarget.js";
 import {
   FILM_DETAIL_QUERY,
   FilmDetailLoader,
-} from "~/components/film-detail-pane/FilmDetailLoader.js";
+} from "~/components/film-detail-loader/FilmDetailLoader.js";
 import {
   type FilmDetailPaneLinkingChangedData,
   isFilmDetailPaneClosedEvent,
   isFilmDetailPaneLinkingChangedEvent,
 } from "~/components/film-detail-pane/FilmDetailPane.events.js";
+import {
+  type ActiveLibraryChangedData,
+  isActiveLibraryChangedEvent,
+} from "~/components/library-chips/LibraryChips.events.js";
 import { LibraryChips } from "~/components/library-chips/LibraryChips.js";
+import {
+  type FilmSelectedData,
+  isFilmSelectedEvent,
+} from "~/components/library-film-list-row/LibraryFilmListRow.events.js";
 import { LibraryFilmListRow } from "~/components/library-film-list-row/LibraryFilmListRow.js";
 import {
-  LibraryFilterBar,
+  isSearchChangedEvent,
+  isTypeFilterChangedEvent,
+  isViewChangedEvent,
+  type SearchChangedData,
   type TypeFilter,
-} from "~/components/library-filter-bar/LibraryFilterBar.js";
+  type TypeFilterChangedData,
+  type ViewChangedData,
+} from "~/components/library-filter-bar/LibraryFilterBar.events.js";
+import { LibraryFilterBar } from "~/components/library-filter-bar/LibraryFilterBar.js";
 import {
   isPosterCardFilmSelectedEvent,
   type PosterCardFilmSelectedData,
@@ -141,10 +155,7 @@ const LibraryPage: FC = () => {
       if (filmId === id) {
         closePane();
       } else {
-        // Kick off the network request immediately, before the URL update causes
-        // DetailLoader to mount — avoids a wasted render cycle before fetching.
         loadDetailQuery({ videoId: id });
-        // Switching films always resets linking state
         setSearchParams({ film: id });
       }
     },
@@ -156,6 +167,31 @@ const LibraryPage: FC = () => {
       if (isPosterCardFilmSelectedEvent(wrapper)) {
         const payload = wrapper.event.data?.() as PosterCardFilmSelectedData | undefined;
         if (payload) handleSelect(payload.videoId);
+        return undefined;
+      }
+      if (isFilmSelectedEvent(wrapper)) {
+        const payload = wrapper.event.data?.() as FilmSelectedData | undefined;
+        if (payload) handleSelect(payload.videoId);
+        return undefined;
+      }
+      if (isActiveLibraryChangedEvent(wrapper)) {
+        const payload = wrapper.event.data?.() as ActiveLibraryChangedData | undefined;
+        setActiveLibraryId(payload?.libraryId ?? null);
+        return undefined;
+      }
+      if (isSearchChangedEvent(wrapper)) {
+        const payload = wrapper.event.data?.() as SearchChangedData | undefined;
+        if (payload) setSearch(payload.value);
+        return undefined;
+      }
+      if (isTypeFilterChangedEvent(wrapper)) {
+        const payload = wrapper.event.data?.() as TypeFilterChangedData | undefined;
+        if (payload) setTypeFilter(payload.value);
+        return undefined;
+      }
+      if (isViewChangedEvent(wrapper)) {
+        const payload = wrapper.event.data?.() as ViewChangedData | undefined;
+        if (payload) setIsGrid(payload.isGrid);
         return undefined;
       }
       if (isFilmDetailPaneClosedEvent(wrapper)) {
@@ -173,7 +209,7 @@ const LibraryPage: FC = () => {
       }
       return wrapper;
     },
-    [handleSelect, closePane]
+    [handleSelect, closePane, filmId, setSearchParams]
   );
 
   // Server handles search + mediaType filtering; client only picks the active library chip.
@@ -202,21 +238,14 @@ const LibraryPage: FC = () => {
         <div className={styles.root}>
           <LibraryFilterBar
             search={search}
-            onSearchChange={setSearch}
             typeFilter={typeFilter}
-            onTypeFilterChange={setTypeFilter}
             isGrid={isGrid}
-            onIsGridChange={setIsGrid}
             count={filteredVideos.length}
           />
 
           {/* Library selector chips — only shown when there are multiple libraries */}
           {data.libraries.length > 1 && (
-            <LibraryChips
-              libraries={data.libraries}
-              activeLibraryId={activeLibraryId}
-              onActiveLibraryIdChange={setActiveLibraryId}
-            />
+            <LibraryChips libraries={data.libraries} activeLibraryId={activeLibraryId} />
           )}
 
           {/* Split body */}
@@ -262,7 +291,6 @@ const LibraryPage: FC = () => {
                       key={video.id}
                       video={video}
                       isSelected={video.id === filmId}
-                      onSelect={handleSelect}
                     />
                   ))}
                 </div>

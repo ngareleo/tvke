@@ -1,13 +1,15 @@
 import { mergeClasses } from "@griffel/react";
-import { type FC, type MouseEvent } from "react";
+import { useNovaEventing } from "@nova/react";
+import { type FC } from "react";
 import { graphql, useFragment } from "react-relay";
 
+import { ProfileRow } from "~/components/profile-row/ProfileRow.js";
 import type { ProfileExplorer_library$key } from "~/relay/__generated__/ProfileExplorer_library.graphql.js";
 import { formatFileSize } from "~/utils/formatters.js";
 
+import { createProfileClearedEvent } from "./ProfileExplorer.events.js";
 import { strings } from "./ProfileExplorer.strings.js";
 import { useProfileExplorerStyles } from "./ProfileExplorer.styles.js";
-import { ProfileRow } from "./ProfileRow.js";
 
 const FRAGMENT = graphql`
   fragment ProfileExplorer_library on Library @relay(plural: true) {
@@ -29,7 +31,6 @@ interface Props {
   scanningLibraryId?: string | null;
   scanProgress?: { done: number; total: number } | null;
   activeProfileName?: string | null;
-  onClearProfile?: (e: MouseEvent) => void;
 }
 
 export const ProfileExplorer: FC<Props> = ({
@@ -41,10 +42,10 @@ export const ProfileExplorer: FC<Props> = ({
   scanningLibraryId = null,
   scanProgress = null,
   activeProfileName = null,
-  onClearProfile,
 }) => {
   const data = useFragment(FRAGMENT, libraries);
   const styles = useProfileExplorerStyles();
+  const { bubble } = useNovaEventing();
 
   const totalFiles = data.reduce((s, l) => s + l.stats.totalCount, 0);
   const totalBytes = data.reduce((s, l) => s + l.stats.totalSizeBytes, 0);
@@ -62,7 +63,9 @@ export const ProfileExplorer: FC<Props> = ({
             {activeProfileName}
             <button
               className={styles.locPillX}
-              onClick={onClearProfile}
+              onClick={(e) => {
+                void bubble({ reactEvent: e, event: createProfileClearedEvent() });
+              }}
               type="button"
               aria-label="Clear profile filter"
             >

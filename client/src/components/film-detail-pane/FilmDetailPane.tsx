@@ -1,10 +1,16 @@
 import { mergeClasses } from "@griffel/react";
-import { useNovaEventing } from "@nova/react";
-import React, { type FC } from "react";
+import { NovaEventingInterceptor, useNovaEventing } from "@nova/react";
+import type { EventWrapper } from "@nova/types";
+import React, { type FC, useCallback } from "react";
 import { graphql, useFragment, useMutation } from "react-relay";
 import { Link } from "react-router-dom";
 
-import { LinkSearch, type OmdbSuggestion } from "~/components/link-search/LinkSearch.js";
+import {
+  isLinkSearchCancelledEvent,
+  isSuggestionSelectedEvent,
+  type SuggestionSelectedData,
+} from "~/components/link-search/LinkSearch.events.js";
+import { LinkSearch } from "~/components/link-search/LinkSearch.js";
 import { IconClose, IconEdit, IconPlay } from "~/lib/icons.js";
 import type { FilmDetailPane_video$key } from "~/relay/__generated__/FilmDetailPane_video.graphql.js";
 import type { FilmDetailPaneMatchMutation } from "~/relay/__generated__/FilmDetailPaneMatchMutation.graphql.js";
@@ -105,20 +111,33 @@ export const FilmDetailPane: FC<Props> = ({ video, linking = false }) => {
   const [commitMatch] = useMutation<FilmDetailPaneMatchMutation>(MATCH_MUTATION);
   const [commitUnmatch] = useMutation<FilmDetailPaneUnmatchMutation>(UNMATCH_MUTATION);
 
-  const handleLinked = (suggestion: OmdbSuggestion, e: React.MouseEvent): void => {
-    // Optimistically close the link-search UI immediately
-    void bubble({ reactEvent: e, event: createFilmDetailPaneLinkingChangedEvent(false) });
-    // Fire the mutation to persist the match
-    commitMatch({ variables: { videoId: data.id, imdbId: suggestion.imdbId } });
-  };
-
-  const handleCancelLinking = (e: React.MouseEvent): void => {
-    void bubble({ reactEvent: e, event: createFilmDetailPaneLinkingChangedEvent(false) });
-  };
-
   const handleUnlink = (): void => {
     commitUnmatch({ variables: { videoId: data.id } });
   };
+
+  const linkSearchInterceptor = useCallback(
+    async (wrapper: EventWrapper): Promise<EventWrapper | undefined> => {
+      const syntheticEvent = new MouseEvent("click") as unknown as React.MouseEvent;
+      if (isSuggestionSelectedEvent(wrapper) && wrapper.event.data) {
+        const suggestion = wrapper.event.data() as SuggestionSelectedData;
+        void bubble({
+          reactEvent: syntheticEvent,
+          event: createFilmDetailPaneLinkingChangedEvent(false),
+        });
+        commitMatch({ variables: { videoId: data.id, imdbId: suggestion.imdbId } });
+        return undefined;
+      }
+      if (isLinkSearchCancelledEvent(wrapper)) {
+        void bubble({
+          reactEvent: syntheticEvent,
+          event: createFilmDetailPaneLinkingChangedEvent(false),
+        });
+        return undefined;
+      }
+      return wrapper;
+    },
+    [bubble, commitMatch, data.id]
+  );
 
   const meta = data.metadata;
   const vs = data.videoStream;
@@ -201,11 +220,9 @@ export const FilmDetailPane: FC<Props> = ({ video, linking = false }) => {
 
       {/* Body — switches between detail view and link search */}
       {linking ? (
-        <LinkSearch
-          filename={data.filename}
-          onLinked={handleLinked}
-          onCancel={handleCancelLinking}
-        />
+        <NovaEventingInterceptor interceptor={linkSearchInterceptor}>
+          <LinkSearch filename={data.filename} />
+        </NovaEventingInterceptor>
       ) : null}
       <div className={styles.body} style={linking ? { display: "none" } : undefined}>
         {meta ? (

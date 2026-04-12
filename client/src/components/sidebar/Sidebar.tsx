@@ -1,8 +1,15 @@
 import { mergeClasses } from "@griffel/react";
+import { NovaEventingInterceptor, useNovaEventing } from "@nova/react";
+import type { EventWrapper } from "@nova/types";
 import { type FC, Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { NavLink, useNavigate } from "react-router-dom";
 
 import { useLibraries } from "~/components/app-shell/AppShell.js";
+import {
+  isSignOutDialogCancelledEvent,
+  isSignOutDialogConfirmedEvent,
+} from "~/components/sign-out-dialog/SignOutDialog.events.js";
+import { SignOutDialogAsync } from "~/components/sign-out-dialog/SignOutDialogAsync.js";
 import {
   IconAdjustments,
   IconBookmark,
@@ -16,13 +23,12 @@ import {
   IconUser,
 } from "~/lib/icons.js";
 
+import { createSidebarToggledEvent } from "./Sidebar.events.js";
 import { strings } from "./Sidebar.strings.js";
 import { useSidebarStyles } from "./Sidebar.styles.js";
-import { SignOutDialogAsync } from "./SignOutDialogAsync.js";
 
 interface SidebarProps {
   collapsed: boolean;
-  onToggle: () => void;
 }
 
 // ─── ProfileMenu ──────────────────────────────────────────────────────────────
@@ -129,9 +135,10 @@ const ProfileMenu: FC<ProfileMenuProps> = ({ collapsed, onClose, onSignOut }) =>
 
 // ─── Sidebar ──────────────────────────────────────────────────────────────────
 
-export const Sidebar: FC<SidebarProps> = ({ collapsed, onToggle }) => {
+export const Sidebar: FC<SidebarProps> = ({ collapsed }) => {
   const navigate = useNavigate();
   const styles = useSidebarStyles();
+  const { bubble } = useNovaEventing();
   const [menuOpen, setMenuOpen] = useState(false);
   const [confirmSignOut, setConfirmSignOut] = useState(false);
   const libraries = useLibraries();
@@ -149,6 +156,22 @@ export const Sidebar: FC<SidebarProps> = ({ collapsed, onToggle }) => {
     setConfirmSignOut(false);
     navigate("/goodbye");
   };
+
+  const signOutInterceptor = useCallback(
+    async (wrapper: EventWrapper): Promise<EventWrapper | undefined> => {
+      if (isSignOutDialogCancelledEvent(wrapper)) {
+        setConfirmSignOut(false);
+        return undefined;
+      }
+      if (isSignOutDialogConfirmedEvent(wrapper)) {
+        handleSignOut();
+        return undefined;
+      }
+      return wrapper;
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    []
+  );
 
   return (
     <>
@@ -232,7 +255,9 @@ export const Sidebar: FC<SidebarProps> = ({ collapsed, onToggle }) => {
 
         <button
           className={mergeClasses(styles.collapseBtn, collapsed && styles.collapseBtnCollapsed)}
-          onClick={onToggle}
+          onClick={(e) => {
+            void bubble({ reactEvent: e, event: createSidebarToggledEvent() });
+          }}
           aria-label={strings.toggleNavAriaLabel}
           type="button"
         >
@@ -285,7 +310,9 @@ export const Sidebar: FC<SidebarProps> = ({ collapsed, onToggle }) => {
 
       {confirmSignOut && (
         <Suspense fallback={null}>
-          <SignOutDialogAsync onCancel={() => setConfirmSignOut(false)} onConfirm={handleSignOut} />
+          <NovaEventingInterceptor interceptor={signOutInterceptor}>
+            <SignOutDialogAsync />
+          </NovaEventingInterceptor>
         </Suspense>
       )}
     </>

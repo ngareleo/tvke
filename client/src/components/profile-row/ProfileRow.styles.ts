@@ -1,8 +1,7 @@
 import { makeStyles } from "@griffel/react";
 
+import { GRID_COMPACT, GRID_FULL } from "~/components/film-row/FilmRow.styles.js";
 import { tokens } from "~/styles/tokens";
-
-import { GRID_COMPACT, GRID_FULL } from "./FilmRow.styles.js";
 
 export const useProfileRowStyles = makeStyles({
   row: {

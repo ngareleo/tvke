@@ -1,20 +1,14 @@
-/**
- * LinkSearch — inline metadata search for the re-link flow.
- *
- * Shown inside FilmDetailPane when the user clicks RE-LINK.
- * Debounces input by 500ms, fires searchOmdb query via fetchQuery,
- * then presents results as clickable suggestion rows.
- *
- * The parent provides `videoId` and an `onLinked` callback; on selection
- * the parent fires the matchVideo mutation.
- */
-
+import { useNovaEventing } from "@nova/react";
 import { type FC, useEffect, useRef, useState } from "react";
 import { fetchQuery, graphql } from "relay-runtime";
 
 import { IconClose, IconSearch, IconSpinner } from "~/lib/icons.js";
 import { environment } from "~/relay/environment.js";
 
+import {
+  createLinkSearchCancelledEvent,
+  createSuggestionSelectedEvent,
+} from "./LinkSearch.events.js";
 import { strings } from "./LinkSearch.strings.js";
 import { useLinkSearchStyles } from "./LinkSearch.styles.js";
 
@@ -44,19 +38,18 @@ export interface OmdbSuggestion {
 
 interface Props {
   filename: string;
-  onLinked: (suggestion: OmdbSuggestion, e: React.MouseEvent) => void;
-  onCancel: (e: React.MouseEvent) => void;
 }
 
 type SearchStatus = "idle" | "searching" | "results";
 
-export const LinkSearch: FC<Props> = ({ filename, onLinked, onCancel }) => {
+export const LinkSearch: FC<Props> = ({ filename }) => {
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState<SearchStatus>("idle");
   const [suggestions, setSuggestions] = useState<OmdbSuggestion[]>([]);
   const [omdbConfigured, setOmdbConfigured] = useState<boolean | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const styles = useLinkSearchStyles();
+  const { bubble } = useNovaEventing();
 
   useEffect(() => {
     fetchQuery(environment, OMDB_CONFIG_QUERY, {}).subscribe({
@@ -145,7 +138,13 @@ export const LinkSearch: FC<Props> = ({ filename, onLinked, onCancel }) => {
           {status === "results" && (
             <div className={styles.suggestions}>
               {suggestions.map((s) => (
-                <button key={s.imdbId} className={styles.item} onClick={(e) => onLinked(s, e)}>
+                <button
+                  key={s.imdbId}
+                  className={styles.item}
+                  onClick={(e) => {
+                    void bubble({ reactEvent: e, event: createSuggestionSelectedEvent(s) });
+                  }}
+                >
                   <div
                     className={styles.thumb}
                     style={s.posterUrl ? { backgroundImage: `url(${s.posterUrl})` } : undefined}
@@ -162,7 +161,12 @@ export const LinkSearch: FC<Props> = ({ filename, onLinked, onCancel }) => {
       )}
 
       {/* Cancel */}
-      <button className={styles.cancelBtn} onClick={(e) => onCancel(e)}>
+      <button
+        className={styles.cancelBtn}
+        onClick={(e) => {
+          void bubble({ reactEvent: e, event: createLinkSearchCancelledEvent() });
+        }}
+      >
         {strings.cancel}
       </button>
     </div>

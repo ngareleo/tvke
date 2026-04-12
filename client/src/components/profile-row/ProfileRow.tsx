@@ -3,11 +3,11 @@ import { useNovaEventing } from "@nova/react";
 import React, { type FC, type MouseEvent, useState } from "react";
 import { graphql, useFragment } from "react-relay";
 
+import { FilmRow } from "~/components/film-row/FilmRow.js";
 import { IconChevronDown, IconEdit, IconRefresh } from "~/lib/icons.js";
 import type { ProfileRow_library$key } from "~/relay/__generated__/ProfileRow_library.graphql.js";
 import { formatFileSize } from "~/utils/formatters.js";
 
-import { FilmRow } from "./FilmRow.js";
 import {
   createProfileRowEditRequestedEvent,
   createProfileRowScanRequestedEvent,

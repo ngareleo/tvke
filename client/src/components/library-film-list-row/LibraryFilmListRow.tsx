@@ -1,4 +1,5 @@
 import { mergeClasses } from "@griffel/react";
+import { useNovaEventing } from "@nova/react";
 import { type FC } from "react";
 import { graphql, useFragment } from "react-relay";
 import { Link } from "react-router-dom";
@@ -7,6 +8,7 @@ import { IconPlay } from "~/lib/icons.js";
 import type { LibraryFilmListRow_video$key } from "~/relay/__generated__/LibraryFilmListRow_video.graphql.js";
 import { formatDuration, formatFileSize } from "~/utils/formatters.js";
 
+import { createFilmSelectedEvent } from "./LibraryFilmListRow.events.js";
 import { strings } from "./LibraryFilmListRow.strings.js";
 import { useLibraryFilmListRowStyles } from "./LibraryFilmListRow.styles.js";
 
@@ -32,12 +34,12 @@ const FRAGMENT = graphql`
 interface Props {
   video: LibraryFilmListRow_video$key;
   isSelected: boolean;
-  onSelect: (id: string) => void;
 }
 
-export const LibraryFilmListRow: FC<Props> = ({ video, isSelected, onSelect }) => {
+export const LibraryFilmListRow: FC<Props> = ({ video, isSelected }) => {
   const data = useFragment(FRAGMENT, video);
   const styles = useLibraryFilmListRowStyles();
+  const { bubble } = useNovaEventing();
 
   const is4k = (data.videoStream?.height ?? 0) >= 2160;
   const thumbStyle = data.metadata?.posterUrl
@@ -47,14 +49,21 @@ export const LibraryFilmListRow: FC<Props> = ({ video, isSelected, onSelect }) =
   const genre = data.metadata?.genre ?? null;
   const rating = data.metadata?.rating ?? null;
 
+  const handleSelect = (e: React.MouseEvent | React.KeyboardEvent): void => {
+    void bubble({
+      reactEvent: e as React.MouseEvent,
+      event: createFilmSelectedEvent(data.id),
+    });
+  };
+
   return (
     <div
       className={mergeClasses(styles.listRow, isSelected && styles.listRowSelected)}
-      onClick={() => onSelect(data.id)}
+      onClick={handleSelect}
       role="button"
       tabIndex={0}
       onKeyDown={(e) => {
-        if (e.key === "Enter" || e.key === " ") onSelect(data.id);
+        if (e.key === "Enter" || e.key === " ") handleSelect(e);
       }}
     >
       <div className={styles.listThumb} style={thumbStyle} />

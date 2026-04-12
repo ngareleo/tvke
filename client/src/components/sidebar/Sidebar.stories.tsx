@@ -1,7 +1,12 @@
-import React, { useState } from "react";
+import { NovaEventingInterceptor } from "@nova/react";
+import type { EventWrapper } from "@nova/types";
+import React, { useCallback, useState } from "react";
 import { expect, within } from "storybook/test";
 import type { Meta, StoryObj } from "storybook-react-rsbuild";
 
+import { withNovaEventing } from "~/storybook/withNovaEventing.js";
+
+import { isSidebarToggledEvent } from "./Sidebar.events.js";
 import { Sidebar } from "./Sidebar.js";
 
 /**
@@ -16,9 +21,21 @@ interface WrapperProps {
 
 const SidebarWrapper = ({ initialCollapsed = false }: WrapperProps): JSX.Element => {
   const [collapsed, setCollapsed] = useState(initialCollapsed);
+  const interceptor = useCallback(
+    async (wrapper: EventWrapper): Promise<EventWrapper | undefined> => {
+      if (isSidebarToggledEvent(wrapper)) {
+        setCollapsed((c) => !c);
+        return undefined;
+      }
+      return wrapper;
+    },
+    []
+  );
   return (
     <div style={{ display: "flex", height: "100vh", background: "#080808" }}>
-      <Sidebar collapsed={collapsed} onToggle={() => setCollapsed((c) => !c)} />
+      <NovaEventingInterceptor interceptor={interceptor}>
+        <Sidebar collapsed={collapsed} />
+      </NovaEventingInterceptor>
     </div>
   );
 };
@@ -26,6 +43,7 @@ const SidebarWrapper = ({ initialCollapsed = false }: WrapperProps): JSX.Element
 const meta: Meta<WrapperProps> = {
   title: "Components/Sidebar",
   component: SidebarWrapper,
+  decorators: [withNovaEventing],
   parameters: {
     layout: "fullscreen",
     router: { initialEntries: ["/"] },
