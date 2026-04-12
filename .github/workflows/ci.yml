@@ -74,10 +74,14 @@ jobs:
       - name: Build
         run: bun run build
 
+      - name: Prepare Pages artifact
+        run: mkdir -p /tmp/pages && cp client/dist/stats.html /tmp/pages/index.html
+        working-directory: ${{ github.workspace }}
+
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: client/dist/
+          path: /tmp/pages/
 
   deploy-pages:
     name: Deploy bundle report to Pages
