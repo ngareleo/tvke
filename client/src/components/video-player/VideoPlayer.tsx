@@ -8,9 +8,11 @@ import {
   isFullscreenRequestedEvent,
   isPlayRequestedEvent,
   isResolutionChangedEvent,
+  isSeekRequestedEvent,
   isSkipRequestedEvent,
   isVolumeChangedEvent,
   type ResolutionChangedData,
+  type SeekRequestedData,
   type SkipRequestedData,
   type VolumeChangedData,
 } from "~/components/control-bar/ControlBar.events.js";
@@ -74,7 +76,7 @@ export const VideoPlayer: FC<Props> = ({ video }) => {
   const [isEnded, setIsEnded] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
 
-  const { status, error, startPlayback } = useVideoPlayback(
+  const { status, error, startPlayback, seekTo } = useVideoPlayback(
     videoRef,
     data.id,
     data.durationSeconds,
@@ -162,6 +164,9 @@ export const VideoPlayer: FC<Props> = ({ video }) => {
       } else if (isResolutionChangedEvent(wrapper) && wrapper.event.data) {
         const { resolution: res } = wrapper.event.data() as ResolutionChangedData;
         handleResolutionChange(res);
+      } else if (isSeekRequestedEvent(wrapper) && wrapper.event.data) {
+        const { targetSeconds } = wrapper.event.data() as SeekRequestedData;
+        seekTo(targetSeconds);
       } else if (isSkipRequestedEvent(wrapper) && wrapper.event.data) {
         const { seconds } = wrapper.event.data() as SkipRequestedData;
         const el = videoRef.current;
@@ -179,7 +184,7 @@ export const VideoPlayer: FC<Props> = ({ video }) => {
       }
       return wrapper;
     },
-    [handlePlay, handleResolutionChange]
+    [handlePlay, handleResolutionChange, seekTo]
   );
 
   const progressLabel =
@@ -202,22 +207,29 @@ export const VideoPlayer: FC<Props> = ({ video }) => {
         if (hideTimerRef.current !== null) clearTimeout(hideTimerRef.current);
         setControlsVisible(false);
       }}
+      onClick={(e) => {
+        // Handle click-to-play/pause on the player area. The video element has
+        // pointer-events:none so clicks fall through to this container. Ignore
+        // clicks that originated on the ControlBar or other overlays.
+        const target = e.target as HTMLElement;
+        const isControlBarClick =
+          target.closest('[class*="track"]') !== null ||
+          target.closest('[class*="row"]') !== null ||
+          target.tagName === "BUTTON" ||
+          target.tagName === "A";
+        if (isControlBarClick) return;
+        if (status === "idle") {
+          handlePlay();
+          return;
+        }
+        if (isEnded) return;
+        const el = videoRef.current;
+        if (!el) return;
+        if (el.paused) void el.play();
+        else el.pause();
+      }}
     >
-      <video
-        ref={videoRef}
-        className={styles.video}
-        controls={false}
-        onClick={() => {
-          if (status === "idle") {
-            handlePlay();
-            return;
-          }
-          const el = videoRef.current;
-          if (!el) return;
-          if (el.paused) void el.play();
-          else el.pause();
-        }}
-      />
+      <video ref={videoRef} className={styles.video} controls={false} />
 
       {/* Pre-play overlay — shown in idle state */}
       {status === "idle" && !isEnded && (

@@ -20,16 +20,20 @@ export class BufferManager {
   private forwardResume: number;
   private streamPaused = false;
   private afterAppendCb: (() => void) | null = null;
+  private seekAbort = false;
+  private videoDurationS: number;
 
   constructor(
     videoEl: HTMLVideoElement,
     onPause: BufferPauseCallback,
     onResume: BufferResumeCallback,
+    videoDurationS = 0,
     forwardTargetSeconds = DEFAULT_FORWARD_BUFFER_TARGET_S
   ) {
     this.videoEl = videoEl;
     this.onPause = onPause;
     this.onResume = onResume;
+    this.videoDurationS = videoDurationS;
     this.forwardTarget = forwardTargetSeconds;
     this.forwardResume = forwardTargetSeconds * 0.75;
   }
@@ -54,6 +58,14 @@ export class BufferManager {
           try {
             this.sourceBuffer = ms.addSourceBuffer(mimeType);
             this.sourceBuffer.mode = "sequence";
+            // Pre-set duration to the full video length so the browser allows
+            // seeking anywhere in the video immediately, even before that range
+            // is buffered. Without this, videoEl.currentTime is clamped to
+            // ms.duration (which starts near 0) and seek targets beyond the
+            // currently-buffered end are silently truncated.
+            if (this.videoDurationS > 0) {
+              ms.duration = this.videoDurationS;
+            }
             // Drive back-pressure checks as the video plays forward, so a paused
             // stream gets resumed even when no new segments are being appended.
             this.videoEl.addEventListener("timeupdate", this.handleTimeUpdate);
@@ -100,6 +112,7 @@ export class BufferManager {
   private async drainQueue(): Promise<void> {
     this.isAppending = true;
     while (this.appendQueue.length > 0) {
+      if (this.seekAbort) break;
       const item = this.appendQueue.shift();
       if (item === undefined) break;
       const { data, resolve } = item;
@@ -109,24 +122,55 @@ export class BufferManager {
         break;
       }
       await this.waitForUpdateEnd();
-      // Retry loop: on QuotaExceededError, evict the back-buffer and try again.
-      // Without a retry the segment is silently dropped and every subsequent
-      // append also fails because the SourceBuffer stays full.
+      if (this.seekAbort) {
+        resolve();
+        break;
+      }
+      // Retry loop: on QuotaExceededError, evict progressively more buffer space
+      // and try again. Without a retry the segment is silently dropped and every
+      // subsequent append also fails because the SourceBuffer stays full.
+      //
+      // Eviction strategy per attempt:
+      //   1 — normal back-buffer eviction (currentTime - BACK_BUFFER_KEEP_S)
+      //   2 — aggressive: remove everything behind currentTime (no keep window)
+      //   3 — nuclear: remove all buffered content
       let appended = false;
-      for (let attempt = 0; attempt <= 3 && !appended; attempt++) {
+      for (let attempt = 0; attempt <= 3 && !appended && !this.seekAbort; attempt++) {
         if (attempt > 0) {
-          // Buffer is full — evict everything behind currentTime before retrying.
           StreamingLogger.push({
             category: "BUFFER",
-            message: `QuotaExceeded (attempt ${attempt}) — evicting back-buffer and retrying`,
+            message: `QuotaExceeded (attempt ${attempt}) — evicting and retrying`,
             isError: true,
           });
-          await this.evictBackBuffer();
-          await this.waitForUpdateEnd();
+          if (attempt === 1) {
+            await this.evictBackBuffer();
+          } else if (attempt === 2) {
+            // Remove everything strictly behind currentTime.
+            if (sb.buffered.length > 0) {
+              const bufStart = sb.buffered.start(0);
+              const evictTo = this.videoEl.currentTime;
+              if (bufStart < evictTo) {
+                await this.waitForUpdateEnd();
+                if (!this.seekAbort) {
+                  sb.remove(bufStart, evictTo);
+                  await this.waitForUpdateEnd();
+                }
+              }
+            }
+          } else {
+            // Nuclear: remove everything — drastic but better than infinite failure.
+            await this.waitForUpdateEnd();
+            if (!this.seekAbort) {
+              sb.remove(0, Infinity);
+              await this.waitForUpdateEnd();
+            }
+          }
+          if (this.seekAbort) break;
         }
         try {
           sb.appendBuffer(data);
           await this.waitForUpdateEnd();
+          if (this.seekAbort) break;
           appended = true;
           const bufferedEnd = sb.buffered.length > 0 ? sb.buffered.end(sb.buffered.length - 1) : 0;
           StreamingLogger.push({
@@ -148,13 +192,14 @@ export class BufferManager {
         }
       }
       resolve();
+      if (this.seekAbort) break;
       await this.evictBackBuffer();
       this.checkForwardBuffer();
       this.afterAppendCb?.();
     }
     this.isAppending = false;
 
-    if (this.streamDone) {
+    if (this.streamDone && !this.seekAbort) {
       this.endStream();
     }
   }
@@ -236,6 +281,9 @@ export class BufferManager {
           try {
             this.sourceBuffer = ms.addSourceBuffer(mimeType);
             this.sourceBuffer.mode = "sequence";
+            if (this.videoDurationS > 0) {
+              ms.duration = this.videoDurationS;
+            }
             StreamingLogger.push({
               category: "BUFFER",
               message: "Background MSE open — sourceBuffer added (mode=sequence)",
@@ -277,20 +325,35 @@ export class BufferManager {
   async seek(timeSeconds: number): Promise<void> {
     const sb = this.sourceBuffer;
     if (!sb) return;
-    await this.waitForUpdateEnd();
-    sb.remove(0, Infinity);
-    await this.waitForUpdateEnd();
-    // Resolve pending promises so callers don't hang after a seek flush.
+    // Signal drainQueue to stop at its next checkpoint and drain the queue
+    // immediately so drainQueue exits its while loop rather than picking up
+    // more items while we wait for the SourceBuffer to finish its current op.
+    this.seekAbort = true;
     for (const item of this.appendQueue) item.resolve();
     this.appendQueue = [];
     this.afterAppendCb = null;
+    // Wait for any in-progress appendBuffer/remove to complete before calling
+    // sb.remove() — calling it while updating=true throws InvalidStateError.
+    await this.waitForUpdateEnd();
+    this.seekAbort = false;
     this.isAppending = false;
     this.streamDone = false;
     this.streamPaused = false;
+    sb.remove(0, Infinity);
+    await this.waitForUpdateEnd();
+    // In sequence mode the UA auto-manages timestampOffset, advancing it to
+    // maintain continuity across appends. After flushing, the offset still
+    // reflects the end of the previous chunk, so new segments (whose ffmpeg
+    // timestamps restart near 0 due to -ss input seek) would be placed at the
+    // wrong position in the buffer's timeline. Reset it to the seek position so
+    // segments from the incoming chunk land where videoEl.currentTime expects.
+    if (sb.mode === "sequence") {
+      sb.timestampOffset = timeSeconds;
+    }
     this.videoEl.currentTime = timeSeconds;
     StreamingLogger.push({
       category: "BUFFER",
-      message: `Seek flush → ${timeSeconds.toFixed(2)}s`,
+      message: `Seek flush → ${timeSeconds.toFixed(2)}s (timestampOffset reset to ${timeSeconds.toFixed(2)}s)`,
       isError: false,
     });
   }
@@ -319,6 +382,7 @@ export class BufferManager {
     this.isAppending = false;
     this.streamDone = false;
     this.streamPaused = false;
+    this.seekAbort = false;
     StreamingLogger.push({
       category: "BUFFER",
       message: "Teardown — ObjectURL revoked",

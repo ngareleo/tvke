@@ -7,6 +7,7 @@ export const CONTROL_BAR_ORIGINATOR = "ControlBar";
 export const ControlBarEventTypes = {
   PLAY_REQUESTED: "PlayRequested",
   RESOLUTION_CHANGED: "ResolutionChanged",
+  SEEK_REQUESTED: "SeekRequested",
   SKIP_REQUESTED: "SkipRequested",
   VOLUME_CHANGED: "VolumeChanged",
   FULLSCREEN_REQUESTED: "FullscreenRequested",
@@ -16,6 +17,11 @@ export type ControlBarEventType = (typeof ControlBarEventTypes)[keyof typeof Con
 
 export interface ResolutionChangedData {
   resolution: Resolution;
+}
+
+export interface SeekRequestedData {
+  /** Absolute target position in seconds. */
+  targetSeconds: number;
 }
 
 export interface SkipRequestedData {
@@ -45,6 +51,15 @@ export function createResolutionChangedEvent(
     originator: CONTROL_BAR_ORIGINATOR,
     type: ControlBarEventTypes.RESOLUTION_CHANGED,
     data: () => ({ resolution }),
+  };
+}
+
+/** Returns a seek-requested Nova event for use with bubble(). */
+export function createSeekRequestedEvent(targetSeconds: number): NovaEvent<SeekRequestedData> {
+  return {
+    originator: CONTROL_BAR_ORIGINATOR,
+    type: ControlBarEventTypes.SEEK_REQUESTED,
+    data: () => ({ targetSeconds }),
   };
 }
 
@@ -89,6 +104,11 @@ export function isResolutionChangedEvent(wrapper: EventWrapper): boolean {
   return (
     isControlBarEvent(wrapper) && wrapper.event.type === ControlBarEventTypes.RESOLUTION_CHANGED
   );
+}
+
+/** Returns true if the wrapper is a ControlBar seek-requested event. */
+export function isSeekRequestedEvent(wrapper: EventWrapper): boolean {
+  return isControlBarEvent(wrapper) && wrapper.event.type === ControlBarEventTypes.SEEK_REQUESTED;
 }
 
 /** Returns true if the wrapper is a ControlBar skip-requested event. */

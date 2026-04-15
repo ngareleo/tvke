@@ -54,6 +54,9 @@ export interface UseChunkedPlaybackResult {
   status: PlaybackStatus;
   error: string | null;
   startPlayback: (res: Resolution) => void;
+  /** Seek to an absolute position. Stores the intended target before triggering
+   * the seeking DOM event so handleSeeking reads the unclamped value. */
+  seekTo: (targetSeconds: number) => void;
 }
 
 // ─── Hook ─────────────────────────────────────────────────────────────────────
@@ -81,7 +84,15 @@ export function useChunkedPlayback(
   const prefetchFiredRef = useRef(false);
   const hasStartedPlaybackRef = useRef(false);
   const isHandlingSeekRef = useRef(false);
+  // Tracks the chunk-boundary snap target of the most-recent seek so that the
+  // asynchronously-queued "seeking" event fired by BufferManager.seek()'s own
+  // videoEl.currentTime assignment doesn't re-trigger a full seek/flush cycle.
+  // Cleared when the video fires "playing" (seek resolved, playback resumed).
+  const seekTargetRef = useRef<number | null>(null);
   const rafRef = useRef<number | null>(null);
+  // Set by seekTo() before updating currentTime so handleSeeking can read the
+  // unclamped target instead of whatever the browser clamped currentTime to.
+  const pendingSeekTargetRef = useRef<number | null>(null);
   const onJobCreatedRef = useRef(onJobCreated);
   onJobCreatedRef.current = onJobCreated;
 
@@ -106,6 +117,7 @@ export function useChunkedPlayback(
     nextJobIdRef.current = null;
     prefetchFiredRef.current = false;
     hasStartedPlaybackRef.current = false;
+    seekTargetRef.current = null;
 
     onJobCreatedRef.current?.(null);
     StreamingLogger.push({ category: "PLAYBACK", message: "Teardown", isError: false });
@@ -402,6 +414,8 @@ export function useChunkedPlayback(
       });
     };
     const onPlaying = (): void => {
+      // Seek has resolved — clear the dedup guard so future seeks can proceed.
+      seekTargetRef.current = null;
       StreamingLogger.push({
         category: "PLAYBACK",
         message: "Buffering resolved — playing",
@@ -432,8 +446,24 @@ export function useChunkedPlayback(
       if (!bufferRef.current) return;
 
       isHandlingSeekRef.current = true;
-      const seekTime = videoEl.currentTime;
+      // Read the intended target from seekTo() if available; fall back to
+      // videoEl.currentTime which the browser may have clamped to the buffered
+      // range (e.g. seeking beyond the end of buffered data).
+      const seekTime = pendingSeekTargetRef.current ?? videoEl.currentTime;
+      pendingSeekTargetRef.current = null;
       const snapTime = Math.floor(seekTime / CHUNK_DURATION_S) * CHUNK_DURATION_S;
+
+      // Guard against re-entrancy: BufferManager.seek() sets videoEl.currentTime
+      // to reposition the playhead, which queues a second "seeking" task. By the
+      // time that task fires, .then() has already reset isHandlingSeekRef (a
+      // microtask), so the second event would re-enter and cancel the streaming
+      // that just started. seekTargetRef persists across the .then() reset and
+      // blocks that spurious re-entry. Cleared when "playing" fires.
+      if (seekTargetRef.current === snapTime) {
+        isHandlingSeekRef.current = false;
+        return;
+      }
+      seekTargetRef.current = snapTime;
 
       StreamingLogger.push({
         category: "PLAYBACK",
@@ -452,6 +482,10 @@ export function useChunkedPlayback(
         const buf = bufferRef.current;
         if (!buf) return;
         startChunkSeries(resolutionRef.current, snapTime, buf, false);
+        // The browser may pause during an unbuffered seek. Resume playback now
+        // that the buffer is set up; the browser will start rendering as soon
+        // as segments from the new chunk arrive.
+        videoEl.play().catch(() => {});
       });
     };
 
@@ -480,7 +514,8 @@ export function useChunkedPlayback(
       const bgBuffer = new BufferManager(
         videoEl,
         () => bgStreamRef.current?.pause(),
-        () => bgStreamRef.current?.resume()
+        () => bgStreamRef.current?.resume(),
+        videoDurationS
       );
       bgBufferRef.current = bgBuffer;
 
@@ -603,7 +638,8 @@ export function useChunkedPlayback(
       const buffer = new BufferManager(
         videoEl,
         () => activeStreamRef.current?.pause(),
-        () => activeStreamRef.current?.resume()
+        () => activeStreamRef.current?.resume(),
+        videoDurationS
       );
       bufferRef.current = buffer;
 
@@ -640,5 +676,19 @@ export function useChunkedPlayback(
 
   useEffect(() => () => teardown(), [teardown]);
 
-  return { status, error, startPlayback };
+  // ── seekTo ─────────────────────────────────────────────────────────────────
+
+  const seekTo = useCallback(
+    (targetSeconds: number): void => {
+      const videoEl = videoRef.current;
+      if (!videoEl) return;
+      // Store the intended target BEFORE setting currentTime so that the
+      // synchronous "seeking" DOM event fires while pendingSeekTargetRef is set.
+      pendingSeekTargetRef.current = targetSeconds;
+      videoEl.currentTime = targetSeconds;
+    },
+    [videoRef]
+  );
+
+  return { status, error, startPlayback, seekTo };
 }

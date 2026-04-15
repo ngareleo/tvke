@@ -22,6 +22,7 @@ import {
   createFullscreenRequestedEvent,
   createPlayRequestedEvent,
   createResolutionChangedEvent,
+  createSeekRequestedEvent,
   createSkipRequestedEvent,
   createVolumeChangedEvent,
 } from "./ControlBar.events.js";
@@ -80,11 +81,15 @@ export const ControlBar: FC<Props> = ({
   };
 
   const handleSeek = (e: MouseEvent<HTMLDivElement>): void => {
-    const el = videoRef.current;
-    if (!el || !data.durationSeconds) return;
+    if (!data.durationSeconds) return;
     const rect = e.currentTarget.getBoundingClientRect();
     const fraction = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
-    el.currentTime = fraction * data.durationSeconds;
+    const targetSeconds = fraction * data.durationSeconds;
+    // Fire a Nova event rather than setting currentTime directly. The browser
+    // clamps currentTime to the buffered range, so VideoPlayer must set it via
+    // seekTo() — which stores the intended target before triggering the seeking
+    // event, letting useChunkedPlayback use the unclamped position.
+    void bubble({ reactEvent: e, event: createSeekRequestedEvent(targetSeconds) });
   };
 
   const handleSkip =
