@@ -2,7 +2,6 @@ import { NovaEventingInterceptor } from "@nova/react";
 import type { EventWrapper } from "@nova/types";
 import React, { type FC, useCallback, useEffect, useRef, useState } from "react";
 import { graphql, useFragment } from "react-relay";
-import { Link } from "react-router-dom";
 
 import {
   isFullscreenRequestedEvent,
@@ -17,6 +16,7 @@ import {
   type VolumeChangedData,
 } from "~/components/control-bar/ControlBar.events.js";
 import { ControlBar } from "~/components/control-bar/ControlBar.js";
+import { PlayerEndScreen } from "~/components/player-end-screen/PlayerEndScreen.js";
 import type { JobProgress } from "~/hooks/useJobSubscription.js";
 import { useJobSubscription } from "~/hooks/useJobSubscription.js";
 import { useVideoPlayback } from "~/hooks/useVideoPlayback.js";
@@ -25,7 +25,6 @@ import type { VideoPlayer_video$key } from "~/relay/__generated__/VideoPlayer_vi
 import type { Resolution } from "~/types.js";
 import { maxResolutionForHeight } from "~/utils/formatters.js";
 
-import { strings } from "./VideoPlayer.strings.js";
 import { useVideoPlayerStyles } from "./VideoPlayer.styles.js";
 
 const VIDEO_FRAGMENT = graphql`
@@ -36,21 +35,8 @@ const VIDEO_FRAGMENT = graphql`
       height
       width
     }
-    library {
-      videos(first: 6) {
-        edges {
-          node {
-            id
-            title
-            metadata {
-              year
-              posterUrl
-            }
-          }
-        }
-      }
-    }
     ...ControlBar_video
+    ...PlayerEndScreen_video
   }
 `;
 
@@ -192,11 +178,6 @@ export const VideoPlayer: FC<Props> = ({ video }) => {
       ? `Transcoding ${jobProgress.completedSegments}/${jobProgress.totalSegments}`
       : null;
 
-  const suggestions = (data.library?.videos.edges ?? [])
-    .map((e) => e.node)
-    .filter((v) => v.id !== data.id)
-    .slice(0, 4);
-
   return (
     <div
       ref={containerRef}
@@ -254,40 +235,7 @@ export const VideoPlayer: FC<Props> = ({ video }) => {
       {error && <div className={styles.errorOverlay}>{error}</div>}
 
       {/* End screen — shown when playback reaches the end */}
-      {isEnded && (
-        <div className={styles.endOverlay}>
-          {suggestions.length > 0 && (
-            <>
-              <div className={styles.endLabel}>{strings.upNext}</div>
-              <div className={styles.endCards}>
-                {suggestions.map((v) => {
-                  const thumbStyle = v.metadata?.posterUrl
-                    ? { backgroundImage: `url(${v.metadata.posterUrl})` }
-                    : undefined;
-                  return (
-                    <Link
-                      key={v.id}
-                      to={`/player/${encodeURIComponent(v.id)}`}
-                      className={styles.endCard}
-                    >
-                      <div className={styles.endCardPoster} style={thumbStyle} />
-                      <div className={styles.endCardTitle}>{v.title}</div>
-                      {v.metadata?.year && (
-                        <div className={styles.endCardYear}>{v.metadata.year}</div>
-                      )}
-                    </Link>
-                  );
-                })}
-              </div>
-            </>
-          )}
-          <div className={styles.endActions}>
-            <button className={styles.replayBtn} onClick={handlePlay} type="button">
-              {strings.replay}
-            </button>
-          </div>
-        </div>
-      )}
+      {isEnded && <PlayerEndScreen video={data} />}
 
       <NovaEventingInterceptor interceptor={interceptor}>
         <ControlBar

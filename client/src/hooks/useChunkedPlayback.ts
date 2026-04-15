@@ -89,7 +89,11 @@ export function useChunkedPlayback(
   // videoEl.currentTime assignment doesn't re-trigger a full seek/flush cycle.
   // Cleared when the video fires "playing" (seek resolved, playback resumed).
   const seekTargetRef = useRef<number | null>(null);
-  const rafRef = useRef<number | null>(null);
+  // Separate RAF handles for each independent loop so teardown() can cancel
+  // all of them without one loop's ID overwriting another's.
+  const startupRafRef = useRef<number | null>(null); // startup buffer readiness check
+  const prefetchRafRef = useRef<number | null>(null); // prefetch chunk scheduler
+  const bgReadyRafRef = useRef<number | null>(null); // background buffer readiness check
   // Set by seekTo() before updating currentTime so handleSeeking can read the
   // unclamped target instead of whatever the browser clamped currentTime to.
   const pendingSeekTargetRef = useRef<number | null>(null);
@@ -99,9 +103,17 @@ export function useChunkedPlayback(
   // ── Teardown ───────────────────────────────────────────────────────────────
 
   const teardown = useCallback(() => {
-    if (rafRef.current !== null) {
-      cancelAnimationFrame(rafRef.current);
-      rafRef.current = null;
+    if (startupRafRef.current !== null) {
+      cancelAnimationFrame(startupRafRef.current);
+      startupRafRef.current = null;
+    }
+    if (prefetchRafRef.current !== null) {
+      cancelAnimationFrame(prefetchRafRef.current);
+      prefetchRafRef.current = null;
+    }
+    if (bgReadyRafRef.current !== null) {
+      cancelAnimationFrame(bgReadyRafRef.current);
+      bgReadyRafRef.current = null;
     }
     activeStreamRef.current?.cancel();
     bufferRef.current?.teardown();
@@ -203,10 +215,10 @@ export function useChunkedPlayback(
                   if (hasStartedPlaybackRef.current) return;
                   tryStart();
                   if (!hasStartedPlaybackRef.current) {
-                    rafRef.current = requestAnimationFrame(checkReady);
+                    startupRafRef.current = requestAnimationFrame(checkReady);
                   }
                 };
-                rafRef.current = requestAnimationFrame(checkReady);
+                startupRafRef.current = requestAnimationFrame(checkReady);
               }
             }
           } catch (err) {
@@ -385,9 +397,9 @@ export function useChunkedPlayback(
           }
         }
 
-        rafRef.current = requestAnimationFrame(tick);
+        prefetchRafRef.current = requestAnimationFrame(tick);
       };
-      rafRef.current = requestAnimationFrame(tick);
+      prefetchRafRef.current = requestAnimationFrame(tick);
       void buffer; // referenced by the closure indirectly via bufferRef
     },
     [videoRef, videoDurationS, requestChunk]
@@ -538,13 +550,18 @@ export function useChunkedPlayback(
             bufferRef.current?.teardown(false);
             activeStreamRef.current = null;
 
-            // Promote background
-            if (rafRef.current !== null) cancelAnimationFrame(rafRef.current);
+            // Promote background — cancel the prefetch loop for the old foreground
+            // chunk (a new one starts via startPrefetchLoop below) and the bg
+            // readiness check (swap has succeeded).
+            if (prefetchRafRef.current !== null) cancelAnimationFrame(prefetchRafRef.current);
+            if (bgReadyRafRef.current !== null) cancelAnimationFrame(bgReadyRafRef.current);
+            bgReadyRafRef.current = null;
             videoEl.src = objectUrl;
             videoEl.currentTime = swapTime;
             videoEl.play().catch(() => {});
 
             bufferRef.current = bgBuffer;
+            bgBuffer.promoteToForeground(); // clear offscreenVideoEl; use real currentTime
             bgBufferRef.current = null;
             activeStreamRef.current = bgStreamRef.current;
             bgStreamRef.current = null;
@@ -561,7 +578,7 @@ export function useChunkedPlayback(
             if (bgBuffer.bufferedEnd >= startupTarget) {
               onReady();
             } else {
-              requestAnimationFrame(checkReady);
+              bgReadyRafRef.current = requestAnimationFrame(checkReady);
             }
           };
 

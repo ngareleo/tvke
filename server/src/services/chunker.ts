@@ -151,6 +151,11 @@ export async function startTranscodeJob(
     // segment dir was wiped (or was left truncated by old restore logic) must be
     // treated as an error so startTranscodeJob re-encodes cleanly.
     const dbJob = getJobById(id);
+    // shouldWipeDir is set when we need to delete the segment directory before
+    // re-encoding — either because the job previously errored (stale partial
+    // data) or because a "complete" job is missing its init.mp4 on disk.
+    let shouldWipeDir = false;
+
     if (dbJob && dbJob.status === "complete") {
       const initPath = join(dbJob.segment_dir, "init.mp4");
       const initExists = await access(initPath)
@@ -178,22 +183,23 @@ export async function startTranscodeJob(
           return restored;
         }
       } else {
-        // Segment dir was wiped or never fully written — force re-encode
+        // Segment dir was wiped or truncated — force re-encode and wipe any
+        // partial files so the stream handler doesn't serve stale data.
         console.warn(
           `[chunker] Completed job ${id.slice(0, 8)} missing init.mp4 on disk — treating as error`
         );
         updateJobStatus(id, "error", { error: "Segment dir missing — will re-encode" });
+        shouldWipeDir = true;
       }
     }
 
     const segmentDir = resolve(config.segmentDir, id);
 
-    // If the previous encode was killed/errored, its segment dir may contain stale
-    // partial data (a tiny init.mp4 + incomplete segment). Wipe it so the stream
-    // handler doesn't serve those stale files to the client.
-    if (dbJob && dbJob.status === "error") {
+    // Wipe stale segment directories from prior errored (or missing-init) encodes
+    // so the stream handler never serves truncated or partial content.
+    if ((dbJob && dbJob.status === "error") || shouldWipeDir) {
       await rm(segmentDir, { recursive: true, force: true });
-      console.log(`[chunker] Cleared stale segment dir for errored job ${id.slice(0, 8)}`);
+      console.log(`[chunker] Cleared stale segment dir for job ${id.slice(0, 8)}`);
     }
 
     await mkdir(segmentDir, { recursive: true });
@@ -221,11 +227,10 @@ export async function startTranscodeJob(
     insertJob(job);
     setJob(job);
     // Job is now in jobStore — any concurrent duplicate can find it via getJob().
-    // Remove from inflight before the fire-and-forget so the slot isn't held longer
-    // than necessary (activeCommands.set will track it once ffprobe finishes).
-    inflightJobIds.delete(id);
-
-    // Probe the file then start transcoding asynchronously (fire-and-forget)
+    // Keep id in inflightJobIds until runFfmpeg calls activeCommands.set() (after
+    // ffprobe). Deleting it here would open a window where neither activeCommands
+    // nor inflightJobIds counts this job, letting the MAX_CONCURRENT_JOBS cap be
+    // bypassed by a concurrent call during the ffprobe window.
     void runFfmpeg(job, video.path, resolution, segmentDir, startTimeSeconds, endTimeSeconds);
 
     return job;
@@ -276,6 +281,9 @@ async function runFfmpeg(
   watchSegments(job, segmentDir, initPath);
 
   activeCommands.set(job.id, command);
+  // Now tracked by activeCommands — remove from inflight so the slot is counted
+  // exactly once and the concurrent-job cap isn't double-counted.
+  inflightJobIds.delete(job.id);
 
   // Kill orphaned jobs — prefetched chunks that start encoding but whose stream
   // connection is never opened (e.g. user seeks away before the stream starts).
@@ -301,6 +309,10 @@ async function runFfmpeg(
     .on("error", (err) => {
       clearTimeout(orphanTimer);
       activeCommands.delete(job.id);
+      // Clear killedJobs entry if present. A SIGTERM can cause ffmpeg to exit via
+      // both .on("error") and .on("end") depending on the OS; clearing here ensures
+      // the entry doesn't linger if the error path fires instead of the end path.
+      killedJobs.delete(job.id);
       console.error(`[chunker] Job ${job.id.slice(0, 8)} error:`, err.message);
       job.status = "error";
       job.error = err.message;

@@ -40,18 +40,25 @@ export async function pruneLruJobs(): Promise<void> {
     if (totalBytes <= limit) break;
 
     const dir = job.segment_dir;
+    let rmOk = false;
     try {
       await rm(dir, { recursive: true, force: true });
+      rmOk = true;
     } catch (err) {
       console.warn(`[diskCache] Failed to remove ${dir}:`, (err as Error).message);
     }
 
-    deleteSegmentsByJob(job.id);
-    markJobEvicted(job.id);
-    totalBytes -= job.total_size_bytes ?? 0;
-    console.log(
-      `[diskCache] Evicted job ${job.id.slice(0, 8)} (${((job.total_size_bytes ?? 0) / 1e6).toFixed(1)} MB freed)`
-    );
+    if (rmOk) {
+      // Only update the DB and decrement the running total after a confirmed
+      // successful delete. If rm() fails, the cache is still consuming that
+      // space and we must not undercount totalBytes or mark the job as gone.
+      deleteSegmentsByJob(job.id);
+      markJobEvicted(job.id);
+      totalBytes -= job.total_size_bytes ?? 0;
+      console.log(
+        `[diskCache] Evicted job ${job.id.slice(0, 8)} (${((job.total_size_bytes ?? 0) / 1e6).toFixed(1)} MB freed)`
+      );
+    }
   }
 }
 

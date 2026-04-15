@@ -14,7 +14,7 @@
 
 ## Cache / Storage
 
-- [ ] **CACHE-001** Disk LRU eviction: `diskCache.ts` exists with `pruneLruJobs()` but it depends on `getLruJobs()` and `markJobEvicted()` DB query helpers that are not yet implemented (stubs added in `diskCache.ts`). Implement those helpers in `server/src/db/queries/jobs.ts` and wire `pruneLruJobs()` into server startup and the `runFfmpeg` `on("end")` callback.
+- [ ] **CACHE-001** Disk LRU eviction: `diskCache.ts` has `pruneLruJobs()` and `server/src/db/queries/jobs.ts` has `getLruJobs()` / `markJobEvicted()` fully implemented. What remains: wire `pruneLruJobs()` into `server/src/index.ts` (on startup, after `jobRestore`) and into the `runFfmpeg` `.on("end")` callback in `chunker.ts` (after each job completes).
 
 - [ ] **CACHE-002** Expose cache stats in Settings: show total disk usage and quota with a "Clear cache" button. Uses `getCacheSizeBytes()` from `diskCache.ts`.
 

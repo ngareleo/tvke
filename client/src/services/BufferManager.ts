@@ -11,6 +11,10 @@ export class BufferManager {
   private sourceBuffer: SourceBuffer | null = null;
   private objectUrl: string | null = null;
   private videoEl: HTMLVideoElement;
+  // Offscreen <video> element used as the MediaSource anchor in background mode
+  // (initBackground). Stored on the instance to prevent GC from detaching the
+  // MediaSource before buffering is complete. Cleared by promoteToForeground().
+  private offscreenVideoEl: HTMLVideoElement | null = null;
   private onPause: BufferPauseCallback;
   private onResume: BufferResumeCallback;
   private appendQueue: Array<{ data: ArrayBuffer; resolve: () => void }> = [];
@@ -212,11 +216,34 @@ export class BufferManager {
     });
   }
 
+  /**
+   * Returns the video element to use as the playback position reference.
+   * In background mode (offscreenVideoEl is set), currentTime is always 0
+   * so eviction naturally skips (nothing is "behind" position 0) and
+   * back-pressure is based on total buffered duration rather than ahead-of-
+   * playhead duration — which is the correct behaviour for a silent buffer.
+   */
+  private get timeRef(): HTMLVideoElement {
+    return this.offscreenVideoEl ?? this.videoEl;
+  }
+
+  /**
+   * Call after the background buffer has been promoted to the foreground video
+   * element. Clears the offscreen element reference so that eviction and
+   * back-pressure checks switch to using the real video's currentTime.
+   */
+  promoteToForeground(): void {
+    if (this.offscreenVideoEl) {
+      this.offscreenVideoEl.src = "";
+      this.offscreenVideoEl = null;
+    }
+  }
+
   private async evictBackBuffer(): Promise<void> {
     const sb = this.sourceBuffer;
     if (!sb || sb.buffered.length === 0) return;
 
-    const evictEnd = this.videoEl.currentTime - BACK_BUFFER_KEEP_S;
+    const evictEnd = this.timeRef.currentTime - BACK_BUFFER_KEEP_S;
     const bufStart = sb.buffered.start(0);
 
     if (bufStart < evictEnd) {
@@ -239,7 +266,7 @@ export class BufferManager {
     const sb = this.sourceBuffer;
     if (!sb || sb.buffered.length === 0) return;
 
-    const bufferedAhead = sb.buffered.end(sb.buffered.length - 1) - this.videoEl.currentTime;
+    const bufferedAhead = sb.buffered.end(sb.buffered.length - 1) - this.timeRef.currentTime;
 
     if (bufferedAhead > this.forwardTarget && !this.streamPaused) {
       this.streamPaused = true;
@@ -269,9 +296,12 @@ export class BufferManager {
     return new Promise((resolve, reject) => {
       const ms = new MediaSource();
       this.mediaSource = ms;
-      // Attach to a temporary offscreen element — sourceopen only fires when the
-      // MediaSource is connected to a media element.
+      // Attach to an offscreen element — sourceopen only fires when the
+      // MediaSource is connected to a media element. Store it on the instance
+      // so it can't be garbage-collected (which would detach the MediaSource
+      // and silently break buffering).
       const tmp = document.createElement("video");
+      this.offscreenVideoEl = tmp;
       this.objectUrl = URL.createObjectURL(ms);
       tmp.src = this.objectUrl;
 
@@ -368,6 +398,12 @@ export class BufferManager {
     this.videoEl.removeEventListener("timeupdate", this.handleTimeUpdate);
     if (clearVideoEl) {
       this.videoEl.src = "";
+    }
+    // Clear the offscreen element before revoking the URL to avoid a brief
+    // period where the element holds a reference to a revoked blob URL.
+    if (this.offscreenVideoEl) {
+      this.offscreenVideoEl.src = "";
+      this.offscreenVideoEl = null;
     }
     if (this.objectUrl) {
       URL.revokeObjectURL(this.objectUrl);
