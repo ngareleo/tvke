@@ -170,11 +170,6 @@ export function useChunkedPlayback(
                   if (buffer.bufferedEnd >= startupTarget) {
                     hasStartedPlaybackRef.current = true;
                     buffer.setAfterAppend(null);
-                    // Cancel any pending RAF so it doesn't double-fire.
-                    if (rafRef.current !== null) {
-                      cancelAnimationFrame(rafRef.current);
-                      rafRef.current = null;
-                    }
                     videoEl.play().catch(() => {});
                     setStatus("playing");
                     StreamingLogger.push({
