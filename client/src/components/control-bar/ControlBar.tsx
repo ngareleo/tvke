@@ -5,6 +5,7 @@ import { graphql, useFragment } from "react-relay";
 
 import { useVideoSync } from "~/hooks/useVideoSync.js";
 import {
+  IconArrowsIn,
   IconArrowsOut,
   IconBackward,
   IconForward,
@@ -21,6 +22,7 @@ import {
   createFullscreenRequestedEvent,
   createPlayRequestedEvent,
   createResolutionChangedEvent,
+  createSeekRequestedEvent,
   createSkipRequestedEvent,
   createVolumeChangedEvent,
 } from "./ControlBar.events.js";
@@ -43,9 +45,17 @@ interface Props {
   resolution: Resolution;
   status: "idle" | "loading" | "playing";
   isVisible: boolean;
+  isFullscreen: boolean;
 }
 
-export const ControlBar: FC<Props> = ({ video, videoRef, resolution, status, isVisible }) => {
+export const ControlBar: FC<Props> = ({
+  video,
+  videoRef,
+  resolution,
+  status,
+  isVisible,
+  isFullscreen,
+}) => {
   const data = useFragment(VIDEO_FRAGMENT, video);
   const styles = useControlBarStyles();
   const { currentTime, isPlaying } = useVideoSync(videoRef);
@@ -71,11 +81,15 @@ export const ControlBar: FC<Props> = ({ video, videoRef, resolution, status, isV
   };
 
   const handleSeek = (e: MouseEvent<HTMLDivElement>): void => {
-    const el = videoRef.current;
-    if (!el || !data.durationSeconds) return;
+    if (!data.durationSeconds) return;
     const rect = e.currentTarget.getBoundingClientRect();
     const fraction = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
-    el.currentTime = fraction * data.durationSeconds;
+    const targetSeconds = fraction * data.durationSeconds;
+    // Fire a Nova event rather than setting currentTime directly. The browser
+    // clamps currentTime to the buffered range, so VideoPlayer must set it via
+    // seekTo() — which stores the intended target before triggering the seeking
+    // event, letting useChunkedPlayback use the unclamped position.
+    void bubble({ reactEvent: e, event: createSeekRequestedEvent(targetSeconds) });
   };
 
   const handleSkip =
@@ -206,8 +220,12 @@ export const ControlBar: FC<Props> = ({ video, videoRef, resolution, status, isV
             )}
           </div>
 
-          <button className={styles.btn} aria-label="Fullscreen" onClick={handleFullscreen}>
-            <IconArrowsOut size={18} />
+          <button
+            className={styles.btn}
+            aria-label={isFullscreen ? "Exit fullscreen" : "Fullscreen"}
+            onClick={handleFullscreen}
+          >
+            {isFullscreen ? <IconArrowsIn size={18} /> : <IconArrowsOut size={18} />}
           </button>
         </div>
       </div>

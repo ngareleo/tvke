@@ -1,19 +1,22 @@
 import { NovaEventingInterceptor } from "@nova/react";
 import type { EventWrapper } from "@nova/types";
-import React, { type FC, useCallback, useEffect, useRef, useState } from "react";
+import React, { type FC, Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { graphql, useFragment } from "react-relay";
 
 import {
   isFullscreenRequestedEvent,
   isPlayRequestedEvent,
   isResolutionChangedEvent,
+  isSeekRequestedEvent,
   isSkipRequestedEvent,
   isVolumeChangedEvent,
   type ResolutionChangedData,
+  type SeekRequestedData,
   type SkipRequestedData,
   type VolumeChangedData,
 } from "~/components/control-bar/ControlBar.events.js";
 import { ControlBar } from "~/components/control-bar/ControlBar.js";
+import { PlayerEndScreenAsync } from "~/components/player-end-screen/PlayerEndScreenAsync.js";
 import type { JobProgress } from "~/hooks/useJobSubscription.js";
 import { useJobSubscription } from "~/hooks/useJobSubscription.js";
 import { useVideoPlayback } from "~/hooks/useVideoPlayback.js";
@@ -27,11 +30,13 @@ import { useVideoPlayerStyles } from "./VideoPlayer.styles.js";
 const VIDEO_FRAGMENT = graphql`
   fragment VideoPlayer_video on Video {
     id
+    durationSeconds
     videoStream {
       height
       width
     }
     ...ControlBar_video
+    ...PlayerEndScreen_video
   }
 `;
 
@@ -54,8 +59,15 @@ export const VideoPlayer: FC<Props> = ({ video }) => {
   const [activeJobId, setActiveJobId] = useState<string | null>(null);
   const [jobProgress, setJobProgress] = useState<JobProgress | null>(null);
   const [controlsVisible, setControlsVisible] = useState(true);
+  const [isEnded, setIsEnded] = useState(false);
+  const [isFullscreen, setIsFullscreen] = useState(false);
 
-  const { status, error, startPlayback } = useVideoPlayback(videoRef, data.id, setActiveJobId);
+  const { status, error, startPlayback, seekTo } = useVideoPlayback(
+    videoRef,
+    data.id,
+    data.durationSeconds,
+    setActiveJobId
+  );
 
   useJobSubscription(activeJobId, (progress) => {
     setJobProgress(progress);
@@ -77,6 +89,27 @@ export const VideoPlayer: FC<Props> = ({ video }) => {
     };
   }, []);
 
+  useEffect(() => {
+    const el = videoRef.current;
+    if (!el) return;
+    const onEnded = (): void => setIsEnded(true);
+    el.addEventListener("ended", onEnded);
+    return () => el.removeEventListener("ended", onEnded);
+  }, [videoRef]);
+
+  // Reset ended state when the video changes (React Router reuses this component
+  // without remounting when navigating between player pages).
+  useEffect(() => {
+    setIsEnded(false);
+  }, [data.id]);
+
+  // Track fullscreen state from the browser.
+  useEffect(() => {
+    const onChange = (): void => setIsFullscreen(!!document.fullscreenElement);
+    document.addEventListener("fullscreenchange", onChange);
+    return () => document.removeEventListener("fullscreenchange", onChange);
+  }, []);
+
   const handleResolutionChange = useCallback(
     (res: Resolution): void => {
       setResolution(res);
@@ -86,8 +119,29 @@ export const VideoPlayer: FC<Props> = ({ video }) => {
   );
 
   const handlePlay = useCallback((): void => {
+    setIsEnded(false);
     startPlayback(resolution);
   }, [resolution, startPlayback]);
+
+  // Spacebar toggles play/pause globally while on the player page.
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent): void => {
+      const tag = (e.target as HTMLElement).tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
+      if (e.code !== "Space") return;
+      e.preventDefault();
+      if (status === "idle") {
+        handlePlay();
+        return;
+      }
+      const el = videoRef.current;
+      if (!el) return;
+      if (el.paused) void el.play();
+      else el.pause();
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [status, handlePlay, videoRef]);
 
   const interceptor = useCallback(
     async (wrapper: EventWrapper, _forwardEvent: (e: EventWrapper) => Promise<void>) => {
@@ -96,6 +150,9 @@ export const VideoPlayer: FC<Props> = ({ video }) => {
       } else if (isResolutionChangedEvent(wrapper) && wrapper.event.data) {
         const { resolution: res } = wrapper.event.data() as ResolutionChangedData;
         handleResolutionChange(res);
+      } else if (isSeekRequestedEvent(wrapper) && wrapper.event.data) {
+        const { targetSeconds } = wrapper.event.data() as SeekRequestedData;
+        seekTo(targetSeconds);
       } else if (isSkipRequestedEvent(wrapper) && wrapper.event.data) {
         const { seconds } = wrapper.event.data() as SkipRequestedData;
         const el = videoRef.current;
@@ -105,11 +162,15 @@ export const VideoPlayer: FC<Props> = ({ video }) => {
         const el = videoRef.current;
         if (el) el.volume = volume;
       } else if (isFullscreenRequestedEvent(wrapper)) {
-        void containerRef.current?.requestFullscreen();
+        if (document.fullscreenElement) {
+          void document.exitFullscreen();
+        } else {
+          void containerRef.current?.requestFullscreen();
+        }
       }
       return wrapper;
     },
-    [handlePlay, handleResolutionChange]
+    [handlePlay, handleResolutionChange, seekTo]
   );
 
   const progressLabel =
@@ -128,10 +189,24 @@ export const VideoPlayer: FC<Props> = ({ video }) => {
         setControlsVisible(false);
       }}
     >
-      <video ref={videoRef} className={styles.video} controls={false} />
+      {/* Click-to-play/pause is handled directly on the video element.
+          The ControlBar and overlay siblings intercept their own clicks before
+          they can reach the video, so no manual filtering is needed. */}
+      <video
+        ref={videoRef}
+        className={styles.video}
+        controls={false}
+        onClick={() => {
+          if (status !== "playing" || isEnded) return;
+          const el = videoRef.current;
+          if (!el) return;
+          if (el.paused) void el.play();
+          else el.pause();
+        }}
+      />
 
       {/* Pre-play overlay — shown in idle state */}
-      {status === "idle" && (
+      {status === "idle" && !isEnded && (
         <div className={styles.idleOverlay} onClick={handlePlay}>
           <button className={styles.playBtn} onClick={handlePlay} aria-label="Play" type="button">
             <IconPlay size={32} />
@@ -152,13 +227,21 @@ export const VideoPlayer: FC<Props> = ({ video }) => {
       {/* Error overlay */}
       {error && <div className={styles.errorOverlay}>{error}</div>}
 
+      {/* End screen — shown when playback reaches the end (lazy-loaded) */}
+      {isEnded && (
+        <Suspense fallback={null}>
+          <PlayerEndScreenAsync video={data} />
+        </Suspense>
+      )}
+
       <NovaEventingInterceptor interceptor={interceptor}>
         <ControlBar
           video={data}
           videoRef={videoRef}
           resolution={resolution}
           status={status}
-          isVisible={controlsVisible}
+          isVisible={controlsVisible && !isEnded}
+          isFullscreen={isFullscreen}
         />
       </NovaEventingInterceptor>
     </div>

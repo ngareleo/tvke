@@ -40,7 +40,24 @@ export default defineConfig({
     port: 5173,
     proxy: {
       "/graphql": { target: "http://localhost:3001", ws: true },
-      "/stream": { target: "http://localhost:3001" },
+      "/stream": {
+        target: "http://localhost:3001",
+        // Streaming responses are long-lived — disable proxy timeout so the
+        // connection isn't killed before init.mp4 is written (ffprobe can take
+        // 10+ seconds on large 4K files before the first byte is sent).
+        proxyTimeout: 0,
+        timeout: 0,
+      },
+    },
+  },
+
+  tools: {
+    rspack: {
+      optimization: {
+        // Name the Rspack runtime chunk so it shows up as "runtime" in bundle
+        // analysis instead of an anonymous numeric ID.
+        runtimeChunk: { name: "runtime" },
+      },
     },
   },
 
@@ -91,6 +108,15 @@ export default defineConfig({
             name: "vendor-misc",
             chunks: "all" as const,
             priority: -10,
+          },
+          // App source modules shared by 2+ async page/component chunks.
+          // Without this, Rspack auto-generates an anonymous numeric chunk.
+          shared: {
+            name: "shared",
+            minChunks: 2,
+            chunks: "async" as const,
+            priority: -20,
+            reuseExistingChunk: true,
           },
         },
       },
