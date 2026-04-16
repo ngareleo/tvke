@@ -38,7 +38,7 @@ const makEntry = (
 });
 
 export const Empty: Story = {
-  args: { entries: [], onClear: noop },
+  args: { entries: [], onClear: noop, onClose: noop },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await expect(
@@ -72,7 +72,7 @@ const MIXED_ENTRIES: ReadonlyArray<LogEntry> = [
 ];
 
 export const WithMixedEntries: Story = {
-  args: { entries: MIXED_ENTRIES, onClear: noop },
+  args: { entries: MIXED_ENTRIES, onClear: noop, onClose: noop },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await expect(canvas.getAllByText("STREAM").length).toBeGreaterThan(0);
@@ -90,7 +90,7 @@ const ERROR_ENTRIES: ReadonlyArray<LogEntry> = [
 ];
 
 export const ErrorHeavy: Story = {
-  args: { entries: ERROR_ENTRIES, onClear: noop },
+  args: { entries: ERROR_ENTRIES, onClear: noop, onClose: noop },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     // All entries should have error styling — spot check a few messages exist
@@ -111,7 +111,7 @@ const HIGH_VOLUME_ENTRIES: ReadonlyArray<LogEntry> = Array.from({ length: 300 },
 });
 
 export const HighVolume: Story = {
-  args: { entries: HIGH_VOLUME_ENTRIES, onClear: noop },
+  args: { entries: HIGH_VOLUME_ENTRIES, onClear: noop, onClose: noop },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     // Entry count badge should show 300

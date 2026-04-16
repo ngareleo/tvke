@@ -14,6 +14,7 @@ import { useStreamingLogOverlayStyles } from "./StreamingLogOverlay.styles.js";
 export interface StreamingLogPanelProps {
   entries: ReadonlyArray<LogEntry>;
   onClear: () => void;
+  onClose: () => void;
 }
 
 function formatTimestamp(ts: number): string {
@@ -36,7 +37,7 @@ function categoryLabel(cat: LogCategory): string {
   }
 }
 
-export const StreamingLogPanel: FC<StreamingLogPanelProps> = ({ entries, onClear }) => {
+export const StreamingLogPanel: FC<StreamingLogPanelProps> = ({ entries, onClear, onClose }) => {
   const styles = useStreamingLogOverlayStyles();
   const listRef = useRef<HTMLDivElement>(null);
   const userScrolledRef = useRef(false);
@@ -74,9 +75,19 @@ export const StreamingLogPanel: FC<StreamingLogPanelProps> = ({ entries, onClear
           <span className={styles.title}>{strings.title}</span>
           <span className={styles.count}>{entries.length}</span>
         </div>
-        <button className={styles.clearBtn} onClick={onClear} type="button">
-          {strings.clearButton}
-        </button>
+        <div className={styles.headerActions}>
+          <button className={styles.clearBtn} onClick={onClear} type="button">
+            {strings.clearButton}
+          </button>
+          <button
+            className={styles.closeBtn}
+            onClick={onClose}
+            type="button"
+            aria-label="Close stream log"
+          >
+            {strings.closeButton}
+          </button>
+        </div>
       </div>
 
       <div className={styles.list} ref={listRef} onScroll={handleScroll}>
@@ -107,17 +118,21 @@ export const StreamingLogPanel: FC<StreamingLogPanelProps> = ({ entries, onClear
 
 export const StreamingLogOverlay: FC = () => {
   const styles = useStreamingLogOverlayStyles();
-  const { streamingLogsOpen, logEntries } = useDevTools();
+  const { streamingLogsOpen, setStreamingLogsOpen, logEntries } = useDevTools();
 
   const handleClear = useCallback((): void => {
     StreamingLogger.clear();
   }, []);
 
+  const handleClose = useCallback((): void => {
+    setStreamingLogsOpen(false);
+  }, [setStreamingLogsOpen]);
+
   if (!streamingLogsOpen) return null;
 
   return (
     <div className={styles.overlay}>
-      <StreamingLogPanel entries={logEntries} onClear={handleClear} />
+      <StreamingLogPanel entries={logEntries} onClear={handleClear} onClose={handleClose} />
     </div>
   );
 };

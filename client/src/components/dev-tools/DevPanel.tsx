@@ -82,7 +82,13 @@ export const DevPanelInner: FC = () => {
                 styles.logsToggleBtn,
                 streamingLogsOpen && styles.logsToggleBtnActive
               )}
-              onClick={() => setStreamingLogsOpen(!streamingLogsOpen)}
+              onClick={() => {
+                const next = !streamingLogsOpen;
+                setStreamingLogsOpen(next);
+                // Close the DevPanel when enabling logs so only the log
+                // overlay is visible, giving it maximum screen real-estate.
+                if (next) setOpen(false);
+              }}
               type="button"
             >
               {streamingLogsOpen ? "● Stream Logs ON" : "○ Stream Logs OFF"}

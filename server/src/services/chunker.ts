@@ -36,6 +36,15 @@ const inflightJobIds = new Set<string>();
 const MAX_CONCURRENT_JOBS = 3;
 
 /**
+ * Inflight dedup polling: when a concurrent call finds the same job already
+ * in-flight, it sleeps INFLIGHT_DEDUP_POLL_MS and re-checks jobStore until the
+ * job appears or the total wait exceeds INFLIGHT_DEDUP_TIMEOUT_MS.
+ */
+const INFLIGHT_DEDUP_POLL_MS = 100;
+const INFLIGHT_DEDUP_TIMEOUT_MS = 5_000;
+const INFLIGHT_DEDUP_MAX_RETRIES = INFLIGHT_DEDUP_TIMEOUT_MS / INFLIGHT_DEDUP_POLL_MS;
+
+/**
  * Gracefully shuts down all active ffmpeg jobs:
  * 1. Sends SIGTERM to every running process.
  * 2. Waits up to `timeoutMs` for each to exit.
@@ -122,12 +131,12 @@ export async function startTranscodeJob(
   // function's entry and the setJob() call below), wait for it to register rather
   // than spawning a second ffmpeg process.
   if (inflightJobIds.has(id)) {
-    for (let i = 0; i < 50; i++) {
-      await Bun.sleep(100);
+    for (let i = 0; i < INFLIGHT_DEDUP_MAX_RETRIES; i++) {
+      await Bun.sleep(INFLIGHT_DEDUP_POLL_MS);
       const pending = getJob(id);
       if (pending) return pending;
     }
-    // If still not registered after 5 s, fall through and let this call proceed.
+    // If still not registered after INFLIGHT_DEDUP_TIMEOUT_MS, fall through.
     console.warn(`[chunker] Inflight dedup timeout for job ${id.slice(0, 8)} — proceeding`);
   }
 

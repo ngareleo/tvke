@@ -101,6 +101,14 @@ export function useChunkedPlayback(
   // Set by seekTo() before updating currentTime so handleSeeking can read the
   // unclamped target instead of whatever the browser clamped currentTime to.
   const pendingSeekTargetRef = useRef<number | null>(null);
+  // Debounce timer for mid-playback buffering stalls. We only show the loading
+  // spinner after 2 s of continuous stall to allow brief network hiccups to
+  // resolve on their own without a jarring UI flash.
+  const bufferingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Mirror of `status` updated every render so event-listener closures (which
+  // capture the value at registration time) can read the current state.
+  const statusRef = useRef<PlaybackStatus>("idle");
+  statusRef.current = status;
   const onJobCreatedRef = useRef(onJobCreated);
   onJobCreatedRef.current = onJobCreated;
 
@@ -118,6 +126,10 @@ export function useChunkedPlayback(
     if (bgReadyRafRef.current !== null) {
       cancelAnimationFrame(bgReadyRafRef.current);
       bgReadyRafRef.current = null;
+    }
+    if (bufferingTimerRef.current !== null) {
+      clearTimeout(bufferingTimerRef.current);
+      bufferingTimerRef.current = null;
     }
     activeStreamRef.current?.cancel();
     bufferRef.current?.teardown();
@@ -426,7 +438,20 @@ export function useChunkedPlayback(
         message: "Buffering — waiting for data",
         isError: false,
       });
+      // Only debounce-show the spinner for mid-playback stalls (not during the
+      // initial startup loading phase which already has its own spinner path).
+      if (!hasStartedPlaybackRef.current) return;
+      bufferingTimerRef.current = setTimeout(() => {
+        bufferingTimerRef.current = null;
+        setStatus("loading");
+        StreamingLogger.push({
+          category: "PLAYBACK",
+          message: "Buffering stall >2s — showing spinner",
+          isError: false,
+        });
+      }, 2000);
     };
+
     const onStalled = (): void => {
       StreamingLogger.push({
         category: "PLAYBACK",
@@ -434,9 +459,19 @@ export function useChunkedPlayback(
         isError: true,
       });
     };
+
     const onPlaying = (): void => {
       // Seek has resolved — clear the dedup guard so future seeks can proceed.
       seekTargetRef.current = null;
+      // Clear the buffering debounce timer if the stall resolved within 2s.
+      if (bufferingTimerRef.current !== null) {
+        clearTimeout(bufferingTimerRef.current);
+        bufferingTimerRef.current = null;
+      }
+      // Restore "playing" if the 2s debounce already fired and showed the spinner.
+      if (statusRef.current === "loading" && hasStartedPlaybackRef.current) {
+        setStatus("playing");
+      }
       StreamingLogger.push({
         category: "PLAYBACK",
         message: "Buffering resolved — playing",
@@ -452,6 +487,10 @@ export function useChunkedPlayback(
       videoEl.removeEventListener("waiting", onWaiting);
       videoEl.removeEventListener("stalled", onStalled);
       videoEl.removeEventListener("playing", onPlaying);
+      if (bufferingTimerRef.current !== null) {
+        clearTimeout(bufferingTimerRef.current);
+        bufferingTimerRef.current = null;
+      }
     };
   }, [videoRef]);
 
@@ -466,11 +505,34 @@ export function useChunkedPlayback(
       if (status !== "playing") return;
       if (!bufferRef.current) return;
 
-      isHandlingSeekRef.current = true;
       // Read the intended target from seekTo() if available; fall back to
       // videoEl.currentTime which the browser may have clamped to the buffered
       // range (e.g. seeking beyond the end of buffered data).
       const seekTime = pendingSeekTargetRef.current ?? videoEl.currentTime;
+
+      // If the seek target is already in the SourceBuffer, the browser resumes
+      // naturally without any flush. Clear the pending target and return — no
+      // need to tear down the stream or show a spinner.
+      let alreadyBuffered = false;
+      for (let i = 0; i < videoEl.buffered.length; i++) {
+        // The -0.5s tolerance avoids false positives right at the buffered end
+        // where the decoder may still stall briefly.
+        if (seekTime >= videoEl.buffered.start(i) && seekTime < videoEl.buffered.end(i) - 0.5) {
+          alreadyBuffered = true;
+          break;
+        }
+      }
+      if (alreadyBuffered) {
+        pendingSeekTargetRef.current = null;
+        StreamingLogger.push({
+          category: "PLAYBACK",
+          message: `Seek to ${seekTime.toFixed(1)}s — already buffered, no flush`,
+          isError: false,
+        });
+        return;
+      }
+
+      isHandlingSeekRef.current = true;
       pendingSeekTargetRef.current = null;
       const snapTime = Math.floor(seekTime / CHUNK_DURATION_S) * CHUNK_DURATION_S;
 
@@ -485,6 +547,14 @@ export function useChunkedPlayback(
         return;
       }
       seekTargetRef.current = snapTime;
+
+      // Show spinner immediately — seek requires flushing and reloading the buffer.
+      // Clear any pending 2s buffering timer so we don't double-fire.
+      if (bufferingTimerRef.current !== null) {
+        clearTimeout(bufferingTimerRef.current);
+        bufferingTimerRef.current = null;
+      }
+      setStatus("loading");
 
       StreamingLogger.push({
         category: "PLAYBACK",
@@ -502,11 +572,43 @@ export function useChunkedPlayback(
         isHandlingSeekRef.current = false;
         const buf = bufferRef.current;
         if (!buf) return;
+
+        // Wait for the startup buffer threshold before resuming playback so the
+        // video doesn't immediately stall after seeking to an unbuffered region.
+        // Same pattern as initial startup: setAfterAppend fires on every append
+        // (fast cache-hit paths) and checkReady polls at display frame rate.
+        hasStartedPlaybackRef.current = false;
+        const startupTarget = STARTUP_BUFFER_S[resolutionRef.current];
+
+        const tryPlay = (): void => {
+          if (hasStartedPlaybackRef.current) {
+            buf.setAfterAppend(null);
+            return;
+          }
+          if (buf.bufferedEnd >= startupTarget) {
+            hasStartedPlaybackRef.current = true;
+            buf.setAfterAppend(null);
+            videoEl.play().catch(() => {});
+            setStatus("playing");
+            StreamingLogger.push({
+              category: "PLAYBACK",
+              message: `Seek ready — buffered ${buf.bufferedEnd.toFixed(1)}s >= ${startupTarget}s, resuming`,
+              isError: false,
+            });
+          }
+        };
+
+        buf.setAfterAppend(tryPlay);
+        const checkReady = (): void => {
+          if (hasStartedPlaybackRef.current) return;
+          tryPlay();
+          if (!hasStartedPlaybackRef.current) {
+            startupRafRef.current = requestAnimationFrame(checkReady);
+          }
+        };
+        startupRafRef.current = requestAnimationFrame(checkReady);
+
         startChunkSeries(resolutionRef.current, snapTime, buf, false);
-        // The browser may pause during an unbuffered seek. Resume playback now
-        // that the buffer is set up; the browser will start rendering as soon
-        // as segments from the new chunk arrive.
-        videoEl.play().catch(() => {});
       });
     };
 

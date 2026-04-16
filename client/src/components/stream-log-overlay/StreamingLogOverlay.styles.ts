@@ -57,6 +57,12 @@ export const useStreamingLogOverlayStyles = makeStyles({
     borderRadius: "10px",
   },
 
+  headerActions: {
+    display: "flex",
+    alignItems: "center",
+    gap: "6px",
+  },
+
   clearBtn: {
     fontSize: "10px",
     fontWeight: "600",
@@ -73,6 +79,25 @@ export const useStreamingLogOverlayStyles = makeStyles({
     ":hover": {
       color: "#666",
       ...shorthands.borderColor("#444"),
+    },
+  },
+
+  closeBtn: {
+    fontSize: "11px",
+    fontFamily: "inherit",
+    padding: "3px 6px",
+    borderRadius: "4px",
+    background: "transparent",
+    color: "#3e3e3e",
+    border: "1px solid #2e2e2e",
+    cursor: "pointer",
+    lineHeight: "1",
+    transitionProperty: "color, border-color",
+    transitionDuration: "0.15s",
+    transitionTimingFunction: "ease",
+    ":hover": {
+      color: "#e88",
+      ...shorthands.borderColor("#e88"),
     },
   },
 

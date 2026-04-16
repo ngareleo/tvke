@@ -78,6 +78,8 @@ export const IconPencil = (p: IconProps): JSX.Element =>
     p
   );
 
+// Exception: IconEdit uses a 20×20 artboard and a heavier stroke weight.
+// Passing overrides through `base()` keeps the wrapper consistent.
 export const IconEdit = (p: IconProps): JSX.Element =>
   base(
     <path d="M13.232 3.23233L16.768 6.76833M14.732 1.73233C15.2009 1.26343 15.8369 1 16.5 1C17.1631 1 17.7991 1.26343 18.268 1.73233C18.7369 2.20123 19.0003 2.8372 19.0003 3.50033C19.0003 4.16346 18.7369 4.79943 18.268 5.26833L4.5 19.0363H1V15.4643L14.732 1.73233Z" />,
@@ -174,12 +176,7 @@ export const IconSquares = (p: IconProps): JSX.Element =>
   );
 
 export const IconBars = (p: IconProps): JSX.Element =>
-  base(
-    <>
-      <path d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25H12" />
-    </>,
-    p
-  );
+  base(<path d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25H12" />, p);
 
 export const IconSparkles = (p: IconProps): JSX.Element =>
   base(
@@ -214,6 +211,9 @@ export const IconBug = (p: IconProps): JSX.Element =>
     p
   );
 
+// Exception: IconSpinner does not use base() because it requires an inline
+// animation style and a different strokeWidth that would conflict with base()'s
+// fixed defaults. Keep it as a raw <svg> and document the deviation here.
 export const IconSpinner = ({ size = 16, ...rest }: IconProps): JSX.Element => (
   <svg
     viewBox="0 0 24 24"
