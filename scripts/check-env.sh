@@ -11,6 +11,7 @@
 
 set -euo pipefail
 
+BOLD='\033[1m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 RED='\033[0;31m'
@@ -39,9 +40,9 @@ WARNINGS=0
 check_default() {
   local name="$1" default="$2" desc="$3"
   if [[ -n "${!name:-}" ]]; then
-    info "$name=${!name}  ($desc)"
+    info "${BOLD}${CYAN}${name}${NC}=${!name}  ($desc)"
   else
-    info "$name (unset — default: $default)  ($desc)"
+    info "${BOLD}${CYAN}${name}${NC} (unset — default: $default)  ($desc)"
   fi
 }
 
@@ -50,9 +51,9 @@ check_default() {
 check_optional() {
   local name="$1" desc="$2"
   if [[ -n "${!name:-}" ]]; then
-    info "$name (set)  ($desc)"
+    info "${BOLD}${CYAN}${name}${NC} (set)  ($desc)"
   else
-    warn "$name unset  ($desc)"
+    warn "${BOLD}${CYAN}${name}${NC} unset  ($desc)"
     WARNINGS=$((WARNINGS + 1))
   fi
 }
@@ -62,9 +63,9 @@ check_optional() {
 check_required() {
   local name="$1" desc="$2"
   if [[ -n "${!name:-}" ]]; then
-    info "$name (set)  ($desc)"
+    info "${BOLD}${CYAN}${name}${NC} (set)  ($desc)"
   else
-    fail "$name missing  ($desc)"
+    fail "${BOLD}${CYAN}${name}${NC} missing  ($desc)"
     ERRORS=$((ERRORS + 1))
   fi
 }
@@ -74,9 +75,9 @@ check_required() {
 check_secret() {
   local name="$1" desc="$2"
   if [[ -n "${!name:-}" ]]; then
-    echo -e "  ${GREEN}${name}${NC}  ($desc)"
+    echo -e "  ${BOLD}${GREEN}${name}${NC}  ($desc)"
   else
-    echo -e "  ${RED}${name}${NC}  (not set — $desc)"
+    echo -e "  ${BOLD}${RED}${name}${NC}  (not set — $desc)"
     if $PROD; then
       ERRORS=$((ERRORS + 1))
     else
@@ -91,17 +92,17 @@ check_not_localhost() {
   local name="$1" desc="$2"
   local val="${!name:-}"
   if [[ -z "$val" ]]; then
-    warn "$name unset  ($desc)"
+    warn "${BOLD}${CYAN}${name}${NC} unset  ($desc)"
     WARNINGS=$((WARNINGS + 1))
   elif [[ "$val" == *"localhost"* || "$val" == *"127.0.0.1"* ]]; then
     if $PROD; then
-      fail "$name=${val}  (localhost in production — set to your OTLP backend)"
+      fail "${BOLD}${CYAN}${name}${NC}=${val}  (localhost in production — set to your OTLP backend)"
       ERRORS=$((ERRORS + 1))
     else
-      info "$name=${val}  ($desc)"
+      info "${BOLD}${CYAN}${name}${NC}=${val}  ($desc)"
     fi
   else
-    info "$name=${val}  ($desc)"
+    info "${BOLD}${CYAN}${name}${NC}=${val}  ($desc)"
   fi
 }
 
