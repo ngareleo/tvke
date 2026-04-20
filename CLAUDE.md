@@ -891,6 +891,38 @@ After any significant session, run `/reflect` to capture non-obvious learnings i
 
 ---
 
+## Observability and Logging
+
+Full policy in `docs/observability.md`. Key rules agents must follow:
+
+**Message bodies must be self-describing.** A log record's body should read as a complete sentence without needing to expand attributes:
+```ts
+// Bad
+log.info("Stream paused", { buffered_ahead_s: 23.4 });
+// Good
+log.info("Stream paused — 23.4s buffered ahead (target: 20s)", { buffered_ahead_s: 23.4, target_s: 20 });
+```
+
+**Spans vs. log records:** Use a span for operations with meaningful duration (HTTP requests, transcode jobs, playback sessions). Use a log record for discrete events within a span (state transitions, errors, counters). Never emit a span for something instantaneous — use `span.addEvent()` instead.
+
+**Log levels:** `info` for normal lifecycle events; `warn` for recoverable problems; `error` for failures that affect the user or indicate a bug. Do not use `info` for errors that degrade UX. Do not use `error` for expected edge cases handled gracefully.
+
+**Always log WHY on cleanup/kill.** Pass and log the kill reason — never just "Killing job":
+```ts
+killJob(id, "client_disconnected"); // → logs "Killing ffmpeg — client_disconnected"
+```
+Standard kill reasons: `client_disconnected`, `stream_idle_timeout`, `orphan_no_connection`, `server_shutdown`.
+
+**Don't cascade errors.** On a non-recoverable error in a processing loop, log once, set a `fatalError` flag, and break both the inner retry loop and the outer drain loop. Twenty identical errors mean the loop is not guarded.
+
+**What NOT to log:** per-segment appends (too noisy), re-scanned existing videos (only log newly discovered), successful no-ops, timing details that belong on span attributes.
+
+**Client:** all async logs must carry the active session traceId — handled automatically by `getClientLogger`. All fetch calls in the playback path must be wrapped: `context.with(getSessionContext(), () => fetch(url, options))`.
+
+**Server:** request handlers must extract `traceparent` from incoming headers and pass the resulting context to `tracer.startSpan`. OTel context flows through the call chain as `parentOtelCtx?: OtelContext` — graphql-yoga resolvers receive it via `ctx.otelCtx`.
+
+---
+
 ## What Not To Do
 
 - **No ORM** — SQLite is accessed with raw `bun:sqlite` prepared statements only

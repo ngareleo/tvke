@@ -5,6 +5,10 @@ const log = getClientLogger("bufferManager");
 const DEFAULT_FORWARD_BUFFER_TARGET_S = 20;
 const BACK_BUFFER_KEEP_S = 5;
 
+// Emit a buffer-health log every N segments to track memory pressure without
+// flooding the log at high bitrates.
+const BUFFER_HEALTH_LOG_INTERVAL = 20;
+
 export type BufferPauseCallback = () => void;
 export type BufferResumeCallback = () => void;
 
@@ -29,6 +33,15 @@ export class BufferManager {
   private seekAbort = false;
   private videoDurationS: number;
 
+  // Buffer memory tracking — estimated byte-level accounting.
+  // Browser MSE APIs only expose TimeRanges (seconds), not bytes, so
+  // bytesInBuffer is an approximation: we add exact segment sizes on append
+  // and subtract proportionally (by time fraction) on eviction.
+  private totalBytesAppended = 0;
+  private bytesInBuffer = 0;
+  private evictionCount = 0;
+  private segmentsAppended = 0;
+
   constructor(
     videoEl: HTMLVideoElement,
     onPause: BufferPauseCallback,
@@ -42,6 +55,28 @@ export class BufferManager {
     this.videoDurationS = videoDurationS;
     this.forwardTarget = forwardTargetSeconds;
     this.forwardResume = forwardTargetSeconds * 0.75;
+  }
+
+  /** Current buffer memory metrics. All byte values are estimates. */
+  get bufferStats(): {
+    bytesInBuffer: number;
+    totalBytesAppended: number;
+    bufferedSeconds: number;
+    evictionCount: number;
+    segmentsAppended: number;
+  } {
+    const sb = this.sourceBuffer;
+    const bufferedSeconds =
+      sb && sb.buffered.length > 0
+        ? sb.buffered.end(sb.buffered.length - 1) - sb.buffered.start(0)
+        : 0;
+    return {
+      bytesInBuffer: this.bytesInBuffer,
+      totalBytesAppended: this.totalBytesAppended,
+      bufferedSeconds,
+      evictionCount: this.evictionCount,
+      segmentsAppended: this.segmentsAppended,
+    };
   }
 
   /** Buffered end in seconds (0 if nothing buffered yet). */
@@ -182,6 +217,9 @@ export class BufferManager {
           await this.waitForUpdateEnd();
           if (this.seekAbort) break;
           appended = true;
+          this.totalBytesAppended += data.byteLength;
+          this.bytesInBuffer += data.byteLength;
+          this.segmentsAppended++;
         } catch (err) {
           if ((err as DOMException).name === "QuotaExceededError" && attempt < 3) {
             continue; // retry after eviction
@@ -203,6 +241,20 @@ export class BufferManager {
       await this.evictBackBuffer();
       this.checkForwardBuffer();
       this.afterAppendCb?.();
+      if (this.segmentsAppended % BUFFER_HEALTH_LOG_INTERVAL === 0) {
+        const stats = this.bufferStats;
+        log.info(
+          `Buffer health — ${stats.segmentsAppended} segments, ${(stats.bytesInBuffer / 1_048_576).toFixed(1)} MB in buffer (${stats.bufferedSeconds.toFixed(1)}s), ${(stats.totalBytesAppended / 1_048_576).toFixed(1)} MB total appended`,
+          {
+            segments_appended: stats.segmentsAppended,
+            buffer_bytes: stats.bytesInBuffer,
+            buffer_mb: parseFloat((stats.bytesInBuffer / 1_048_576).toFixed(2)),
+            buffered_s: parseFloat(stats.bufferedSeconds.toFixed(1)),
+            total_bytes_appended: stats.totalBytesAppended,
+            eviction_count: stats.evictionCount,
+          }
+        );
+      }
     }
     this.isAppending = false;
 
@@ -250,6 +302,15 @@ export class BufferManager {
     const bufStart = sb.buffered.start(0);
 
     if (bufStart < evictEnd) {
+      // Proportional byte estimate: evicted fraction of total buffered duration.
+      const totalBufferedS = sb.buffered.end(sb.buffered.length - 1) - sb.buffered.start(0);
+      const evictDurationS = evictEnd - bufStart;
+      if (totalBufferedS > 0) {
+        const fraction = evictDurationS / totalBufferedS;
+        const estimatedEvictedBytes = Math.round(fraction * this.bytesInBuffer);
+        this.bytesInBuffer = Math.max(0, this.bytesInBuffer - estimatedEvictedBytes);
+        this.evictionCount++;
+      }
       await this.waitForUpdateEnd();
       sb.remove(bufStart, evictEnd);
       await this.waitForUpdateEnd();
@@ -268,21 +329,27 @@ export class BufferManager {
 
     if (bufferedAhead > this.forwardTarget && !this.streamPaused) {
       this.streamPaused = true;
+      const bufMb = (this.bytesInBuffer / 1_048_576).toFixed(1);
       log.info(
-        `Stream paused — ${bufferedAhead.toFixed(1)}s buffered ahead (target: ${this.forwardTarget}s)`,
+        `Stream paused — ${bufferedAhead.toFixed(1)}s buffered ahead (target: ${this.forwardTarget}s), ${bufMb} MB in buffer`,
         {
           buffered_ahead_s: parseFloat(bufferedAhead.toFixed(1)),
           target_s: this.forwardTarget,
+          buffer_bytes: this.bytesInBuffer,
+          buffer_mb: parseFloat(bufMb),
         }
       );
       this.onPause();
     } else if (bufferedAhead < this.forwardResume && this.streamPaused) {
       this.streamPaused = false;
+      const bufMb = (this.bytesInBuffer / 1_048_576).toFixed(1);
       log.info(
-        `Stream resumed — ${bufferedAhead.toFixed(1)}s buffered ahead (resume threshold: ${this.forwardResume}s)`,
+        `Stream resumed — ${bufferedAhead.toFixed(1)}s buffered ahead (resume threshold: ${this.forwardResume}s), ${bufMb} MB in buffer`,
         {
           buffered_ahead_s: parseFloat(bufferedAhead.toFixed(1)),
           resume_threshold_s: this.forwardResume,
+          buffer_bytes: this.bytesInBuffer,
+          buffer_mb: parseFloat(bufMb),
         }
       );
       this.onResume();
@@ -365,6 +432,7 @@ export class BufferManager {
     this.isAppending = false;
     this.streamDone = false;
     this.streamPaused = false;
+    this.bytesInBuffer = 0;
     sb.remove(0, Infinity);
     await this.waitForUpdateEnd();
     // In sequence mode the UA auto-manages timestampOffset, advancing it to
@@ -414,6 +482,18 @@ export class BufferManager {
     this.streamDone = false;
     this.streamPaused = false;
     this.seekAbort = false;
-    log.info("Teardown — ObjectURL revoked");
+    const stats = this.bufferStats;
+    log.info(
+      `Teardown — ${stats.segmentsAppended} segments, ${(stats.totalBytesAppended / 1_048_576).toFixed(1)} MB total, ${stats.evictionCount} evictions — ObjectURL revoked`,
+      {
+        segments_appended: stats.segmentsAppended,
+        total_bytes_appended: stats.totalBytesAppended,
+        eviction_count: stats.evictionCount,
+      }
+    );
+    this.totalBytesAppended = 0;
+    this.bytesInBuffer = 0;
+    this.evictionCount = 0;
+    this.segmentsAppended = 0;
   }
 }
