@@ -7,7 +7,7 @@
  * startTranscodeJob() call wipes the stale segment dir and re-encodes cleanly.
  */
 import { getInterruptedJobs, updateJobStatus } from "../db/queries/jobs.js";
-import { getOtelLogger } from "../telemetry.js";
+import { getOtelLogger } from "../telemetry/index.js";
 
 const log = getOtelLogger("jobRestore");
 

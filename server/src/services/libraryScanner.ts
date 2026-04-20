@@ -10,7 +10,7 @@ import { getAllLibraries, upsertLibrary } from "../db/queries/libraries.js";
 import { getUnmatchedVideoIds, upsertVideoMetadata } from "../db/queries/videoMetadata.js";
 import { replaceVideoStreams, upsertVideo } from "../db/queries/videos.js";
 import { getVideoById } from "../db/queries/videos.js";
-import { getOtelLogger, getTracer } from "../telemetry.js";
+import { getOtelLogger, getTracer } from "../telemetry/index.js";
 import type {
   LibraryRow,
   MediaLibraryEntry,

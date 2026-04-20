@@ -19,12 +19,12 @@ Use descriptive filenames prefixed with the step number, e.g. `.claude/screensho
 Parse `.seq-credentials` from the project root:
 
 ```sh
-grep '^SEQ_ADMIN_USERNAME=' /home/dag/Projects/xstream/.seq-credentials | cut -d= -f2
-grep '^SEQ_ADMIN_PASSWORD=' /home/dag/Projects/xstream/.seq-credentials | cut -d= -f2
+grep '^SEQ_ADMIN_USERNAME=' .seq-credentials | cut -d= -f2
+grep '^SEQ_ADMIN_PASSWORD=' .seq-credentials | cut -d= -f2
 ```
 
 If the file does not exist, stop and report:
-> `.seq-credentials` not found. Run `bun run seq:start` from the project root to generate it.
+> `.seq-credentials` not found. Run `bun run seq:start` to generate it.
 
 ## 2. Check Seq is reachable
 

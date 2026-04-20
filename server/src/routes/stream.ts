@@ -6,7 +6,7 @@ import { getJobById } from "../db/queries/jobs.js";
 import { getSegmentsByJob } from "../db/queries/segments.js";
 import { killJob } from "../services/chunker.js";
 import { addConnection, getJob, removeConnection } from "../services/jobStore.js";
-import { getOtelLogger, getTracer } from "../telemetry.js";
+import { getOtelLogger, getTracer } from "../telemetry/index.js";
 
 const log = getOtelLogger("stream");
 const streamTracer = getTracer("stream");

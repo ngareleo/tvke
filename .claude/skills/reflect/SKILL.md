@@ -36,9 +36,9 @@ Format new entries as short imperative notes or numbered steps, consistent with 
 
 1. Find the session transcript:
    ```sh
-   ls -t ~/.claude/projects/*/ | head -5
+   ls -t ~/.claude/projects/$(ls -t ~/.claude/projects/ | head -1)/*.jsonl 2>/dev/null | head -1
    ```
-   Read the most recent `.jsonl` file.
+   Read the most recent `.jsonl` file in the project's transcript directory.
 
 2. Scan for the signals listed above. Keep a mental list of candidates before writing anything.
 
@@ -51,6 +51,6 @@ Format new entries as short imperative notes or numbered steps, consistent with 
 
 ## Scope
 
-- Only update files in `/home/dag/Projects/xstream/.claude/skills/` and `/home/dag/Projects/xstream/CLAUDE.md`.
+- Only update files in `.claude/skills/` and `CLAUDE.md` (both relative to the project root).
 - Do not modify source code, tests, or documentation outside `.claude/`.
 - Do not create new skill files unless a clear recurring workflow emerged — if in doubt, leave it out.

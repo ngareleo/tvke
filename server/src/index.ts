@@ -1,6 +1,6 @@
-// telemetry.ts must be the first import — it registers the global OTel
+// telemetry must be the first import — it registers the global OTel
 // TracerProvider and propagator before any service module runs.
-import "./telemetry.js";
+import "./telemetry/index.js";
 
 import { mkdir } from "fs/promises";
 import { handleProtocols, makeHandler as makeWsHandler } from "graphql-ws/lib/use/bun";
@@ -13,7 +13,7 @@ import { killAllActiveJobs } from "./services/chunker.js";
 import { restoreInterruptedJobs } from "./services/jobRestore.js";
 import { scanLibraries } from "./services/libraryScanner.js";
 import { isOmdbConfigured } from "./services/omdbService.js";
-import { getOtelLogger } from "./telemetry.js";
+import { getOtelLogger } from "./telemetry/index.js";
 
 const log = getOtelLogger("server");
 

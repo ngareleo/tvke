@@ -860,6 +860,16 @@ Do not couple the client to anything server-implementation-specific. All client�
 
 ---
 
+## Skills and Agent Workflows
+
+### Screenshots
+All screenshots taken by skills or agents must be saved to `.claude/screenshots/` relative to the project root. Never save screenshots to the project root or any other directory. Use descriptive filenames prefixed with the step number (e.g. `.claude/screenshots/01-home.png`).
+
+### Reflect skill
+After any significant session, run `/reflect` to capture non-obvious learnings into skill files and CLAUDE.md. The PreCompact hook runs this automatically before context compaction. Only write actionable gotcha-prevention notes — not narrative summaries of what was done.
+
+---
+
 ## What Not To Do
 
 - **No ORM** — SQLite is accessed with raw `bun:sqlite` prepared statements only

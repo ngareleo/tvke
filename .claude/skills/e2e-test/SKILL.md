@@ -36,7 +36,7 @@ lsof -i :3001 -i :5173 | grep LISTEN
   ```sh
   bun run dev
   ```
-  Run this command in the background from the project root (`/home/dag/Projects/xstream`). Wait 5 seconds, then re-check both ports are listening before continuing.
+  Run this command in the background from the project root. Wait 5 seconds, then re-check both ports are listening before continuing.
 - If **only one port is missing**, start only the missing process:
   - Client only: `cd client && bun run dev` (background)
   - Server only: `cd server && bun run dev` (background)
@@ -62,7 +62,7 @@ If the dashboard shows "No libraries have been added yet" or the library is empt
 
 1. **Ask the user** for the profile details using `AskUserQuestion` before touching the browser:
    - "No library found. What should the profile name be?" (suggest: `local`)
-   - "What directory should it scan?" (suggest: `/home/dag/Videos`)
+   - "What directory should it scan?"
 2. Click **"+ New Profile"** (top-right of the dashboard) or **"CREATE LIBRARY"** button.
 3. In the new profile form fill in the name and directory the user provided.
 4. Submit the form to create the profile.

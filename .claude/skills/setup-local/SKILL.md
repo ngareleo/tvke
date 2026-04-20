@@ -14,7 +14,7 @@ Use descriptive filenames, e.g. `.claude/screenshots/setup-01-app-running.png`.
 
 ## 1. Install dependencies
 
-Run the install script from the project root (`/home/dag/Projects/xstream`):
+Run the install script from the project root:
 
 ```sh
 bash install.sh
@@ -47,7 +47,7 @@ bun run seq:start
 Wait for the script to complete, then verify `.seq-credentials` was created:
 
 ```sh
-cat /home/dag/Projects/xstream/.seq-credentials
+cat .seq-credentials
 ```
 
 Report the username and that a password was generated (do NOT print the password in your response).
@@ -57,13 +57,13 @@ Report the username and that a password was generated (do NOT print the password
 Check if `.env` exists:
 
 ```sh
-cat /home/dag/Projects/xstream/.env 2>/dev/null || echo "MISSING"
+cat .env 2>/dev/null || echo "MISSING"
 ```
 
 If missing, copy from the example:
 
 ```sh
-cp /home/dag/Projects/xstream/.env.example /home/dag/Projects/xstream/.env
+cp .env.example .env
 ```
 
 Report that `.env` was created from `.env.example` and that OMDB_API_KEY and OTEL_EXPORTER_OTLP_HEADERS may need to be filled in.

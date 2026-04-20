@@ -4,7 +4,7 @@ import { join } from "path";
 import { config } from "../config.js";
 import { getLruJobs, markJobEvicted } from "../db/queries/jobs.js";
 import { deleteSegmentsByJob } from "../db/queries/segments.js";
-import { getOtelLogger } from "../telemetry.js";
+import { getOtelLogger } from "../telemetry/index.js";
 
 const log = getOtelLogger("diskCache");
 

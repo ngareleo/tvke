@@ -10,7 +10,7 @@ import { config, RESOLUTION_PROFILES } from "../config.js";
 import { getJobById, insertJob, updateJobStatus } from "../db/queries/jobs.js";
 import { getSegmentsByJob, insertSegment } from "../db/queries/segments.js";
 import { getVideoById } from "../db/queries/videos.js";
-import { getOtelLogger, getTracer } from "../telemetry.js";
+import { getOtelLogger, getTracer } from "../telemetry/index.js";
 import type { ActiveJob, Resolution } from "../types.js";
 import { FFmpegFile } from "./ffmpegFile.js";
 import { getJob, setJob } from "./jobStore.js";
