@@ -17,8 +17,8 @@
 import { propagation, trace, type Tracer } from "@opentelemetry/api";
 import { SeverityNumber } from "@opentelemetry/api-logs";
 import { W3CTraceContextPropagator } from "@opentelemetry/core";
-import { OTLPLogExporter } from "@opentelemetry/exporter-logs-otlp-http";
-import { OTLPTraceExporter } from "@opentelemetry/exporter-trace-otlp-http";
+import { OTLPLogExporter } from "@opentelemetry/exporter-logs-otlp-proto";
+import { OTLPTraceExporter } from "@opentelemetry/exporter-trace-otlp-proto";
 import { FetchInstrumentation } from "@opentelemetry/instrumentation-fetch";
 import { LongTaskInstrumentation } from "@opentelemetry/instrumentation-long-task";
 import { resourceFromAttributes } from "@opentelemetry/resources";
