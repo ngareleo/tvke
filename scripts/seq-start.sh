@@ -10,48 +10,77 @@ SEQ_STORE="${SEQ_STORE:-$HOME/.seq-store}"
 
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
+RED='\033[0;31m'
 NC='\033[0m'
 
 info()    { echo -e "${GREEN}[seq]${NC} $*"; }
 skipped() { echo -e "${YELLOW}[seq]${NC} $*"; }
+fail()    { echo -e "${RED}[seq]${NC} $*" >&2; }
 
-# Ensure Docker daemon is running
-if ! docker info &>/dev/null; then
+# ── Sudo askpass setup ────────────────────────────────────────────────────────
+# Create a zenity-based askpass helper so sudo can prompt for a password
+# without a terminal TTY. Cleaned up on exit.
+
+_ASKPASS=""
+if command -v zenity &>/dev/null; then
+  _ASKPASS=$(mktemp --suffix=.sh)
+  printf '#!/bin/sh\nzenity --password --title="[seq] sudo authentication"\n' > "$_ASKPASS"
+  chmod +x "$_ASKPASS"
+  export SUDO_ASKPASS="$_ASKPASS"
+  trap 'rm -f "$_ASKPASS"' EXIT
+fi
+
+# sudo wrapper: uses NOPASSWD if available, otherwise falls back to askpass
+sudo_cmd() {
+  if sudo -n "$@" 2>/dev/null; then
+    return 0
+  elif [[ -n "$_ASKPASS" ]]; then
+    sudo -A "$@"
+  else
+    fail "sudo requires a password but no askpass helper is available."
+    fail "Run manually: sudo $*"
+    exit 1
+  fi
+}
+
+# docker wrapper: uses sudo if the user lacks socket access
+docker() {
+  if command docker "$@" 2>/dev/null; then
+    return 0
+  else
+    sudo_cmd docker "$@"
+  fi
+}
+
+# ── Ensure Docker daemon is running ──────────────────────────────────────────
+
+if ! systemctl is-active --quiet docker; then
   info "Docker not running — starting daemon..."
   if systemctl --user start docker &>/dev/null; then
     : # rootless Docker started
-  elif sudo -n systemctl start docker &>/dev/null; then
-    : # system Docker started (NOPASSWD configured)
-  elif command -v zenity &>/dev/null; then
-    _askpass=$(mktemp --suffix=.sh)
-    printf '#!/bin/sh\nzenity --password --title="sudo: start Docker"\n' > "$_askpass"
-    chmod +x "$_askpass"
-    SUDO_ASKPASS="$_askpass" sudo -A systemctl start docker
-    rm -f "$_askpass"
   else
-    echo -e "\033[0;31m[seq]\033[0m Could not start Docker automatically. Run one of:" >&2
-    echo -e "  sudo systemctl start docker   # system Docker" >&2
-    echo -e "  systemctl --user start docker # rootless Docker" >&2
-    exit 1
+    sudo_cmd systemctl start docker
   fi
   for i in $(seq 1 10); do
-    docker info &>/dev/null && break
+    systemctl is-active --quiet docker && break
     sleep 1
   done
-  if ! docker info &>/dev/null; then
-    echo -e "\033[0;31m[seq]\033[0m Docker daemon did not become ready in time" >&2
+  if ! systemctl is-active --quiet docker; then
+    fail "Docker daemon did not become ready in time"
     exit 1
   fi
 fi
 
+# ── Manage Seq container ──────────────────────────────────────────────────────
+
 # Already running
-if docker ps --format '{{.Names}}' 2>/dev/null | grep -q "^${SEQ_CONTAINER}$"; then
+if docker ps --format '{{.Names}}' | grep -q "^${SEQ_CONTAINER}$"; then
   skipped "Seq already running at http://localhost:${SEQ_PORT}"
   exit 0
 fi
 
 # Container exists but is stopped — restart it
-if docker ps -a --format '{{.Names}}' 2>/dev/null | grep -q "^${SEQ_CONTAINER}$"; then
+if docker ps -a --format '{{.Names}}' | grep -q "^${SEQ_CONTAINER}$"; then
   info "Restarting stopped container..."
   docker start "${SEQ_CONTAINER}"
 else
