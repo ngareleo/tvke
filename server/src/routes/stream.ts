@@ -293,13 +293,17 @@ export async function handleStream(req: Request): Promise<Response> {
           // 90-second idle timeout: if no segment has been sent for 90s and we're
           // still waiting, the job may be stalled or the client silently disconnected.
           if (Date.now() - lastSentAt > CONNECTION_TIMEOUT_MS) {
-            log.warn("Stream idle timeout", { job_id: jobId, segments_sent: sentCount });
+            log.warn(`Stream idle timeout after ${sentCount} segments — killing ffmpeg`, {
+              job_id: jobId,
+              segments_sent: sentCount,
+              idle_ms: CONNECTION_TIMEOUT_MS,
+            });
             span.addEvent("idle_timeout", { segments_sent: sentCount });
             span.end();
             removeConnection(jobId);
             const idleJob = getJob(jobId);
             if (idleJob && idleJob.connections === 0 && idleJob.status === "running") {
-              killJob(jobId);
+              killJob(jobId, "stream_idle_timeout");
             }
             controller.close();
             return;
@@ -308,7 +312,10 @@ export async function handleStream(req: Request): Promise<Response> {
 
         // Check if client disconnected
         if (req.signal?.aborted) {
-          log.info("Client disconnected", { job_id: jobId, segments_sent: sentCount });
+          log.info(`Client disconnected after ${sentCount} segments — cleaning up`, {
+            job_id: jobId,
+            segments_sent: sentCount,
+          });
           span.addEvent("client_disconnected", { segments_sent: sentCount });
           span.end();
           removeConnection(jobId);
@@ -318,7 +325,7 @@ export async function handleStream(req: Request): Promise<Response> {
             disconnectedJob.connections === 0 &&
             disconnectedJob.status === "running"
           ) {
-            killJob(jobId);
+            killJob(jobId, "client_disconnected");
           }
           controller.close();
           return;

@@ -30,6 +30,10 @@ const activeCommands = new Map<string, FfmpegCommand>();
 // detect a kill and treat the exit as an error instead.
 const killedJobs = new Set<string>();
 
+// Reason for each deliberate kill, consumed by the .on("end") handler to annotate
+// the job span and log record with why ffmpeg was stopped.
+const killReasons = new Map<string, string>();
+
 // Job IDs currently being initialized — between the start of startTranscodeJob and
 // the setJob() call that makes them visible in jobStore. Guards against concurrent
 // calls with identical parameters spawning duplicate ffmpeg processes during the
@@ -101,18 +105,20 @@ function jobId(contentKey: string, resolution: Resolution, start?: number, end?:
  * Kills the ffmpeg process for a specific job. Safe to call even if the job has
  * already finished — the command map won't contain it in that case.
  */
-export function killJob(id: string): void {
+export function killJob(id: string, reason = "client_request"): void {
   const command = activeCommands.get(id);
   if (!command) return;
-  log.info("Killing job — no active connections", { job_id: id });
+  log.info(`Killing ffmpeg — ${reason}`, { job_id: id, kill_reason: reason });
   // Mark as killed BEFORE sending the signal. ffmpeg sometimes exits cleanly on
   // SIGTERM (firing .on("end") instead of .on("error")), which would mark the job
   // "complete" with a truncated segment set. The killedJobs set prevents that.
   killedJobs.add(id);
+  killReasons.set(id, reason);
   try {
     command.kill("SIGTERM");
   } catch {
     killedJobs.delete(id);
+    killReasons.delete(id);
   }
 }
 
@@ -351,8 +357,7 @@ async function runFfmpeg(
   const orphanTimer = setTimeout(() => {
     const currentJob = getJob(job.id);
     if (currentJob && currentJob.connections === 0 && currentJob.status === "running") {
-      log.info("Killing orphan job (no connections)", { job_id: job.id });
-      killJob(job.id);
+      killJob(job.id, "orphan_no_connection");
     }
   }, ORPHAN_TIMEOUT_MS);
 
@@ -403,10 +408,17 @@ async function runFfmpeg(
         // ffmpeg exited cleanly after SIGTERM — treat as error, not completion,
         // so the next startTranscodeJob call will wipe the stale segment dir and
         // re-encode rather than serving a truncated stream.
+        const reason = killReasons.get(job.id) ?? "unknown";
         killedJobs.delete(job.id);
-        const msg = "ffmpeg process was killed";
-        log.info("Transcode killed", { job_id: job.id, video_id: job.video_id, resolution });
-        jobSpan.addEvent("transcode_killed");
+        killReasons.delete(job.id);
+        const msg = `ffmpeg killed — ${reason}`;
+        log.info(`Transcode killed: ${reason}`, {
+          job_id: job.id,
+          video_id: job.video_id,
+          resolution,
+          kill_reason: reason,
+        });
+        jobSpan.addEvent("transcode_killed", { kill_reason: reason });
         jobSpan.end();
         job.status = "error";
         job.error = msg;
