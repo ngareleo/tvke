@@ -22,7 +22,12 @@ import { OTLPTraceExporter } from "@opentelemetry/exporter-trace-otlp-http";
 import { FetchInstrumentation } from "@opentelemetry/instrumentation-fetch";
 import { LongTaskInstrumentation } from "@opentelemetry/instrumentation-long-task";
 import { resourceFromAttributes } from "@opentelemetry/resources";
-import { BatchLogRecordProcessor, LoggerProvider } from "@opentelemetry/sdk-logs";
+import {
+  BatchLogRecordProcessor,
+  ConsoleLogRecordExporter,
+  LoggerProvider,
+  SimpleLogRecordProcessor,
+} from "@opentelemetry/sdk-logs";
 import { BatchSpanProcessor, WebTracerProvider } from "@opentelemetry/sdk-trace-web";
 
 // ── Configuration ──────────────────────────────────────────────────────────────
@@ -84,6 +89,11 @@ export function initTelemetry(): void {
     resource,
     processors: [
       new BatchLogRecordProcessor(new OTLPLogExporter({ url: `${endpoint}/v1/logs`, headers })),
+      // Mirror every log record to the browser console in dev so developers get
+      // immediate visibility without opening Seq.
+      ...(import.meta.env.DEV
+        ? [new SimpleLogRecordProcessor(new ConsoleLogRecordExporter())]
+        : []),
     ],
   });
 

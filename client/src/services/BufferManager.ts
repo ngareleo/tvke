@@ -1,4 +1,8 @@
+import { getClientLogger } from "~/telemetry.js";
+
 import { StreamingLogger } from "./StreamingLogger.js";
+
+const log = getClientLogger("bufferManager");
 
 const DEFAULT_FORWARD_BUFFER_TARGET_S = 20;
 const BACK_BUFFER_KEEP_S = 5;
@@ -191,7 +195,7 @@ export class BufferManager {
             message: `appendBuffer error: ${(err as Error).message}`,
             isError: true,
           });
-          console.error("[BufferManager] appendBuffer error:", err);
+          log.error("appendBuffer error", { message: (err as Error).message });
           break;
         }
       }

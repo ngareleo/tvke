@@ -20,7 +20,12 @@ import { W3CTraceContextPropagator } from "@opentelemetry/core";
 import { OTLPLogExporter } from "@opentelemetry/exporter-logs-otlp-http";
 import { OTLPTraceExporter } from "@opentelemetry/exporter-trace-otlp-http";
 import { resourceFromAttributes } from "@opentelemetry/resources";
-import { BatchLogRecordProcessor, LoggerProvider } from "@opentelemetry/sdk-logs";
+import {
+  BatchLogRecordProcessor,
+  ConsoleLogRecordExporter,
+  LoggerProvider,
+  SimpleLogRecordProcessor,
+} from "@opentelemetry/sdk-logs";
 import { BasicTracerProvider, BatchSpanProcessor } from "@opentelemetry/sdk-trace-base";
 
 // ── Configuration ──────────────────────────────────────────────────────────────
@@ -66,6 +71,11 @@ const loggerProvider = new LoggerProvider({
   resource,
   processors: [
     new BatchLogRecordProcessor(new OTLPLogExporter({ url: `${endpoint}/v1/logs`, headers })),
+    // Mirror every log record to the terminal in non-production environments so
+    // developers don't need to open Seq for basic visibility.
+    ...(process.env.NODE_ENV !== "production"
+      ? [new SimpleLogRecordProcessor(new ConsoleLogRecordExporter())]
+      : []),
   ],
 });
 
@@ -120,5 +130,3 @@ export function getOtelLogger(component: string): OtelLog {
     },
   };
 }
-
-console.log(`[telemetry] OTel initialized → ${endpoint}`);
