@@ -1,5 +1,6 @@
 import { context, type Span, SpanStatusCode, trace } from "@opentelemetry/api";
 
+import { getEffectiveBufferConfig } from "~/config/featureFlags.js";
 import { getClientLogger, getClientTracer } from "~/telemetry.js";
 import { type Resolution, RESOLUTION_MIME_TYPE } from "~/types.js";
 
@@ -178,7 +179,8 @@ export class PlaybackController {
       videoEl,
       () => this.activeStream?.pause(),
       () => this.activeStream?.resume(),
-      videoDurationS
+      videoDurationS,
+      getEffectiveBufferConfig()
     );
     this.buffer = buffer;
 
@@ -638,7 +640,8 @@ export class PlaybackController {
       videoEl,
       () => this.bgStream?.pause(),
       () => this.bgStream?.resume(),
-      videoDurationS
+      videoDurationS,
+      getEffectiveBufferConfig()
     );
     this.bgBuffer = bgBuffer;
 

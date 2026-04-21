@@ -371,6 +371,15 @@ describe("myParser", () => {
 
 Run with `bun test` from `server/`.
 
+### Add a new feature flag
+
+Feature flags live in `client/src/config/featureFlags.ts`. They persist per-user in the server's `user_settings` key/value table, hydrate once on app boot via the `settings(keys)` GraphQL query, and are readable from both React (`useFeatureFlag`) and non-React code (`getFlag`, `getEffectiveBufferConfig`).
+
+1. Append an entry to `FLAG_REGISTRY` with a `key`, human `name`, `description`, `valueType` (`"boolean"` or `"number"`), `defaultValue`, and `category` (`"playback" | "telemetry" | "ui" | "experimental"`). Storage-key convention: `flag.<camelCase>` for booleans, `config.<camelCase>` for tunable numbers. The FlagsTab in Settings renders from the registry automatically.
+2. Read the flag in a React component via `const { value, setValue } = useFeatureFlag(FLAG_KEYS.myFlag, defaultValue)`. The setter calls the existing `setSetting` mutation and updates the module cache optimistically.
+3. Read the flag in non-React code via `getFlag(FLAG_KEYS.myFlag, defaultValue)` — synchronous, returns the hydrated value or the fallback. `PlaybackController` follows this pattern: it calls `getEffectiveBufferConfig()` at `new BufferManager(...)` construction time so toggling a flag takes effect on the *next* playback session, not mid-stream.
+4. Do not introduce a new React context for the flag — the module-level cache + `useSyncExternalStore` is the only subscription mechanism. Additional providers fragment the cache and break the non-React read path.
+
 ### Add a new environment variable
 
 1. Add the variable to `.env.example` with a placeholder or default value and a one-line comment explaining it.
