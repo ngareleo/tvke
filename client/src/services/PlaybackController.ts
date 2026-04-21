@@ -91,8 +91,10 @@ export class PlaybackController {
 
   private buffer: BufferManager | null = null;
   private activeStream: StreamingService | null = null;
+  private activeChunkTeardown: ((reason: string) => void) | null = null;
   private bgBuffer: BufferManager | null = null;
   private bgStream: StreamingService | null = null;
+  private bgChunkTeardown: ((reason: string) => void) | null = null;
 
   private chunkEnd = 0;
   private nextJobId: string | null = null;
@@ -135,7 +137,7 @@ export class PlaybackController {
       return;
     }
 
-    this.resetForNewSession();
+    this.resetForNewSession("new_session");
     this.setError(null);
     this.setStatus("loading");
     this.resolution = res;
@@ -193,6 +195,8 @@ export class PlaybackController {
         .catch((err: Error) => {
           const msg = `MSE init failed: ${err.message}`;
           playbackLog.error("MSE init failed", { message: err.message });
+          sessionSpan.addEvent("mse_init_failed", { message: err.message });
+          sessionSpan.setStatus({ code: SpanStatusCode.ERROR, message: err.message });
           this.setError(msg);
           this.setStatus("idle");
         })
@@ -224,7 +228,7 @@ export class PlaybackController {
   }
 
   /** Resets all per-session state. Called from teardown() and startPlayback(). */
-  private resetForNewSession(): void {
+  private resetForNewSession(reason: "teardown" | "new_session" = "teardown"): void {
     if (this.startupRaf !== null) {
       cancelAnimationFrame(this.startupRaf);
       this.startupRaf = null;
@@ -241,11 +245,15 @@ export class PlaybackController {
       clearTimeout(this.bufferingTimer);
       this.bufferingTimer = null;
     }
+    this.activeChunkTeardown?.(reason);
+    this.activeChunkTeardown = null;
     this.activeStream?.cancel();
     this.buffer?.teardown();
     this.activeStream = null;
     this.buffer = null;
 
+    this.bgChunkTeardown?.(reason);
+    this.bgChunkTeardown = null;
     this.bgStream?.cancel();
     this.bgBuffer?.teardown(false);
     this.bgStream = null;
@@ -257,8 +265,11 @@ export class PlaybackController {
     this.hasStartedPlayback = false;
     this.seekTarget = null;
 
-    this.sessionSpan?.end();
-    this.sessionSpan = null;
+    if (this.sessionSpan) {
+      this.sessionSpan.addEvent("session_ended", { reason });
+      this.sessionSpan.end();
+      this.sessionSpan = null;
+    }
     clearSessionContext();
 
     this.events.onJobCreated(null);
@@ -310,7 +321,7 @@ export class PlaybackController {
     res: Resolution,
     onDone: () => void,
     onError: (err: Error) => void
-  ): StreamingService {
+  ): { svc: StreamingService; teardownSpan: (reason: string) => void } {
     const chunkSpan: Span = playbackTracer.startSpan(
       "chunk.stream",
       {
@@ -329,11 +340,23 @@ export class PlaybackController {
 
     let totalMediaBytes = 0;
     let segmentCount = 0;
+    let ended = false;
 
     const endChunkSpan = (): void => {
+      if (ended) return;
+      ended = true;
       chunkSpan.setAttribute("chunk.bytes_streamed", totalMediaBytes);
       chunkSpan.setAttribute("chunk.segments_received", segmentCount);
       chunkSpan.end();
+    };
+
+    // Caller-owned teardown path: StreamingService.cancel() aborts the fetch
+    // without firing onDone/onError, so without this the span would leak
+    // whenever teardown/seek/resolution-switch cancels mid-chunk.
+    const teardownSpan = (reason: string): void => {
+      if (ended) return;
+      chunkSpan.addEvent(`chunk_cancelled_by_${reason}`);
+      endChunkSpan();
     };
 
     const wrappedOnDone = (): void => {
@@ -341,7 +364,10 @@ export class PlaybackController {
       onDone();
     };
     const wrappedOnError = (err: Error): void => {
-      chunkSpan.setStatus({ code: SpanStatusCode.ERROR, message: err.message });
+      if (!ended) {
+        chunkSpan.addEvent("chunk_error", { message: err.message });
+        chunkSpan.setStatus({ code: SpanStatusCode.ERROR, message: err.message });
+      }
       endChunkSpan();
       onError(err);
     };
@@ -413,7 +439,7 @@ export class PlaybackController {
       },
       chunkCtx
     );
-    return svc;
+    return { svc, teardownSpan };
   }
 
   // ── Chunk scheduler ────────────────────────────────────────────────────────
@@ -512,7 +538,7 @@ export class PlaybackController {
 
             if (savedNextJobId) {
               const nextIsLast = nextEnd >= videoDurationS;
-              const nextSvc = this.streamChunk(
+              const next = this.streamChunk(
                 savedNextJobId,
                 buffer,
                 false,
@@ -525,19 +551,23 @@ export class PlaybackController {
                   : (): void => this.startChunkSeries(res, nextEnd, buffer, false),
                 (err) => this.setError(err.message)
               );
-              this.activeStream = nextSvc;
+              this.activeStream = next.svc;
+              this.activeChunkTeardown = next.teardownSpan;
             } else {
               this.startChunkSeries(res, nextStart, buffer, false);
             }
           }
         };
 
-        const svc = this.streamChunk(rawJobId, buffer, isFirstChunk, res, onDone, (err) => {
+        const stream = this.streamChunk(rawJobId, buffer, isFirstChunk, res, onDone, (err) => {
           this.setError(err.message);
         });
-        this.activeStream = svc;
+        this.activeStream = stream.svc;
+        this.activeChunkTeardown = stream.teardownSpan;
       })
       .catch((err: Error) => {
+        this.sessionSpan?.addEvent("chunk_series_failed", { message: err.message });
+        this.sessionSpan?.setStatus({ code: SpanStatusCode.ERROR, message: err.message });
         this.setError(err.message);
         this.setStatus("idle");
       });
@@ -599,6 +629,8 @@ export class PlaybackController {
     );
 
     // Cancel any in-flight background buffer
+    this.bgChunkTeardown?.("resolution_switch_restart");
+    this.bgChunkTeardown = null;
     this.bgStream?.cancel();
     this.bgBuffer?.teardown(false);
 
@@ -624,6 +656,8 @@ export class PlaybackController {
           });
 
           // Tear down foreground (don't clear videoEl.src yet)
+          this.activeChunkTeardown?.("resolution_switch");
+          this.activeChunkTeardown = null;
           this.activeStream?.cancel();
           this.buffer?.teardown(false);
           this.activeStream = null;
@@ -642,7 +676,9 @@ export class PlaybackController {
           bgBuffer.promoteToForeground();
           this.bgBuffer = null;
           this.activeStream = this.bgStream;
+          this.activeChunkTeardown = this.bgChunkTeardown;
           this.bgStream = null;
+          this.bgChunkTeardown = null;
 
           this.resolution = newRes;
           // Resume chunk series from the swapped position
@@ -667,7 +703,7 @@ export class PlaybackController {
           false
         )
           .then((rawJobId) => {
-            const bgSvc = this.streamChunk(
+            const bg = this.streamChunk(
               rawJobId,
               bgBuffer,
               true, // background buffer is fresh — it needs the init segment
@@ -677,17 +713,23 @@ export class PlaybackController {
               },
               (err) => {
                 playbackLog.error("Background stream error", { message: err.message });
+                this.sessionSpan?.addEvent("background_stream_error", { message: err.message });
               }
             );
-            this.bgStream = bgSvc;
+            this.bgStream = bg.svc;
+            this.bgChunkTeardown = bg.teardownSpan;
             checkReady();
           })
           .catch((err: Error) => {
             playbackLog.error("Background chunk error", { message: err.message });
+            this.sessionSpan?.addEvent("background_chunk_request_failed", {
+              message: err.message,
+            });
           });
       })
       .catch((err: Error) => {
         playbackLog.error("Background MSE init failed", { message: err.message });
+        this.sessionSpan?.addEvent("background_mse_init_failed", { message: err.message });
       });
   }
 
@@ -757,6 +799,8 @@ export class PlaybackController {
     );
 
     // Cancel active stream and flush the buffer
+    this.activeChunkTeardown?.("seek");
+    this.activeChunkTeardown = null;
     this.activeStream?.cancel();
     this.activeStream = null;
     this.nextJobId = null;

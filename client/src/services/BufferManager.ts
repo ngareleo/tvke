@@ -458,6 +458,11 @@ export class BufferManager {
     this.isAppending = false;
     this.streamDone = false;
     this.streamPaused = false;
+    if (this.haltSpan) {
+      this.haltSpan.addEvent("halt_ended_by_seek");
+      this.haltSpan.end();
+      this.haltSpan = null;
+    }
     this.bytesInBuffer = 0;
     sb.remove(0, Infinity);
     await this.waitForUpdateEnd();
