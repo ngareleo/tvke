@@ -314,6 +314,7 @@ export class PlaybackController {
     buffer: BufferManager,
     isFirstChunk: boolean,
     res: Resolution,
+    chunkStartS: number,
     onDone: () => void,
     onError: (err: Error) => void
   ): { svc: StreamingService; teardownSpan: (reason: string) => void } {
@@ -324,6 +325,7 @@ export class PlaybackController {
           "chunk.job_id": rawJobId,
           "chunk.resolution": res,
           "chunk.is_first": isFirstChunk,
+          "chunk.start_s": chunkStartS,
         },
       },
       getSessionContext()
@@ -336,6 +338,7 @@ export class PlaybackController {
     let totalMediaBytes = 0;
     let segmentCount = 0;
     let ended = false;
+    let firstMediaSegmentSeen = false;
 
     const endChunkSpan = (): void => {
       if (ended) return;
@@ -389,8 +392,34 @@ export class PlaybackController {
           segmentCount += 1;
         }
 
+        // Measures arrival-to-append latency for the first media segment of
+        // a continuation chunk — the chunk-handover seam where stalls live.
+        // Chunk 0 is excluded because its first-segment timing is dominated
+        // by the MSE init handshake, not the handover.
+        let firstAppendSpan: Span | null = null;
+        if (!isInit && !isFirstChunk && !firstMediaSegmentSeen) {
+          firstMediaSegmentSeen = true;
+          const arrivalCurrentTime = videoEl.currentTime;
+          const arrivalBufferedAhead = buffer.getBufferedAheadSeconds(arrivalCurrentTime) ?? 0;
+          firstAppendSpan = playbackTracer.startSpan(
+            "chunk.first_segment_append",
+            {
+              attributes: {
+                "chunk.job_id": rawJobId,
+                "chunk.number": Math.floor(chunkStartS / CHUNK_DURATION_S),
+                "chunk.start_s": chunkStartS,
+                "chunk.segment_bytes": segData.byteLength,
+                "playback.current_time_s_at_arrival": parseFloat(arrivalCurrentTime.toFixed(2)),
+                "playback.buffered_ahead_s_at_arrival": parseFloat(arrivalBufferedAhead.toFixed(2)),
+              },
+            },
+            chunkCtx
+          );
+        }
+
         try {
           await buffer.appendSegment(segData);
+          firstAppendSpan?.end();
           // On the init segment of the very first chunk: arm the startup-buffer
           // check that calls video.play() once enough content is buffered.
           if (isFirstChunk && isInit && !this.hasStartedPlayback) {
@@ -408,6 +437,13 @@ export class PlaybackController {
             });
           }
         } catch (err) {
+          if (firstAppendSpan) {
+            firstAppendSpan.setStatus({
+              code: SpanStatusCode.ERROR,
+              message: (err as Error).message,
+            });
+            firstAppendSpan.end();
+          }
           playbackLog.error("Buffer append error", { message: (err as Error).message });
           wrappedOnError(err as Error);
         }
@@ -538,6 +574,7 @@ export class PlaybackController {
                 buffer,
                 false,
                 res,
+                nextStart,
                 nextIsLast
                   ? (): void => {
                       buffer.markStreamDone();
@@ -554,9 +591,17 @@ export class PlaybackController {
           }
         };
 
-        const stream = this.streamChunk(rawJobId, buffer, isFirstChunk, res, onDone, (err) => {
-          this.setError(err.message);
-        });
+        const stream = this.streamChunk(
+          rawJobId,
+          buffer,
+          isFirstChunk,
+          res,
+          startS,
+          onDone,
+          (err) => {
+            this.setError(err.message);
+          }
+        );
         this.activeStream = stream.svc;
         this.activeChunkTeardown = stream.teardownSpan;
       })
@@ -704,6 +749,7 @@ export class PlaybackController {
               bgBuffer,
               true, // background buffer is fresh — it needs the init segment
               newRes,
+              chunkStart,
               () => {
                 /* chunk done — swap may already have happened */
               },
