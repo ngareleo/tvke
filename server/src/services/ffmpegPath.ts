@@ -1,39 +1,51 @@
 /**
  * ffmpegPath — resolves the on-disk paths for the ffmpeg and ffprobe binaries.
  *
- * Priority:
- *   1. FFMPEG_PATH / FFPROBE_PATH env vars (explicit override)
- *   2. /usr/lib/jellyfin-ffmpeg/ffmpeg (Linux only, if present) — the Jellyfin
- *      .deb installs here and ships a bundled newer libva + iHD driver via
- *      compiled-in RUNPATH, which is the only way to get working VAAPI on
- *      Linux distros whose system intel-media-driver predates a recent GPU
- *      (e.g. Ubuntu noble's 24.1.0 vs Lunar Lake needing 24.2.0+). Preferred
- *      over the portable vendor binary because the vendor one loads the
- *      system driver and fails on exactly those configurations.
- *   3. vendor/ffmpeg/<platform>/ffmpeg[.exe] — the portable jellyfin-ffmpeg
- *      populated by `bun run setup-ffmpeg`. Works on macOS/Windows out of the
- *      box; on Linux it works when the system VAAPI stack is new enough.
- *   4. System $PATH (dev fallback via `which ffmpeg`)
- *   5. Error — refuses to start; caller must surface the message
+ * The manifest at `scripts/ffmpeg-manifest.json` pins one exact jellyfin-ffmpeg
+ * version per platform. This resolver finds the binary installed by
+ * `bun run setup-ffmpeg` at the platform-specific location the manifest
+ * commits us to, and verifies its version string matches. Any drift is a
+ * fatal error with a clear pointer to re-run setup.
  *
- * Designed to match the Rust/Tauri rewrite's eventual bundling model: a
- * per-platform `vendor/ffmpeg/<platform>/` directory is included in the app
- * resources, and the same resolver logic finds it in production. For Linux,
- * the Tauri bundle will ship the full Jellyfin stack (libva + iHD driver +
- * libigdgmm) under its own prefix so this two-step fallback isn't needed at
- * runtime.
+ * Priority:
+ *   1. FFMPEG_PATH / FFPROBE_PATH env vars (explicit override — bypasses the
+ *      version check; intended for dev experimentation, not production).
+ *   2. Platform-specific installed location:
+ *        linux-x64 / linux-arm64 → `/usr/lib/jellyfin-ffmpeg/{ffmpeg,ffprobe}`
+ *        darwin-* / win32-x64    → `vendor/ffmpeg/<platform>/{ffmpeg,ffprobe}[.exe]`
+ *   3. No fallback. Missing binary → fatal, with a message pointing to
+ *      `bun run setup-ffmpeg`. No system $PATH lookup — we're opinionated
+ *      about the exact version we run against.
  */
 import { spawnSync } from "node:child_process";
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 
 const ROOT = resolve(import.meta.dir, "../../..");
+const MANIFEST_PATH = join(ROOT, "scripts", "ffmpeg-manifest.json");
 const VENDOR_ROOT = join(ROOT, "vendor", "ffmpeg");
-const JELLYFIN_LINUX_PREFIX = "/usr/lib/jellyfin-ffmpeg";
+
+interface PlatformEntry {
+  asset: string;
+  sha256: string;
+  strategy: "deb-install" | "portable-tarball" | "portable-zip";
+  installedPrefix?: string;
+}
+
+interface FfmpegManifest {
+  ffmpeg: {
+    distribution: string;
+    version: string;
+    versionString: string;
+    platforms: Record<string, PlatformEntry>;
+  };
+}
 
 export interface FfmpegPaths {
   ffmpeg: string;
   ffprobe: string;
+  /** The version string the resolver validated, for telemetry + logs. */
+  versionString: string;
 }
 
 function platformKey(): string {
@@ -44,48 +56,84 @@ function binName(base: string): string {
   return process.platform === "win32" ? `${base}.exe` : base;
 }
 
-function findOnPath(name: string): string | null {
-  const which = process.platform === "win32" ? "where" : "which";
-  const result = spawnSync(which, [name], { encoding: "utf8" });
-  if (result.status !== 0) return null;
-  const first = result.stdout.split(/\r?\n/).find((l) => l.trim().length > 0);
-  return first ? first.trim() : null;
+function loadManifest(): FfmpegManifest {
+  const raw = readFileSync(MANIFEST_PATH, "utf8");
+  return JSON.parse(raw) as FfmpegManifest;
 }
 
-function resolveOne(envVar: string, base: "ffmpeg" | "ffprobe"): string {
-  const override = process.env[envVar];
-  if (override && existsSync(override)) return override;
-
-  if (process.platform === "linux") {
-    const jellyfinPath = join(JELLYFIN_LINUX_PREFIX, base);
-    if (existsSync(jellyfinPath)) return jellyfinPath;
+/** Where the manifest's install strategy places each binary. */
+function installedPath(entry: PlatformEntry, base: "ffmpeg" | "ffprobe"): string {
+  if (entry.strategy === "deb-install") {
+    const prefix = entry.installedPrefix ?? "/usr/lib/jellyfin-ffmpeg";
+    return join(prefix, base);
   }
+  return join(VENDOR_ROOT, platformKey(), binName(base));
+}
 
-  const vendored = join(VENDOR_ROOT, platformKey(), binName(base));
-  if (existsSync(vendored)) return vendored;
-
-  const onPath = findOnPath(base);
-  if (onPath) return onPath;
-
-  const triedJellyfin =
-    process.platform === "linux" ? `\n  2. ${JELLYFIN_LINUX_PREFIX}/${base}` : "";
-  throw new Error(
-    `Could not locate '${base}' binary. Tried:\n` +
-      `  1. ${envVar} env var (unset or file missing)${triedJellyfin}\n` +
-      `  ${process.platform === "linux" ? "3" : "2"}. ${vendored}\n` +
-      `  ${process.platform === "linux" ? "4" : "3"}. system PATH\n\n` +
-      `Run 'bun run setup-ffmpeg' from the project root to download a working binary, ` +
-      `or set ${envVar} to point at an existing ffmpeg/ffprobe.`
-  );
+function runVersion(binPath: string): string | null {
+  const result = spawnSync(binPath, ["-version"], { encoding: "utf8" });
+  if (result.status !== 0) return null;
+  const firstLine = (result.stdout ?? "").split("\n")[0];
+  const match = firstLine.match(/ffmpeg version (\S+)/) ?? firstLine.match(/ffprobe version (\S+)/);
+  return match ? match[1] : null;
 }
 
 let cached: FfmpegPaths | null = null;
 
+/**
+ * Resolve the ffmpeg + ffprobe paths pinned by the manifest.
+ * Memoised — first call does the version check, subsequent calls return cached.
+ */
 export function resolveFfmpegPaths(): FfmpegPaths {
   if (cached) return cached;
-  cached = {
-    ffmpeg: resolveOne("FFMPEG_PATH", "ffmpeg"),
-    ffprobe: resolveOne("FFPROBE_PATH", "ffprobe"),
-  };
+
+  const manifest = loadManifest();
+  const platform = platformKey();
+  const entry = manifest.ffmpeg.platforms[platform];
+  if (!entry) {
+    throw new Error(
+      `Platform '${platform}' is not supported. Supported platforms (from scripts/ffmpeg-manifest.json): ${Object.keys(manifest.ffmpeg.platforms).join(", ")}`
+    );
+  }
+
+  const expectedVersion = manifest.ffmpeg.versionString;
+
+  // 1. Env var override — skip version check (explicit "I know what I'm doing")
+  const envFfmpeg = process.env.FFMPEG_PATH;
+  const envFfprobe = process.env.FFPROBE_PATH;
+  if (envFfmpeg && envFfprobe && existsSync(envFfmpeg) && existsSync(envFfprobe)) {
+    const version = runVersion(envFfmpeg) ?? "(unknown)";
+    cached = { ffmpeg: envFfmpeg, ffprobe: envFfprobe, versionString: version };
+    return cached;
+  }
+
+  // 2. Manifest-prescribed install location
+  const ffmpegPath = installedPath(entry, "ffmpeg");
+  const ffprobePath = installedPath(entry, "ffprobe");
+
+  if (!existsSync(ffmpegPath) || !existsSync(ffprobePath)) {
+    throw new Error(
+      `ffmpeg binaries are not installed at the expected location for ${platform}.\n` +
+        `  Expected: ${ffmpegPath}\n` +
+        `            ${ffprobePath}\n\n` +
+        `Run 'bun run setup-ffmpeg' from the project root to install the pinned ` +
+        `version (${manifest.ffmpeg.distribution} ${manifest.ffmpeg.version}).`
+    );
+  }
+
+  // 3. Version check — binary exists, does its version match the manifest?
+  const actualVersion = runVersion(ffmpegPath);
+  if (actualVersion !== expectedVersion) {
+    throw new Error(
+      `ffmpeg version mismatch at ${ffmpegPath}\n` +
+        `  expected: ${expectedVersion}\n` +
+        `  actual:   ${actualVersion ?? "(could not parse)"}\n\n` +
+        `The installed binary has drifted from the manifest pin. Run ` +
+        `'bun run setup-ffmpeg --force' to re-install the pinned version, or ` +
+        `update scripts/ffmpeg-manifest.json if you intended to bump the version.`
+    );
+  }
+
+  cached = { ffmpeg: ffmpegPath, ffprobe: ffprobePath, versionString: actualVersion };
   return cached;
 }

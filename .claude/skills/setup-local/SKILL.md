@@ -24,17 +24,19 @@ This installs Bun if missing, runs `bun install`, creates `tmp/segments/`, and g
 
 If it fails, report the error output and stop.
 
-## 2. Download ffmpeg
+## 2. Install the pinned ffmpeg
 
-Populate `vendor/ffmpeg/<platform>/` with a current jellyfin-ffmpeg build:
+`scripts/ffmpeg-manifest.json` pins one exact jellyfin-ffmpeg version with per-platform SHA256. Install it:
 
 ```sh
 bun run setup-ffmpeg
 ```
 
-This downloads the per-platform portable archive, extracts `ffmpeg` + `ffprobe` into the vendor directory, and verifies both run. Idempotent — re-runs skip unless `--force` is passed.
+Platform behaviour:
+- **Linux (x64 / arm64)**: downloads the Jellyfin `.deb`, verifies SHA256, runs `sudo dpkg -i`. You will see a sudo password prompt. The `.deb` installs to `/usr/lib/jellyfin-ffmpeg/` and ships a bundled newer libva + iHD driver — required for HW acceleration on any machine whose distro-packaged `intel-media-driver` predates the host GPU. Idempotent — a no-op if the pinned version is already installed.
+- **macOS / Windows**: downloads the portable archive, verifies SHA256, extracts to `vendor/ffmpeg/<platform>/`. No sudo.
 
-The server refuses to start without these binaries. The bundled `@ffmpeg-installer` dependency is no longer used because it shipped a 2018 static build that cannot drive modern HW accel APIs.
+The server refuses to start unless `ffmpeg -version` matches the pinned `versionString` exactly. If it doesn't, `bun run setup-ffmpeg --force` re-installs. If the user refuses sudo on Linux, stop and report — the server can't run without the pinned install.
 
 ## 3. Set up Seq (log management)
 

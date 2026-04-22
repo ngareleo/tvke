@@ -16,7 +16,7 @@ xstream is a high-resolution web streaming application. The server transcodes vi
 | HTTP + WebSocket server | `Bun.serve()` + `graphql-yoga` + `graphql-ws` |
 | Database | SQLite via `bun:sqlite` — **raw SQL only, no ORM** |
 | GraphQL server | `graphql-yoga` + `@graphql-tools/schema` |
-| Video processing | `fluent-ffmpeg` + bundled jellyfin-ffmpeg in `vendor/ffmpeg/<platform>/` (downloaded via `bun run setup-ffmpeg`). HW-accelerated via VAAPI on Linux; macOS/Windows paths stubbed in `HwAccelConfig`. |
+| Video processing | `fluent-ffmpeg` + **pinned jellyfin-ffmpeg** declared in `scripts/ffmpeg-manifest.json` with per-platform SHA256. `bun run setup-ffmpeg` installs the exact pinned version: `sudo dpkg -i` on Linux (ships bundled iHD driver at `/usr/lib/jellyfin-ffmpeg/`); portable tarball/zip into `vendor/ffmpeg/<platform>/` on macOS/Windows. Server verifies the installed version at startup; drift is fatal. HW-accelerated via VAAPI on Linux; macOS/Windows paths stubbed in `HwAccelConfig`. |
 | Client bundler | Rsbuild |
 | UI framework | React 18 + React Router v6 |
 | UI styling | `@griffel/react` (atomic CSS-in-JS) |
@@ -252,6 +252,17 @@ Run `/otel-logs` after any playback session to log into Seq and confirm server t
 
 ### Change resolution profiles
 Edit `RESOLUTION_PROFILES` in `server/src/config.ts` and the `Resolution` enum in `server/src/types.ts`. Also update the `GQL_TO_RESOLUTION` / `RESOLUTION_TO_GQL` maps in `server/src/graphql/mappers.ts` and the schema enum in `schema.ts`.
+
+### Bump the pinned ffmpeg version
+
+`scripts/ffmpeg-manifest.json` is the lockfile for native binaries — one exact jellyfin-ffmpeg version with per-platform SHA256 hashes. Bumping the version is a two-commit-if-needed workflow, one commit ideally:
+
+1. Look up the new release on `https://github.com/jellyfin/jellyfin-ffmpeg/releases` and identify the five assets we pin (linux amd64 .deb, linux arm64 .deb, darwin x64 tar.xz, darwin arm64 tar.xz, win x64 zip — keep the asset-naming pattern consistent with the current manifest).
+2. Download all five and compute `sha256sum` for each. Update `scripts/ffmpeg-manifest.json`: bump `version`, `versionString` (the exact string ffmpeg's `-version` emits — e.g. `7.1.3-Jellyfin`), `releaseUrl`, and each platform's `asset` + `sha256`.
+3. Run `bun run setup-ffmpeg --force` locally to verify the new pin installs cleanly on the current platform. If any encoder flags changed between versions (rare), adjust the VAAPI case in `server/src/services/ffmpegFile.ts::applyOutputOptions`.
+4. Commit both changes together. Server startup verifies `ffmpeg -version` matches `versionString`; a mismatch is fatal with a pointer to `bun run setup-ffmpeg`.
+
+Do not rely on the system `ffmpeg` on `$PATH` — the resolver does not fall back to it. If your dev machine's pinned install breaks, re-run `bun run setup-ffmpeg` rather than hand-editing the resolver.
 
 ### Add a hardware-accel path for a new platform/encoder
 
