@@ -271,6 +271,16 @@ export class FFmpegFile {
 
     const output = [
       `-vf ${scale},${pad}`,
+      // Force bt709 output color metadata. Without this, an HDR source's
+      // BT.2020 color matrix/primaries flow through into the H.264 VUI even
+      // though we're emitting 8-bit SDR. The browser then applies a
+      // BT.2020→display transform to YUV pixels that were laid down assuming
+      // bt709, and `pad_vaapi`'s `color=black` letterbox renders as chroma
+      // green. We're already transcoding to 8-bit H.264 SDR, so tagging the
+      // output as bt709 is honest.
+      `-colorspace bt709`,
+      `-color_primaries bt709`,
+      `-color_trc bt709`,
       `-profile:v high`,
       `-level:v ${profile.h264Level}`,
       `-b:v ${profile.videoBitrate}`,
