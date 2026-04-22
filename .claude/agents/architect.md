@@ -73,6 +73,14 @@ Handlers register with `ticker.register(handler)` and return `true` to stay or `
 
 Owned by `PlaybackController`; passed into `StallTracker` via deps so the 2 s spinner debounce uses the same tick instead of `setTimeout`.
 
+## Playback timeline (observability)
+
+`client/src/services/PlaybackTimeline.ts` is a pure observability data structure that holds wall-clock predictions for upcoming pipeline events (next seam crossing, next prefetch fire, lookahead first-byte arrival). The rest of the system never reads from it for coordination decisions — it exists so that future trace inspection can see expected vs. actual at a glance, and so the controller can fire a `playback.timeline_drift` event when a prediction diverges from reality by more than 5 s.
+
+Predictions are based on a rolling window of recent observations (last 5 first-byte latencies). The first chunk handover in a session has no prediction; subsequent ones compare actual against the rolling avg and emit drift events for regressions.
+
+`PlaybackController` owns the timeline, calls its update methods at the right transitions (foreground change, lookahead open, first byte arrival, promotion), and surfaces snapshots as attributes on `playback.session` / `chunk.stream` spans.
+
 ## Backpressure
 
 Two distinct mechanisms — don't confuse them.

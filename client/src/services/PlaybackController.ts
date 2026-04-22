@@ -14,6 +14,7 @@ import {
 } from "./playbackConfig.js";
 import { clearSessionContext, getSessionContext, setSessionContext } from "./playbackSession.js";
 import { PlaybackTicker } from "./PlaybackTicker.js";
+import { PlaybackTimeline } from "./PlaybackTimeline.js";
 import { StallTracker } from "./StallTracker.js";
 
 export { type PlaybackStatus };
@@ -109,6 +110,8 @@ export class PlaybackController {
   private cancelStartupHandler: (() => void) | null = null;
   private cancelBgReadyHandler: (() => void) | null = null;
 
+  private readonly timeline: PlaybackTimeline;
+
   private readonly stallTracker: StallTracker;
 
   private detachListeners: Array<() => void> = [];
@@ -117,6 +120,27 @@ export class PlaybackController {
     this.deps = deps;
     this.events = events;
     this.ticker = new PlaybackTicker();
+    this.timeline = new PlaybackTimeline({
+      onDrift: (drift) => {
+        playbackLog.warn(
+          `Timeline drift on ${drift.dimension} — predicted ${drift.predictedAtMs.toFixed(0)}ms, actual ${drift.actualAtMs.toFixed(0)}ms (drift ${drift.driftMs.toFixed(0)}ms)`,
+          {
+            timeline_dimension: drift.dimension,
+            timeline_predicted_at_ms: parseFloat(drift.predictedAtMs.toFixed(2)),
+            timeline_actual_at_ms: parseFloat(drift.actualAtMs.toFixed(2)),
+            timeline_drift_ms: parseFloat(drift.driftMs.toFixed(2)),
+            timeline_job_id: drift.jobId,
+          }
+        );
+        this.sessionSpan?.addEvent("playback.timeline_drift", {
+          "timeline.dimension": drift.dimension,
+          "timeline.predicted_at_ms": parseFloat(drift.predictedAtMs.toFixed(2)),
+          "timeline.actual_at_ms": parseFloat(drift.actualAtMs.toFixed(2)),
+          "timeline.drift_ms": parseFloat(drift.driftMs.toFixed(2)),
+          "timeline.job_id": drift.jobId,
+        });
+      },
+    });
     this.stallTracker = new StallTracker({
       videoEl: deps.videoEl,
       getBufferedAheadSeconds: () =>
@@ -335,10 +359,55 @@ export class PlaybackController {
       // time). Promotion just transfers control — its onStreamEnded will fire
       // again when this chunk completes, calling handleChunkEnded recursively.
       this.pipeline.promoteLookahead();
+      this.timeline.clearLookahead();
+      this.timeline.setForegroundChunk(nextStart, nextEnd);
+      this.updateSessionTimelineAttrs();
     } else {
       // Prefetch never fired (e.g. very short chunk, slow server) — request fresh.
       this.startChunkSeries(res, nextStart, buffer, false);
     }
+  }
+
+  /** Snapshots the timeline and writes the predictions as attributes on the
+   *  session span. Called at every transition that may change the timeline
+   *  state (foreground change, lookahead open, lookahead promote/clear). The
+   *  most-recent attribute values overwrite prior ones — Seq surfaces the
+   *  span's final attribute set so a trace inspector sees the timeline at
+   *  the time of teardown. */
+  private updateSessionTimelineAttrs(): void {
+    if (!this.sessionSpan) return;
+    const snapshot = this.timeline.snapshot(this.deps.videoEl.currentTime);
+    this.sessionSpan.setAttribute(
+      "playback.foreground_chunk_start_s",
+      snapshot.foregroundChunkStartS ?? -1
+    );
+    this.sessionSpan.setAttribute(
+      "playback.foreground_chunk_end_s",
+      snapshot.foregroundChunkEndS ?? -1
+    );
+    this.sessionSpan.setAttribute(
+      "playback.expected_seam_at_ms",
+      snapshot.expectedSeamAtMs === null ? -1 : parseFloat(snapshot.expectedSeamAtMs.toFixed(2))
+    );
+    this.sessionSpan.setAttribute("playback.lookahead_job_id", snapshot.lookaheadJobId ?? "");
+    this.sessionSpan.setAttribute(
+      "playback.lookahead_opened_at_ms",
+      snapshot.lookaheadOpenedAtMs === null
+        ? -1
+        : parseFloat(snapshot.lookaheadOpenedAtMs.toFixed(2))
+    );
+    this.sessionSpan.setAttribute(
+      "playback.expected_lookahead_first_byte_at_ms",
+      snapshot.expectedFirstByteAtMs === null
+        ? -1
+        : parseFloat(snapshot.expectedFirstByteAtMs.toFixed(2))
+    );
+    this.sessionSpan.setAttribute(
+      "playback.rolling_avg_first_byte_latency_ms",
+      snapshot.rollingAvgFirstByteLatencyMs === null
+        ? -1
+        : parseFloat(snapshot.rollingAvgFirstByteLatencyMs.toFixed(2))
+    );
   }
 
   /** Arms the startup-buffer check that calls video.play() once the first
@@ -439,6 +508,8 @@ export class PlaybackController {
     void this.requestChunk(res, startS, chunkEnd, false)
       .then((rawJobId) => {
         if (!this.pipeline) return; // Tore down between request and response.
+        this.timeline.setForegroundChunk(startS, chunkEnd);
+        this.updateSessionTimelineAttrs();
         this.pipeline.startForeground({
           jobId: rawJobId,
           chunkStartS: startS,
@@ -495,6 +566,8 @@ export class PlaybackController {
               // Open the /stream/<jobId> fetch immediately — the server's
               // orphan timer sees connections > 0 and the prefetched job
               // survives even if the foreground is still streaming.
+              this.timeline.recordLookaheadOpened(rawJobId);
+              this.updateSessionTimelineAttrs();
               this.pipeline.openLookahead({
                 jobId: rawJobId,
                 chunkStartS: nextStart,
@@ -502,6 +575,8 @@ export class PlaybackController {
                 resolution: res,
                 onStreamEnded: (outcome) => this.handleChunkEnded(res, nextStart, buffer, outcome),
                 onError: (err) => this.setError(err.message),
+                onFirstMediaSegmentArrived: (atMs) =>
+                  this.timeline.recordLookaheadFirstByte(rawJobId, atMs),
               });
             })
             .catch(() => {
@@ -715,6 +790,7 @@ export class PlaybackController {
 
     // Cancel both pipeline slots (foreground + lookahead) and flush the buffer.
     this.pipeline?.cancel("seek");
+    this.timeline.clearLookahead();
     this.prefetchFired = false;
 
     const buf = this.buffer;

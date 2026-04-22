@@ -49,6 +49,11 @@ export interface ChunkOpts {
    *  its startup-buffer check. Optional because lookahead/continuation chunks
    *  don't need it. */
   onFirstChunkInit?: () => void;
+  /** Fired when the first media segment for this slot is seen (after the init
+   *  segment, on the first non-init append). Used by PlaybackTimeline to
+   *  measure prefetch-to-first-byte latency. The wall-clock instant is
+   *  captured at arrival, not after the append resolves. */
+  onFirstMediaSegmentArrived?: (atMs: DOMHighResTimeStamp) => void;
 }
 
 interface Slot {
@@ -234,6 +239,8 @@ export class ChunkPipeline {
         let firstAppendSpan: Span | null = null;
         if (!isInit && !opts.isFirstChunk && !slot.firstMediaSegmentSeen) {
           slot.firstMediaSegmentSeen = true;
+          const arrivalAtMs = performance.now();
+          opts.onFirstMediaSegmentArrived?.(arrivalAtMs);
           const arrivalCurrentTime = this.videoEl.currentTime;
           const arrivalBufferedAhead = this.buffer.getBufferedAheadSeconds(arrivalCurrentTime) ?? 0;
           firstAppendSpan = this.tracer.startSpan(
