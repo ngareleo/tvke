@@ -16,7 +16,7 @@ xstream is a high-resolution web streaming application. The server transcodes vi
 | HTTP + WebSocket server | `Bun.serve()` + `graphql-yoga` + `graphql-ws` |
 | Database | SQLite via `bun:sqlite` — **raw SQL only, no ORM** |
 | GraphQL server | `graphql-yoga` + `@graphql-tools/schema` |
-| Video processing | `fluent-ffmpeg` + `@ffmpeg-installer/ffmpeg` |
+| Video processing | `fluent-ffmpeg` + **pinned jellyfin-ffmpeg** declared in `scripts/ffmpeg-manifest.json` with per-platform SHA256. `bun run setup-ffmpeg` installs the exact pinned version: `sudo dpkg -i` on Linux (ships bundled iHD driver at `/usr/lib/jellyfin-ffmpeg/`); portable tarball/zip into `vendor/ffmpeg/<platform>/` on macOS/Windows. Server verifies the installed version at startup; drift is fatal. HW-accelerated via VAAPI on Linux; macOS/Windows paths stubbed in `HwAccelConfig`. |
 | Client bundler | Rsbuild |
 | UI framework | React 18 + React Router v6 |
 | UI styling | `@griffel/react` (atomic CSS-in-JS) |
@@ -252,6 +252,31 @@ Run `/otel-logs` after any playback session to log into Seq and confirm server t
 
 ### Change resolution profiles
 Edit `RESOLUTION_PROFILES` in `server/src/config.ts` and the `Resolution` enum in `server/src/types.ts`. Also update the `GQL_TO_RESOLUTION` / `RESOLUTION_TO_GQL` maps in `server/src/graphql/mappers.ts` and the schema enum in `schema.ts`.
+
+### Bump the pinned ffmpeg version
+
+`scripts/ffmpeg-manifest.json` is the lockfile for native binaries — one exact jellyfin-ffmpeg version with per-platform SHA256 hashes. Bumping the version is a two-commit-if-needed workflow, one commit ideally:
+
+1. Look up the new release on `https://github.com/jellyfin/jellyfin-ffmpeg/releases` and identify the five assets we pin (linux amd64 .deb, linux arm64 .deb, darwin x64 tar.xz, darwin arm64 tar.xz, win x64 zip — keep the asset-naming pattern consistent with the current manifest).
+2. Download all five and compute `sha256sum` for each. Update `scripts/ffmpeg-manifest.json`: bump `version`, `versionString` (the exact string ffmpeg's `-version` emits — e.g. `7.1.3-Jellyfin`), `releaseUrl`, and each platform's `asset` + `sha256`.
+3. Run `bun run setup-ffmpeg --force` locally to verify the new pin installs cleanly on the current platform. If any encoder flags changed between versions (rare), adjust the VAAPI case in `server/src/services/ffmpegFile.ts::applyOutputOptions`.
+4. Commit both changes together. Server startup verifies `ffmpeg -version` matches `versionString`; a mismatch is fatal with a pointer to `bun run setup-ffmpeg`.
+
+Do not rely on the system `ffmpeg` on `$PATH` — the resolver does not fall back to it. If your dev machine's pinned install breaks, re-run `bun run setup-ffmpeg` rather than hand-editing the resolver.
+
+### Add a hardware-accel path for a new platform/encoder
+
+The server decides at startup which ffmpeg encoder backend to use via the `HwAccelConfig` tagged union in `server/src/services/hwAccel.ts`. Today only the `vaapi` variant is fully implemented; adding macOS (VideoToolbox) or Windows (QSV/NVENC/AMF) involves two edits and one test:
+
+1. **Implement the probe** — add a branch in `detectHwAccel` that runs a short ffmpeg command testing the target encoder (matching the existing VAAPI probe pattern). On success return the matching `HwAccelConfig` variant; on failure call `fatal(...)` with a clear remediation message.
+2. **Implement the ffmpeg flags** — add a `case "<kind>":` to the `switch` in `FFmpegFile.applyOutputOptions` (`server/src/services/ffmpegFile.ts`). Model it on the `vaapi` case: pre-input `.inputOptions([...])` for device/hwaccel init, the HW-aware filter chain (`scale_qsv`, `scale_vt`, etc.), then `.videoCodec("h264_<kind>")` and the encoder's quality/bitrate args.
+3. **Verify** — run `bun run dev`, observe the startup log selects the new backend, and that `transcode.job` spans in Seq carry `hwaccel: "<kind>"`. A VAAPI session emits `transcode_progress` events at ≥60 fps for 4K H.264; the new backend should hit comparable numbers.
+
+Adding a kind does **not** require touching the chunker, the per-job software fallback, or the telemetry code — those are driven by the config union and work for every variant automatically. The `software` variant stays as the deliberate benchmarking / HW-failure-retry path; never route auto-detect failures there.
+
+**fluent-ffmpeg quirks to respect in any new backend:**
+- **`inputOptions` takes one argument per array element.** Pass each flag and its value as separate strings: `.inputOptions(["-init_hw_device", "vaapi=va:/dev/dri/renderD128", "-hwaccel", "vaapi"])`. A single string like `"-init_hw_device vaapi=va:..."` is not reliably split on every space and will pass the whole thing as one argv entry.
+- **`setFfmpegPath` is module-global.** fluent-ffmpeg caches the binary path at module scope; the last caller wins regardless of load order. The only place that should call it is the single startup resolver (`resolveFfmpegPaths` in `ffmpegPath.ts`). If any service module (e.g. `libraryScanner.ts`) also imports an installer package and calls `setFfmpegPath` at module-load time, it will silently clobber the resolver's setting — symptom is VAAPI probe failing with `-22 Invalid argument` while a direct `bun` spawn of the same binary works.
 
 ### Add a new client component with data
 1. Create `client/src/components/<kebab-case-name>/ComponentName.tsx` — the directory name is the kebab-case of the component name (e.g. `VideoCard` → `video-card/`)
@@ -725,6 +750,33 @@ ps aux | grep ffmpeg | grep -v grep | awk '{print $2}' | xargs -r kill -9
 
 ---
 
+### VAAPI probe fails on Linux with `VA_STATUS_ERROR_INVALID_PARAMETER` / exit `-22`
+
+Symptoms: `detectHwAccel` fatally exits; ffmpeg stderr shows `Failed to create VAAPI device` or `VA_STATUS_ERROR_INVALID_PARAMETER (0x16)`; `vainfo` against the same `/dev/dri/renderD128` either fails similarly or reports missing entrypoints for H.264 encode.
+
+**Root cause 1 — driver version gap.** The system `intel-media-driver` may predate the host GPU. Ubuntu 24.04 (noble) ships `intel-media-driver 24.1.0`, which does not support Intel Lunar Lake (Xe2) — that GPU family needs `24.2.0+`. Symptom is VAAPI init failing even though `/dev/dri/renderD128` exists and has the right permissions. **This is exactly why the Linux install strategy is `sudo dpkg -i` on the Jellyfin `.deb`, not the portable tarball**: Jellyfin ships a bundled newer `libva` + iHD driver at `/usr/lib/jellyfin-ffmpeg/lib/dri/` that works on modern GPUs regardless of the distro-packaged driver. Do not add `LD_LIBRARY_PATH` / `LIBVA_DRIVERS_PATH` workarounds around a portable build — jellyfin-ffmpeg's `libva` has a **compiled-in RUNPATH** (`/usr/lib/jellyfin-ffmpeg/lib/dri`) and *ignores* `LIBVA_DRIVERS_PATH`. The driver loads only when the binary lives at its install prefix. `bun run setup-ffmpeg` on Linux is the single supported path.
+
+**Root cause 2 — the resolver is pointing at the wrong binary.** If `ffmpeg -version` run manually against `/usr/lib/jellyfin-ffmpeg/ffmpeg` works and initialises VAAPI, but the server probe still fails, another service module has called `setFfmpegPath` with a stale path. fluent-ffmpeg's path cache is module-global; see the fluent-ffmpeg quirks note under "Add a hardware-accel path" for the fix. Confirm via an ad-hoc `log.info` of `ffmpeg.getAvailableFormats`'s caller or by bisecting imports — the only legitimate `setFfmpegPath` call in the codebase is in the startup resolver.
+
+**Root cause 3 — permissions on `/dev/dri/renderD128`.** The server user must be in the `render` (or `video` on older distros) group. `ls -l /dev/dri/renderD128` shows the owning group. Re-login (not just `newgrp`) after adding the user, so the new GID sticks on the shell that launches `bun run dev`.
+
+---
+
+### Green/pink overlay during HDR 4K playback (pad_vaapi artifact)
+
+Symptoms: 4K HDR source plays correctly on software encode but shows a solid green (or sometimes pink) rectangle over part of the frame when using VAAPI. Only affects HDR sources (BT.2020 PQ / SMPTE2084); SDR sources render cleanly through the same pipeline.
+
+**Root cause.** `pad_vaapi`'s fill color is interpreted in the *output* color space. On an HDR source the upstream `scale_vaapi=format=nv12` converts to 8-bit NV12 but the color matrix / primaries metadata can flow through as BT.2020, so the `color=black` fill (Y=16, Cb=128, Cr=128 in limited range) is decoded under BT.2020→display transforms and lands as chroma green. This is an ffmpeg-level issue, not a bug in our chunker.
+
+**Workarounds, in order of increasing overhead:**
+1. Force colour space metadata before `pad_vaapi` so the fill is interpreted correctly: add `-colorspace bt709 -color_primaries bt709 -color_trc bt709` to the VAAPI output options (we already transcode to 8-bit H.264 SDR, so this matches the actual output).
+2. Skip `pad_vaapi` and do the pad on the CPU side: `scale_vaapi=...,hwdownload,format=nv12,pad=W:H:x:y:color=black,hwupload`. Costs one round trip through system memory but is colour-space correct for any source.
+3. Pick a `scale_vaapi` geometry that never needs padding (no `force_original_aspect_ratio=decrease`). Acceptable only if you're happy with stretched/cropped output.
+
+When touching the VAAPI branch of `applyOutputOptions`, test with an HDR 4K source (e.g. Furiosa 2160p) — SDR-only smoke tests won't surface this.
+
+---
+
 ### React state persisting across React Router navigation (component reuse)
 
 Symptoms: navigating from page A to page B (same route pattern, different params) leaves stale state visible — e.g. an "ended" playback overlay shows on the new video, or a detail pane shows data from the previous item.
@@ -832,12 +884,15 @@ Persist `streamingLogsOpen` to `localStorage` inside `DevToolsContext`. On mount
 
 The Bun/JS server is a **prototype** used to validate the architecture quickly. Once the design is proven, the server will be rewritten in Rust for performance gains (critical at 4K bitrates). The React/Relay client is intended to remain **completely untouched** across this rewrite.
 
+**Packaging target:** the Rust server + React client ship together as a **Tauri desktop app** for Windows, macOS, and Linux. This means every runtime dependency must be *bundleable with the binary* — no `apt install`, `brew install`, or system-package requirements. Infra decisions today should honour this constraint so the port is a straight translation, not a redesign.
+
 GraphQL and the binary stream endpoint are the stable contracts between server and client. When porting to Rust:
 
 - The **GraphQL schema SDL** must be identical — same types, field names, enum values, and nullability
 - **Global ID encoding** must match: `base64("TypeName:localId")` — Relay's cache depends on this
 - **`/stream/:jobId` binary framing** must match: 4-byte big-endian uint32 length prefix + raw fMP4 bytes, init segment always first — documented in `docs/Streaming Protocol.md`
 - **WebSocket subscriptions** must use the `graphql-ws` subprotocol (not the legacy `subscriptions-transport-ws`)
+- **ffmpeg stays as a bundled subprocess** — `vendor/ffmpeg/<platform>/ffmpeg` (jellyfin-ffmpeg portable builds) is resolved at startup in `server/src/services/ffmpegPath.ts`. The Rust port does the same per-platform resolution + Tauri resource bundling; the HW-accel tagged union in `hwAccel.ts` ports directly. Linking libav* in-process is not worth the complexity at chunk cadence.
 
 Do not couple the client to anything server-implementation-specific. All client↔server communication must go through the GraphQL endpoint or the `/stream/` binary endpoint.
 
@@ -912,11 +967,12 @@ Full policy in `docs/observability.md`. Key rules agents must follow:
 | Client | `playback.session` | `PlaybackController.startPlayback` |
 | Client | `chunk.stream` | `PlaybackController.streamChunk` — one per chunk; its context is threaded into `StreamingService.start(parentContext)` so the `GET /stream/:jobId` fetch span (and the server's `stream.request`) nest under it. Records `chunk.bytes_streamed` and `chunk.segments_received` at end |
 | Client | `transcode.request` | `PlaybackController.requestChunk` — one per `startTranscode` mutation (including prefetches). `chunk.is_prefetch` attribute distinguishes RAF-driven prefetches from on-demand chain calls. The `graphql.request` HTTP span nests under it |
-| Client | `buffer.halt` | `BufferManager.checkForwardBuffer` — one per back-pressure pause→resume cycle. Parented on `playback.session` (halts can outlast a single `chunk.stream`). Span duration is the stall length |
+| Client | `buffer.backpressure` | `BufferManager.checkForwardBuffer` — one per back-pressure pause→resume cycle. Parented on `playback.session`. Fires when the forward buffer exceeds `forwardTargetS` (we deliberately pause the network because we have *too much* buffered). **Not** a user-visible freeze — for that see `playback.stalled` |
+| Client | `playback.stalled` | `PlaybackController.handleWaiting` — the `<video>` `waiting` event. One span per stall; ends on `playing`/seek/teardown. Parented on `playback.session`. Span duration = user-visible freeze |
 | Client | `graphql.request` | FetchInstrumentation (automatic) |
 | Server | `stream.request` | `routes/stream.ts` — child of client's `chunk.stream` |
 | Server | `job.resolve` | `chunker.startTranscodeJob` — covers cache-hit / inflight / restored-from-db / newly-started paths via one of four events (`job_cache_hit`, `job_inflight_resolved`, `job_restored_from_db`, `job_started`) |
-| Server | `transcode.job` | `chunker` when ffmpeg is actually spawned |
+| Server | `transcode.job` | `chunker` when ffmpeg is actually spawned — child of `job.resolve`. Emits periodic `transcode_progress` events (~every 10s) with fps/kbps/timemark for diagnosing encode-rate drops |
 | Server | `library.scan` | `libraryScanner.scanLibraries` |
 
 Add a new span only when none of these covers the work. Prefer `span.addEvent()` on an existing span for discrete transitions.

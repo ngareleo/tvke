@@ -1,6 +1,4 @@
-import ffmpegInstaller from "@ffmpeg-installer/ffmpeg";
-import ffprobeInstaller from "@ffprobe-installer/ffprobe";
-import { type Context as OtelContext, SpanStatusCode } from "@opentelemetry/api";
+import { type Context as OtelContext, context, SpanStatusCode, trace } from "@opentelemetry/api";
 import { createHash } from "crypto";
 import ffmpeg, { type FfmpegCommand } from "fluent-ffmpeg";
 import { watch } from "fs";
@@ -14,12 +12,16 @@ import { getVideoById } from "../db/queries/videos.js";
 import { getOtelLogger, getTracer } from "../telemetry/index.js";
 import type { ActiveJob, Resolution } from "../types.js";
 import { FFmpegFile } from "./ffmpegFile.js";
+import { getHwAccelConfig, type HwAccelConfig } from "./hwAccel.js";
 import { getJob, setJob } from "./jobStore.js";
 
-ffmpeg.setFfmpegPath(ffmpegInstaller.path);
+// fluent-ffmpeg's binary paths are wired once at startup by the resolver call
+// in `index.ts` (see server/src/services/ffmpegPath.ts::resolveFfmpegPaths).
+// Do NOT call setFfmpegPath/setFfprobePath here — fluent-ffmpeg's cache is
+// module-global, so a stale per-module write would clobber the startup setting.
+
 const log = getOtelLogger("chunker");
 const chunkerTracer = getTracer("chunker");
-ffmpeg.setFfprobePath(ffprobeInstaller.path);
 
 // Tracks all ffmpeg processes currently encoding so they can be killed on shutdown.
 const activeCommands = new Map<string, FfmpegCommand>();
@@ -275,6 +277,10 @@ export async function startTranscodeJob(
 
     insertJob(job);
     setJob(job);
+    // Derive the ffmpeg span's parent context from resolveSpan BEFORE ending it so
+    // transcode.job nests under job.resolve in the trace tree instead of the raw
+    // HTTP POST mutation span (which is ~34 ms while ffmpeg runs for minutes).
+    const jobCtx = trace.setSpan(parentOtelCtx ?? context.active(), resolveSpan);
     endResolveSpan("job_started");
     // Job is now in jobStore — any concurrent duplicate can find it via getJob().
     // Keep id in inflightJobIds until runFfmpeg calls activeCommands.set() (after
@@ -288,7 +294,7 @@ export async function startTranscodeJob(
       segmentDir,
       startTimeSeconds,
       endTimeSeconds,
-      parentOtelCtx
+      jobCtx
     );
 
     return job;
@@ -307,10 +313,16 @@ async function runFfmpeg(
   segmentDir: string,
   startTime?: number,
   endTime?: number,
-  parentOtelCtx?: OtelContext
+  parentOtelCtx?: OtelContext,
+  // Set by the per-chunk retry path — forces software even when HW is
+  // otherwise configured. Only the HW-error handler flips this; user-initiated
+  // jobs always start with the globally-detected HwAccelConfig.
+  forceSoftware = false
 ): Promise<void> {
   job.status = "running";
   updateJobStatus(job.id, "running");
+
+  const jobHwAccel: HwAccelConfig = forceSoftware ? { kind: "software" } : getHwAccelConfig();
 
   const jobSpan = chunkerTracer.startSpan(
     "transcode.job",
@@ -321,6 +333,8 @@ async function runFfmpeg(
         "job.resolution": resolution,
         "job.chunk_start_s": startTime ?? 0,
         "job.chunk_duration_s": endTime !== undefined ? endTime - (startTime ?? 0) : -1,
+        hwaccel: jobHwAccel.kind,
+        "hwaccel.forced_software": forceSoftware,
       },
     },
     parentOtelCtx
@@ -394,14 +408,41 @@ async function runFfmpeg(
     }
   }, ORPHAN_TIMEOUT_MS);
 
+  // Throttle fluent-ffmpeg's per-second progress callback to one event every 10 s
+  // so a full 300 s chunk emits ~30 transcode_progress events — enough to spot
+  // encode-rate drops without dominating Seq ingest.
+  const PROGRESS_INTERVAL_MS = 10_000;
+  let lastProgressAt = 0;
+
   let encodeStart = 0;
   file
-    .applyOutputOptions(command, profile, segmentPattern, segmentDir)
+    .applyOutputOptions(command, jobHwAccel, profile, segmentPattern, segmentDir)
     .output(join(segmentDir, "playlist.m3u8"))
     .on("start", (cmd) => {
       encodeStart = Date.now();
       jobSpan.addEvent("transcode_started", { resolution, cmd: cmd.slice(0, 120) });
     })
+    .on(
+      "progress",
+      (p: {
+        frames?: number;
+        currentFps?: number;
+        currentKbps?: number;
+        timemark?: string;
+        percent?: number;
+      }) => {
+        const now = Date.now();
+        if (now - lastProgressAt < PROGRESS_INTERVAL_MS) return;
+        lastProgressAt = now;
+        jobSpan.addEvent("transcode_progress", {
+          frames: p.frames ?? 0,
+          fps: p.currentFps ?? 0,
+          kbps: p.currentKbps ?? 0,
+          timemark: p.timemark ?? "",
+          percent: p.percent ?? 0,
+        });
+      }
+    )
     .on("error", (err) => {
       clearTimeout(orphanTimer);
       activeCommands.delete(job.id);
@@ -410,6 +451,42 @@ async function runFfmpeg(
       // the entry doesn't linger if the error path fires instead of the end path.
       killedJobs.delete(job.id);
       const encodeDurationMs = encodeStart > 0 ? Date.now() - encodeStart : 0;
+
+      // Per-chunk software fallback: if the HW-encoded attempt failed (GPU
+      // contention, transient driver error, OOM from a concurrent app…), retry
+      // this one chunk with software before marking the job errored. Exactly
+      // one retry — if software also fails, that's a real bug.
+      if (jobHwAccel.kind !== "software" && !forceSoftware) {
+        log.warn(`HW encode failed — retrying chunk with software (hwaccel: ${jobHwAccel.kind})`, {
+          job_id: job.id,
+          video_id: job.video_id,
+          resolution,
+          hwaccel: jobHwAccel.kind,
+          encode_duration_ms: encodeDurationMs,
+          message: err.message,
+        });
+        jobSpan.addEvent("transcode_fallback_to_software", {
+          hwaccel: jobHwAccel.kind,
+          encode_duration_ms: encodeDurationMs,
+          message: err.message,
+        });
+        jobSpan.end();
+        // Reset job state so runFfmpeg's status transitions run cleanly on
+        // the retry. Kick off the retry without awaiting — the chunker's
+        // contract is fire-and-forget once the ActiveJob is in jobStore.
+        void runFfmpeg(
+          job,
+          inputPath,
+          resolution,
+          segmentDir,
+          startTime,
+          endTime,
+          parentOtelCtx,
+          /* forceSoftware */ true
+        );
+        return;
+      }
+
       log.error("Transcode error", {
         job_id: job.id,
         video_id: job.video_id,

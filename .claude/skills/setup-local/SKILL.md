@@ -24,7 +24,21 @@ This installs Bun if missing, runs `bun install`, creates `tmp/segments/`, and g
 
 If it fails, report the error output and stop.
 
-## 2. Set up Seq (log management)
+## 2. Install the pinned ffmpeg
+
+`scripts/ffmpeg-manifest.json` pins one exact jellyfin-ffmpeg version with per-platform SHA256. Install it:
+
+```sh
+bun run setup-ffmpeg
+```
+
+Platform behaviour:
+- **Linux (x64 / arm64)**: downloads the Jellyfin `.deb`, verifies SHA256, runs `sudo dpkg -i`. You will see a sudo password prompt. The `.deb` installs to `/usr/lib/jellyfin-ffmpeg/` and ships a bundled newer libva + iHD driver — required for HW acceleration on any machine whose distro-packaged `intel-media-driver` predates the host GPU. Idempotent — a no-op if the pinned version is already installed.
+- **macOS / Windows**: downloads the portable archive, verifies SHA256, extracts to `vendor/ffmpeg/<platform>/`. No sudo.
+
+The server refuses to start unless `ffmpeg -version` matches the pinned `versionString` exactly. If it doesn't, `bun run setup-ffmpeg --force` re-installs. If the user refuses sudo on Linux, stop and report — the server can't run without the pinned install.
+
+## 3. Set up Seq (log management)
 
 Check if Seq is already running:
 
@@ -58,7 +72,7 @@ Report the username and that a password was generated (do NOT print the password
 printf 'SEQ_ADMIN_USERNAME=admin\nSEQ_ADMIN_PASSWORD=<new-password>\n' > .seq-credentials
 ```
 
-## 3. Set up environment variables
+## 4. Set up environment variables
 
 Check if `.env` exists:
 
@@ -74,7 +88,7 @@ cp .env.example .env
 
 Report that `.env` was created from `.env.example` and that OMDB_API_KEY and OTEL_EXPORTER_OTLP_HEADERS may need to be filled in.
 
-## 4. Check environment configuration
+## 5. Check environment configuration
 
 ```sh
 bun run check-env
@@ -82,7 +96,7 @@ bun run check-env
 
 Report any variables shown as missing or misconfigured. Do not block on warnings — only stop if a required variable is missing.
 
-## 5. Start dev servers
+## 6. Start dev servers
 
 Check if they are already running:
 
@@ -100,16 +114,17 @@ Run in background and wait up to 15 seconds for both ports to become LISTEN. Re-
 
 If either port is still not listening after 15 seconds, report a startup failure.
 
-## 6. Verify the app loads
+## 7. Verify the app loads
 
 Navigate to `http://localhost:5173` in the browser. Take a screenshot.
 
 Confirm the main navigation or dashboard is visible. If the page shows an error or is blank, report it.
 
-## 7. Print setup summary
+## 8. Print setup summary
 
 Report:
 - ✓ Dependencies installed
+- ✓ ffmpeg + ffprobe present at `vendor/ffmpeg/<platform>/`
 - ✓ Seq running at http://localhost:5341 (credentials in `.seq-credentials`)
 - ✓ `.env` present
 - ✓ Dev servers running (server :3001, client :5173)

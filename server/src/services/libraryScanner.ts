@@ -1,5 +1,3 @@
-import ffmpegInstaller from "@ffmpeg-installer/ffmpeg";
-import ffprobeInstaller from "@ffprobe-installer/ffprobe";
 import { createHash } from "crypto";
 import ffmpeg from "fluent-ffmpeg";
 import { createReadStream } from "fs";
@@ -25,8 +23,10 @@ import { isScanRunning, markScanEnded, markScanProgress, markScanStarted } from 
 const log = getOtelLogger("scanner");
 const scannerTracer = getTracer("scanner");
 
-ffmpeg.setFfmpegPath(ffmpegInstaller.path);
-ffmpeg.setFfprobePath(ffprobeInstaller.path);
+// fluent-ffmpeg's binary paths are wired once at startup by the resolver call
+// in `index.ts` (see server/src/services/ffmpegPath.ts::resolveFfmpegPaths).
+// Do NOT call setFfmpegPath/setFfprobePath here — fluent-ffmpeg's cache is
+// module-global, so a stale per-module write would clobber the startup setting.
 
 // Maximum number of files probed/fingerprinted simultaneously.
 // Keeps file-descriptor and CPU usage bounded on large libraries.

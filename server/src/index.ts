@@ -10,6 +10,8 @@ import { closeDb, getDb } from "./db/index.js";
 import { schema, yoga } from "./routes/graphql.js";
 import { handleStream } from "./routes/stream.js";
 import { killAllActiveJobs } from "./services/chunker.js";
+import { resolveFfmpegPaths } from "./services/ffmpegPath.js";
+import { detectHwAccel } from "./services/hwAccel.js";
 import { restoreInterruptedJobs } from "./services/jobRestore.js";
 import { scanLibraries } from "./services/libraryScanner.js";
 import { isOmdbConfigured } from "./services/omdbService.js";
@@ -20,6 +22,21 @@ const log = getOtelLogger("server");
 async function bootstrap(): Promise<void> {
   // Ensure tmp directories exist
   await mkdir(config.segmentDir, { recursive: true });
+
+  // Resolve the pinned ffmpeg install (scripts/ffmpeg-manifest.json).
+  // Throws if the binary is missing or its version string does not match the
+  // manifest pin, with a pointer to `bun run setup-ffmpeg`.
+  const ffmpegPaths = resolveFfmpegPaths();
+  log.info(`ffmpeg resolved — ${ffmpegPaths.versionString} at ${ffmpegPaths.ffmpeg}`, {
+    ffmpeg_path: ffmpegPaths.ffmpeg,
+    ffmpeg_version: ffmpegPaths.versionString,
+  });
+
+  // Probe hardware acceleration. This is fatal on failure when HW_ACCEL=auto
+  // (default) — software 4K encode has been measured as unviable and we want
+  // real driver regressions to surface loudly. HW_ACCEL=off skips the probe
+  // and returns software immediately.
+  await detectHwAccel(ffmpegPaths.ffmpeg, config.hardwareAcceleration);
 
   // Initialize DB (migrations run inside getDb)
   getDb();
