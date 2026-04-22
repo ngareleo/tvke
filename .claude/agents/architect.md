@@ -111,6 +111,8 @@ Client side: `useLazyLoadQuery` lives only in `src/pages/`. Components receive f
 
 HW-accel is a tagged union: `HwAccelConfig` in `server/src/services/hwAccel.ts` with variants `software` / `vaapi` / `videotoolbox` / `qsv` / `nvenc` / `amf`. Only `vaapi` is implemented today; stubs exist for macOS/Windows. `detectHwAccel` runs a probe at startup; the chosen variant drives `FFmpegFile.applyOutputOptions` in `ffmpegFile.ts`. Software is the **benchmarking / retry** path, never the auto-fallback on probe failure (probe failure is fatal — the user must fix it or run `bun run setup-ffmpeg`).
 
+**Per-source HW-skip cache.** `chunker.ts` keeps an in-memory `hwUnsafeVideos: Set<string>` of `video_id`s whose first VAAPI attempt failed and triggered a software fallback. Subsequent chunks of the same video skip VAAPI entirely (force `forceSoftware = true` at `runFfmpeg` entry) — avoids burning ~600 ms per chunk on a HW attempt that's already known to fail (typical for some HDR + DV sources). Wiped on server restart so a driver/ffmpeg upgrade gets re-evaluated. Failures attach `ffmpeg_exit_code` + `ffmpeg_stderr` (4 KB tail) to the `transcode_fallback_to_software` and `transcode_error` events for diagnosis.
+
 Adding a backend = two edits (probe in `detectHwAccel`, ffmpeg flags in `applyOutputOptions`) and a startup-log verification.
 
 **fluent-ffmpeg quirks:**

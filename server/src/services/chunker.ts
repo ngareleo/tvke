@@ -42,6 +42,13 @@ const killReasons = new Map<string, string>();
 // async window (ffprobe, mkdir) before setJob() registers the job.
 const inflightJobIds = new Set<string>();
 
+// Video IDs whose first VAAPI attempt failed and triggered a software fallback.
+// Subsequent chunks of the same video skip VAAPI entirely and go straight to
+// software — avoids burning ~600 ms per chunk on a HW attempt that's already
+// known to fail. In-memory only: a server restart wipes the set so a driver
+// upgrade or ffmpeg version bump gets a fresh evaluation.
+const hwUnsafeVideos = new Set<string>();
+
 /** Maximum number of concurrently running ffmpeg jobs. */
 const MAX_CONCURRENT_JOBS = 3;
 
@@ -322,7 +329,13 @@ async function runFfmpeg(
   job.status = "running";
   updateJobStatus(job.id, "running");
 
-  const jobHwAccel: HwAccelConfig = forceSoftware ? { kind: "software" } : getHwAccelConfig();
+  // Skip VAAPI for sources we've already learned will fail HW. The first
+  // failure for a video (whatever its cause — DV profile, exotic pixel
+  // format, driver bug) marks it; from then on we go straight to software
+  // until the server restarts.
+  const skipHwForThisVideo = hwUnsafeVideos.has(job.video_id);
+  const jobHwAccel: HwAccelConfig =
+    forceSoftware || skipHwForThisVideo ? { kind: "software" } : getHwAccelConfig();
 
   const jobSpan = chunkerTracer.startSpan(
     "transcode.job",
@@ -384,8 +397,35 @@ async function runFfmpeg(
 
   let command = ffmpeg(inputPath);
 
+  // -loglevel error keeps real errors but suppresses frame/info chatter, so
+  // the stderr buffer below stays focused on what we actually care about
+  // when a HW encode fails (e.g. the "Conversion failed!" code-218 path).
+  command = command.inputOptions(["-loglevel", "error"]);
+
   if (startTime !== undefined) command = command.seekInput(startTime);
   if (endTime !== undefined) command = command.duration(endTime - (startTime ?? 0));
+
+  // fluent-ffmpeg discards ffmpeg's stderr by default — only `err.message`
+  // (e.g. "ffmpeg exited with code 218: Conversion failed!") makes it into
+  // the .on("error") handler. Capture the most recent stderr lines so the
+  // failure events we emit to Seq carry the actual ffmpeg complaint.
+  const STDERR_RING_LINES = 200;
+  const STDERR_ATTR_MAX_BYTES = 4_096;
+  const stderrRing: string[] = [];
+  const captureStderr = (line: string): void => {
+    stderrRing.push(line);
+    if (stderrRing.length > STDERR_RING_LINES) stderrRing.shift();
+  };
+  const stderrTail = (): string => {
+    const joined = stderrRing.join("\n");
+    return joined.length > STDERR_ATTR_MAX_BYTES
+      ? joined.slice(joined.length - STDERR_ATTR_MAX_BYTES)
+      : joined;
+  };
+  const exitCodeOf = (msg: string): number => {
+    const match = /exited with code (\d+)/.exec(msg);
+    return match ? parseInt(match[1], 10) : -1;
+  };
 
   // Register the inotify watch BEFORE calling .run() so the kernel queues events
   // from the very first file ffmpeg writes (init.mp4 and segment_0000.m4s).
@@ -422,6 +462,7 @@ async function runFfmpeg(
       encodeStart = Date.now();
       jobSpan.addEvent("transcode_started", { resolution, cmd: cmd.slice(0, 120) });
     })
+    .on("stderr", captureStderr)
     .on(
       "progress",
       (p: {
@@ -457,17 +498,39 @@ async function runFfmpeg(
       // this one chunk with software before marking the job errored. Exactly
       // one retry — if software also fails, that's a real bug.
       if (jobHwAccel.kind !== "software" && !forceSoftware) {
+        const ffmpegStderr = stderrTail();
+        const ffmpegExitCode = exitCodeOf(err.message);
+        // Mark this source HW-unsafe BEFORE spawning the SW retry so any
+        // concurrent chunk requests for the same video already skip VAAPI.
+        const wasFirstUnsafeMark = !hwUnsafeVideos.has(job.video_id);
+        hwUnsafeVideos.add(job.video_id);
+        if (wasFirstUnsafeMark) {
+          log.info(`Marking video HW-unsafe — future chunks skip ${jobHwAccel.kind}`, {
+            video_id: job.video_id,
+            hwaccel: jobHwAccel.kind,
+            ffmpeg_exit_code: ffmpegExitCode,
+          });
+          jobSpan.addEvent("vaapi_marked_unsafe", {
+            video_id: job.video_id,
+            hwaccel: jobHwAccel.kind,
+            ffmpeg_exit_code: ffmpegExitCode,
+          });
+        }
         log.warn(`HW encode failed — retrying chunk with software (hwaccel: ${jobHwAccel.kind})`, {
           job_id: job.id,
           video_id: job.video_id,
           resolution,
           hwaccel: jobHwAccel.kind,
           encode_duration_ms: encodeDurationMs,
+          ffmpeg_exit_code: ffmpegExitCode,
+          ffmpeg_stderr: ffmpegStderr,
           message: err.message,
         });
         jobSpan.addEvent("transcode_fallback_to_software", {
           hwaccel: jobHwAccel.kind,
           encode_duration_ms: encodeDurationMs,
+          ffmpeg_exit_code: ffmpegExitCode,
+          ffmpeg_stderr: ffmpegStderr,
           message: err.message,
         });
         jobSpan.end();
@@ -487,15 +550,21 @@ async function runFfmpeg(
         return;
       }
 
+      const finalFfmpegStderr = stderrTail();
+      const finalFfmpegExitCode = exitCodeOf(err.message);
       log.error("Transcode error", {
         job_id: job.id,
         video_id: job.video_id,
         resolution,
         encode_duration_ms: encodeDurationMs,
+        ffmpeg_exit_code: finalFfmpegExitCode,
+        ffmpeg_stderr: finalFfmpegStderr,
         message: err.message,
       });
       jobSpan.addEvent("transcode_error", {
         encode_duration_ms: encodeDurationMs,
+        ffmpeg_exit_code: finalFfmpegExitCode,
+        ffmpeg_stderr: finalFfmpegStderr,
         message: err.message,
       });
       jobSpan.end();
