@@ -274,6 +274,10 @@ The server decides at startup which ffmpeg encoder backend to use via the `HwAcc
 
 Adding a kind does **not** require touching the chunker, the per-job software fallback, or the telemetry code — those are driven by the config union and work for every variant automatically. The `software` variant stays as the deliberate benchmarking / HW-failure-retry path; never route auto-detect failures there.
 
+**fluent-ffmpeg quirks to respect in any new backend:**
+- **`inputOptions` takes one argument per array element.** Pass each flag and its value as separate strings: `.inputOptions(["-init_hw_device", "vaapi=va:/dev/dri/renderD128", "-hwaccel", "vaapi"])`. A single string like `"-init_hw_device vaapi=va:..."` is not reliably split on every space and will pass the whole thing as one argv entry.
+- **`setFfmpegPath` is module-global.** fluent-ffmpeg caches the binary path at module scope; the last caller wins regardless of load order. The only place that should call it is the single startup resolver (`resolveFfmpegPaths` in `ffmpegPath.ts`). If any service module (e.g. `libraryScanner.ts`) also imports an installer package and calls `setFfmpegPath` at module-load time, it will silently clobber the resolver's setting — symptom is VAAPI probe failing with `-22 Invalid argument` while a direct `bun` spawn of the same binary works.
+
 ### Add a new client component with data
 1. Create `client/src/components/<kebab-case-name>/ComponentName.tsx` — the directory name is the kebab-case of the component name (e.g. `VideoCard` → `video-card/`)
 2. Define a `graphql` fragment in the component file (`fragment ComponentName_prop on TypeName { ... }`)
@@ -743,6 +747,33 @@ ps aux | grep ffmpeg | grep -v grep | awk '{print $2}' | xargs -r kill -9
 ```
 
 `pkill ffmpeg` may return exit code 1 (no match) or 144 (signal delivery issue on some kernels) even when processes are killed — use the `awk | xargs kill` form instead and verify with a follow-up `pgrep ffmpeg | wc -l`.
+
+---
+
+### VAAPI probe fails on Linux with `VA_STATUS_ERROR_INVALID_PARAMETER` / exit `-22`
+
+Symptoms: `detectHwAccel` fatally exits; ffmpeg stderr shows `Failed to create VAAPI device` or `VA_STATUS_ERROR_INVALID_PARAMETER (0x16)`; `vainfo` against the same `/dev/dri/renderD128` either fails similarly or reports missing entrypoints for H.264 encode.
+
+**Root cause 1 — driver version gap.** The system `intel-media-driver` may predate the host GPU. Ubuntu 24.04 (noble) ships `intel-media-driver 24.1.0`, which does not support Intel Lunar Lake (Xe2) — that GPU family needs `24.2.0+`. Symptom is VAAPI init failing even though `/dev/dri/renderD128` exists and has the right permissions. **This is exactly why the Linux install strategy is `sudo dpkg -i` on the Jellyfin `.deb`, not the portable tarball**: Jellyfin ships a bundled newer `libva` + iHD driver at `/usr/lib/jellyfin-ffmpeg/lib/dri/` that works on modern GPUs regardless of the distro-packaged driver. Do not add `LD_LIBRARY_PATH` / `LIBVA_DRIVERS_PATH` workarounds around a portable build — jellyfin-ffmpeg's `libva` has a **compiled-in RUNPATH** (`/usr/lib/jellyfin-ffmpeg/lib/dri`) and *ignores* `LIBVA_DRIVERS_PATH`. The driver loads only when the binary lives at its install prefix. `bun run setup-ffmpeg` on Linux is the single supported path.
+
+**Root cause 2 — the resolver is pointing at the wrong binary.** If `ffmpeg -version` run manually against `/usr/lib/jellyfin-ffmpeg/ffmpeg` works and initialises VAAPI, but the server probe still fails, another service module has called `setFfmpegPath` with a stale path. fluent-ffmpeg's path cache is module-global; see the fluent-ffmpeg quirks note under "Add a hardware-accel path" for the fix. Confirm via an ad-hoc `log.info` of `ffmpeg.getAvailableFormats`'s caller or by bisecting imports — the only legitimate `setFfmpegPath` call in the codebase is in the startup resolver.
+
+**Root cause 3 — permissions on `/dev/dri/renderD128`.** The server user must be in the `render` (or `video` on older distros) group. `ls -l /dev/dri/renderD128` shows the owning group. Re-login (not just `newgrp`) after adding the user, so the new GID sticks on the shell that launches `bun run dev`.
+
+---
+
+### Green/pink overlay during HDR 4K playback (pad_vaapi artifact)
+
+Symptoms: 4K HDR source plays correctly on software encode but shows a solid green (or sometimes pink) rectangle over part of the frame when using VAAPI. Only affects HDR sources (BT.2020 PQ / SMPTE2084); SDR sources render cleanly through the same pipeline.
+
+**Root cause.** `pad_vaapi`'s fill color is interpreted in the *output* color space. On an HDR source the upstream `scale_vaapi=format=nv12` converts to 8-bit NV12 but the color matrix / primaries metadata can flow through as BT.2020, so the `color=black` fill (Y=16, Cb=128, Cr=128 in limited range) is decoded under BT.2020→display transforms and lands as chroma green. This is an ffmpeg-level issue, not a bug in our chunker.
+
+**Workarounds, in order of increasing overhead:**
+1. Force colour space metadata before `pad_vaapi` so the fill is interpreted correctly: add `-colorspace bt709 -color_primaries bt709 -color_trc bt709` to the VAAPI output options (we already transcode to 8-bit H.264 SDR, so this matches the actual output).
+2. Skip `pad_vaapi` and do the pad on the CPU side: `scale_vaapi=...,hwdownload,format=nv12,pad=W:H:x:y:color=black,hwupload`. Costs one round trip through system memory but is colour-space correct for any source.
+3. Pick a `scale_vaapi` geometry that never needs padding (no `force_original_aspect_ratio=decrease`). Acceptable only if you're happy with stretched/cropped output.
+
+When touching the VAAPI branch of `applyOutputOptions`, test with an HDR 4K source (e.g. Furiosa 2160p) — SDR-only smoke tests won't surface this.
 
 ---
 
