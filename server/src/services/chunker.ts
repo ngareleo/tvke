@@ -193,9 +193,33 @@ export async function startTranscodeJob(
   // yet (that happens after ffprobe inside runFfmpeg), so activeCommands.size alone
   // would undercount concurrent work during the initialization window.
   if (activeCommands.size + inflightJobIds.size >= MAX_CONCURRENT_JOBS) {
+    // Trace f503cb13… hit this with the foreground+lookahead pair active —
+    // a third job was squatting. Capture the live set so the next trace
+    // tells us *which* job is the squatter (stale active, abandoned
+    // resolution-switch, etc.) without code spelunking.
+    const activeJobs = [...activeCommands.keys()].map((jid) => {
+      const j = getJob(jid);
+      return {
+        id: jid,
+        video_id: j?.video_id ?? null,
+        chunk_start_s: j?.start_time_seconds ?? null,
+        status: j?.status ?? "missing-from-store",
+        connections: j?.connections ?? -1,
+      };
+    });
     resolveSpan.setStatus({
       code: SpanStatusCode.ERROR,
       message: `Too many concurrent streams (limit: ${MAX_CONCURRENT_JOBS})`,
+    });
+    resolveSpan.addEvent("concurrency_cap_reached", {
+      "cap.limit": MAX_CONCURRENT_JOBS,
+      "cap.active_count": activeCommands.size,
+      "cap.inflight_count": inflightJobIds.size,
+      "cap.active_jobs_json": JSON.stringify(activeJobs),
+      "cap.inflight_ids_json": JSON.stringify([...inflightJobIds]),
+      "cap.requested_video_id": videoId,
+      "cap.requested_chunk_start_s": startTimeSeconds ?? 0,
+      "cap.requested_resolution": resolution,
     });
     resolveSpan.end();
     throw new Error(
