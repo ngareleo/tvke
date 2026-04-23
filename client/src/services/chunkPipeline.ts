@@ -223,9 +223,18 @@ export class ChunkPipeline {
       opts.jobId,
       0,
       async (segData, isInit) => {
-        // Continuation chunks must NOT re-append the init segment — would
-        // clobber the SourceBuffer's existing init and stall the decoder.
-        if (isInit && !opts.isFirstChunk) return;
+        // Continuation chunks MUST re-append their init segment. Each chunk's
+        // ffmpeg encode emits its own `elst` (edit list) carrying the
+        // chunk's source-time lead-in offset; without re-appending the init,
+        // chunk N>0's media segments are parsed against chunk 0's edit list
+        // and Chrome silently drops them — they land in the SourceBuffer
+        // (bytes counter rises) but never extend the buffered range past
+        // chunk 0's PTS. Trace 8281b0fb… confirmed this empirically: chunks
+        // 2-3 streamed in cleanly with TFDT 300+/600+ but `sb.buffered`
+        // stayed capped at 300.04, so the playhead skipped past them.
+        // SPS/PPS are identical across our chunk encodes (only `elst`
+        // differs), so re-init causes at most a one-frame decoder hiccup,
+        // not a stall.
 
         if (!isInit) {
           slot.totalMediaBytes += segData.byteLength;
