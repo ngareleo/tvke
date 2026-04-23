@@ -13,6 +13,11 @@
  *   - When the host has a working HW encoder: 4K source must NEVER fall back
  *     to software. Software fallback at 4K stalls playback continuously and
  *     is treated as a UX regression.
+ *
+ * **Policy:** every encoder edge case we discover lands here as a fixture
+ * + assertion. A fix without a matching test in the same PR is not done.
+ * See `.claude/agents/architect.md` § "Encoder edge-case test policy" for
+ * the full rules and the carve-outs.
  */
 import { existsSync, readdirSync } from "node:fs";
 import { join } from "node:path";
