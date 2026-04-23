@@ -247,6 +247,16 @@ export class BufferManager {
           // change. See trace ac249ef0… — 90 identical errors over 36 s with
           // only `message` made the root cause indistinguishable.
           const domErr = err as DOMException;
+          // `source_buffer_in_ms_list`: distinguishes "browser detached our
+          // SourceBuffer under memory pressure" (false) from any other
+          // InvalidStateError cause (true). Trace 65ef5d6c… narrowed the
+          // cause to "SB removed from sourceBuffers while we still hold the
+          // ref"; this field nails the final attribution. Cumulative bytes
+          // helps confirm Chromium's MSE-budget hypothesis (typically
+          // ~150–300 MB before forced eviction; we hit InvalidStateError at
+          // 2.1 GB cumulative).
+          const sbInMsList =
+            this.mediaSource !== null && Array.from(this.mediaSource.sourceBuffers).includes(sb);
           log.error("appendBuffer error", {
             message: domErr.message,
             error_name: domErr.name,
@@ -254,8 +264,10 @@ export class BufferManager {
             media_source_ready_state: this.mediaSource?.readyState ?? "null",
             source_buffer_updating: sb.updating,
             source_buffer_present: this.sourceBuffer !== null,
+            source_buffer_in_ms_list: sbInMsList,
             data_bytes: data.byteLength,
             segments_appended: this.segmentsAppended,
+            total_bytes_appended: this.totalBytesAppended,
             attempt,
           });
           fatalError = true;
