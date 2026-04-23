@@ -197,3 +197,14 @@ The `.mmd`, the `.png`, the wiki edit, and the underlying code change belong in 
 - **Screenshots go to `.claude/screenshots/` first**, then are copied into `docs/diagrams/`. Never save directly into `docs/diagrams/` from Chrome — the `.claude/screenshots/` staging directory is where all skill screenshots live per project policy.
 - **One scenario per diagram.** Do not merge scenarios into a single `.mmd` — the combined diagram is too dense to screenshot legibly.
 - **Keep prose and diagram in lock-step.** If the prose says "20 s threshold" and the diagram says "25 s", the next agent will trust the wrong one. Update both or neither.
+
+
+## After writing — notify architect
+
+If this task edited code or docs, spawn the `architect` subagent before marking it complete:
+
+- **Files changed** — paths touched by `Write`/`Edit` during the task.
+- **Description** — one sentence on what changed.
+- **Why** — fix / feature / refactor, with issue or memory link if applicable.
+
+Architect decides whether `docs/`, `docs/SUMMARY.md`, or the architect index needs updating, and does so directly. For trivial changes (typo, lint-only) say so explicitly — architect logs and skips. See `CLAUDE.md → Update protocol`.

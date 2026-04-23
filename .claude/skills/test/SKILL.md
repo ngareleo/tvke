@@ -90,3 +90,14 @@ Key rules:
 3. Check that parent rows (FK constraints) are seeded in `beforeAll`
 4. Check that `DB_PATH` is set before any import touches the DB
 5. If `getDb()` is being called before migration runs, ensure the import order is correct
+
+
+## After writing — notify architect
+
+If this task edited code or docs, spawn the `architect` subagent before marking it complete:
+
+- **Files changed** — paths touched by `Write`/`Edit` during the task.
+- **Description** — one sentence on what changed.
+- **Why** — fix / feature / refactor, with issue or memory link if applicable.
+
+Architect decides whether `docs/`, `docs/SUMMARY.md`, or the architect index needs updating, and does so directly. For trivial changes (typo, lint-only) say so explicitly — architect logs and skips. See `CLAUDE.md → Update protocol`.

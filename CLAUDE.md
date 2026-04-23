@@ -2,6 +2,8 @@
 
 High-resolution web streaming. Bun server transcodes video files to fMP4 segments with ffmpeg and streams them over HTTP as length-prefixed binary chunks; the React client renders them via Media Source Extensions. Current phase: 4K/1080p fixed-resolution playback with a full 240p → 4K ladder.
 
+> **Session-start directive:** Before doing task work, read [`docs/SUMMARY.md`](docs/SUMMARY.md) for the shared architecture + coding-style orientation. It's ≤120 lines, owned and maintained by the `architect` subagent.
+
 ## Stack
 
 | Layer | Technology |
@@ -122,12 +124,29 @@ Full policy: [`docs/architecture/Observability/01-Logging-Policy.md`](docs/archi
 - Client: `getClientLogger` + wrap playback-path fetches with `context.with(getSessionContext(), () => fetch(…))`.
 - Server: extract `traceparent` from headers; yoga resolvers receive it as `ctx.otelCtx`.
 
+## Update protocol — notify the architect after changes
+
+Before marking **any task that modified code or docs** as complete, spawn the `architect` subagent with a short change summary:
+
+- **Files changed** — list of paths touched by `Write`/`Edit` during the task.
+- **Description** — one sentence on what changed.
+- **Why** — rationale (fix, feature, refactor) and a link to the issue or feedback memory if applicable.
+
+Architect then decides whether `docs/`, `SUMMARY.md`, or the architect index needs updating, and does so directly. This keeps the RAG coherent without requiring the caller to know what to update.
+
+**When the rule fires:**
+
+- Any `Write` or `Edit` in `client/`, `server/`, `docs/`, `.claude/`, `CLAUDE.md`, or `README.md` during the task.
+- Not fired by: read-only investigation, log inspection, browser verification, test-run observation — observational work doesn't change the baseline.
+
+If the change is genuinely irrelevant to the knowledge base (a typo fix, a lint-only change, a dev-only script tweak), tell architect that explicitly — "files changed: X; no docs impact." Architect will log it and return. This preserves the "always notify" discipline without forcing a doc edit on every commit.
+
 ## Skills & Agents index
 
 The full registry is surfaced by the Skill tool at session start. Brief map:
 
 - **Subagents** (`.claude/agents/`): `architect` (knowledge-base curator + design / tech choices), `devops` (dev flow / release / backend ops)
-- **Skills** (`.claude/skills/`): `browser`, `write-component`, `implement-design`, `feature-flags`, `test`, `debug-backend`, `debug-ui`, `e2e-test`, `update-docs`, `otel-logs`, `setup-local`, `create-pr`, `resolve-comments`, `reflect`, `todo`
+- **Skills** (`.claude/skills/`): `browser`, `write-component`, `implement-design`, `feature-flags`, `test`, `debug-backend`, `debug-ui`, `e2e-test`, `update-docs`, `otel-logs`, `setup-local`, `create-pr`, `resolve-comments`, `reflect`, `todo`, `groom-knowledge-base`
 
 When the user asks about "ultrareview" or how to run it, explain that `/ultrareview` launches a multi-agent cloud review. It is user-triggered and billed; don't attempt to launch it yourself.
 
