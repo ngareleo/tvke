@@ -242,7 +242,8 @@ export class FFmpegFile {
    */
   private vaapiVideoOptions(
     profile: ResolutionProfile,
-    device: string
+    device: string,
+    useSwPad: boolean
   ): { input: string[]; output: string[] } {
     // fluent-ffmpeg's inputOptions tokenises each array element on the FIRST
     // space, which mishandles values containing '=' or ':' — so pass each flag
@@ -262,15 +263,24 @@ export class FFmpegFile {
     const scale =
       `scale_vaapi=w=${profile.width}:h=${profile.height}:` +
       `force_original_aspect_ratio=decrease:format=nv12`;
-    // scale_vaapi can't produce padded output directly, so compose with
-    // pad_vaapi to letterbox to the exact profile resolution.
-    const pad = `pad_vaapi=w=${profile.width}:h=${profile.height}:x=(ow-iw)/2:y=(oh-ih)/2`;
+    // pad_vaapi cannot accept some HDR/Dolby Vision surface formats — ffmpeg
+    // tries to insert auto_scale to bridge and fails with "Impossible to
+    // convert between the formats supported by the filter 'Parsed_pad_vaapi_1'
+    // and the filter 'auto_scale_0'", exit 218. The sw-pad path round-trips
+    // through CPU memory for the pad operation only — encode stays on GPU.
+    // Costs one system-memory copy per frame; works on every source we've
+    // seen including HDR + DV.
+    const filterChain = useSwPad
+      ? `${scale},hwdownload,format=nv12,` +
+        `pad=${profile.width}:${profile.height}:(ow-iw)/2:(oh-ih)/2:color=black,` +
+        `hwupload`
+      : `${scale},pad_vaapi=w=${profile.width}:h=${profile.height}:` + `x=(ow-iw)/2:y=(oh-ih)/2`;
 
     const maxBitrate = `${Math.round(parseInt(profile.videoBitrate) * 1.2)}k`;
     const bufSize = `${Math.round(parseInt(profile.videoBitrate) * 2)}k`;
 
     const output = [
-      `-vf ${scale},${pad}`,
+      `-vf ${filterChain}`,
       // Force bt709 output color metadata. Without this, an HDR source's
       // BT.2020 color matrix/primaries flow through into the H.264 VUI even
       // though we're emitting 8-bit SDR. The browser then applies a
@@ -308,7 +318,8 @@ export class FFmpegFile {
     hwAccel: HwAccelConfig,
     profile: ResolutionProfile,
     segmentPattern: string,
-    segmentDir: string
+    segmentDir: string,
+    opts: { vaapiSwPad?: boolean } = {}
   ): ffmpeg.FfmpegCommand {
     const mapping = this.streamMappingOptions();
     const audio = this.audioCodecOptions(profile);
@@ -329,7 +340,11 @@ export class FFmpegFile {
           .outputOptions(hls);
 
       case "vaapi": {
-        const { input, output } = this.vaapiVideoOptions(profile, hwAccel.device);
+        const { input, output } = this.vaapiVideoOptions(
+          profile,
+          hwAccel.device,
+          opts.vaapiSwPad ?? false
+        );
         return command
           .inputOptions(input)
           .outputOptions(mapping)

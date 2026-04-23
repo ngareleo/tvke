@@ -42,12 +42,16 @@ const killReasons = new Map<string, string>();
 // async window (ffprobe, mkdir) before setJob() registers the job.
 const inflightJobIds = new Set<string>();
 
-// Video IDs whose first VAAPI attempt failed and triggered a software fallback.
-// Subsequent chunks of the same video skip VAAPI entirely and go straight to
-// software — avoids burning ~600 ms per chunk on a HW attempt that's already
-// known to fail. In-memory only: a server restart wipes the set so a driver
-// upgrade or ffmpeg version bump gets a fresh evaluation.
-const hwUnsafeVideos = new Set<string>();
+// Per-source VAAPI capability state, learned from prior failures.
+// - "needs_sw_pad" — pure VAAPI failed (typically pad_vaapi rejecting the
+//   surface format on HDR/DV sources); subsequent chunks start at the
+//   sw-pad VAAPI chain (hwdownload + CPU pad + hwupload around the encode).
+// - "hw_unsafe"   — sw-pad VAAPI also failed; subsequent chunks skip VAAPI
+//   entirely and go straight to software libx264.
+// In-memory only: a server restart wipes the map so a driver/ffmpeg upgrade
+// gets re-evaluated.
+type VaapiVideoState = "needs_sw_pad" | "hw_unsafe";
+const vaapiVideoState = new Map<string, VaapiVideoState>();
 
 /** Maximum number of concurrently running ffmpeg jobs. */
 const MAX_CONCURRENT_JOBS = 3;
@@ -321,21 +325,25 @@ async function runFfmpeg(
   startTime?: number,
   endTime?: number,
   parentOtelCtx?: OtelContext,
-  // Set by the per-chunk retry path — forces software even when HW is
-  // otherwise configured. Only the HW-error handler flips this; user-initiated
-  // jobs always start with the globally-detected HwAccelConfig.
-  forceSoftware = false
+  // Tier-2 retry: forces software libx264 even when HW is otherwise configured.
+  // Set by the sw-pad VAAPI error handler (third tier) and by `hw_unsafe` cache hits.
+  forceSoftware = false,
+  // Tier-1 retry: forces the sw-pad VAAPI chain (CPU round-trip for the pad
+  // operation, encode still on GPU). Set by the fast-VAAPI error handler and
+  // by `needs_sw_pad` cache hits. Ignored when forceSoftware is true.
+  useSwVaapiPad = false
 ): Promise<void> {
   job.status = "running";
   updateJobStatus(job.id, "running");
 
-  // Skip VAAPI for sources we've already learned will fail HW. The first
-  // failure for a video (whatever its cause — DV profile, exotic pixel
-  // format, driver bug) marks it; from then on we go straight to software
-  // until the server restarts.
-  const skipHwForThisVideo = hwUnsafeVideos.has(job.video_id);
-  const jobHwAccel: HwAccelConfig =
-    forceSoftware || skipHwForThisVideo ? { kind: "software" } : getHwAccelConfig();
+  // Promote per-source cache state into the run's tier flags. A `hw_unsafe`
+  // video skips both VAAPI tiers; a `needs_sw_pad` video starts at the sw-pad
+  // tier. Explicit caller flags (forceSoftware / useSwVaapiPad from a retry)
+  // also win — they're already set to the correct tier.
+  const cachedState = vaapiVideoState.get(job.video_id);
+  const effForceSoftware = forceSoftware || cachedState === "hw_unsafe";
+  const effUseSwVaapiPad = !effForceSoftware && (useSwVaapiPad || cachedState === "needs_sw_pad");
+  const jobHwAccel: HwAccelConfig = effForceSoftware ? { kind: "software" } : getHwAccelConfig();
 
   const jobSpan = chunkerTracer.startSpan(
     "transcode.job",
@@ -347,7 +355,8 @@ async function runFfmpeg(
         "job.chunk_start_s": startTime ?? 0,
         "job.chunk_duration_s": endTime !== undefined ? endTime - (startTime ?? 0) : -1,
         hwaccel: jobHwAccel.kind,
-        "hwaccel.forced_software": forceSoftware,
+        "hwaccel.forced_software": effForceSoftware,
+        "hwaccel.vaapi_sw_pad": effUseSwVaapiPad,
       },
     },
     parentOtelCtx
@@ -456,7 +465,9 @@ async function runFfmpeg(
 
   let encodeStart = 0;
   file
-    .applyOutputOptions(command, jobHwAccel, profile, segmentPattern, segmentDir)
+    .applyOutputOptions(command, jobHwAccel, profile, segmentPattern, segmentDir, {
+      vaapiSwPad: effUseSwVaapiPad,
+    })
     .output(join(segmentDir, "playlist.m3u8"))
     .on("start", (cmd) => {
       encodeStart = Date.now();
@@ -493,29 +504,103 @@ async function runFfmpeg(
       killedJobs.delete(job.id);
       const encodeDurationMs = encodeStart > 0 ? Date.now() - encodeStart : 0;
 
-      // Per-chunk software fallback: if the HW-encoded attempt failed (GPU
-      // contention, transient driver error, OOM from a concurrent app…), retry
-      // this one chunk with software before marking the job errored. Exactly
-      // one retry — if software also fails, that's a real bug.
-      if (jobHwAccel.kind !== "software" && !forceSoftware) {
-        const ffmpegStderr = stderrTail();
-        const ffmpegExitCode = exitCodeOf(err.message);
-        // Mark this source HW-unsafe BEFORE spawning the SW retry so any
-        // concurrent chunk requests for the same video already skip VAAPI.
-        const wasFirstUnsafeMark = !hwUnsafeVideos.has(job.video_id);
-        hwUnsafeVideos.add(job.video_id);
-        if (wasFirstUnsafeMark) {
-          log.info(`Marking video HW-unsafe — future chunks skip ${jobHwAccel.kind}`, {
-            video_id: job.video_id,
-            hwaccel: jobHwAccel.kind,
-            ffmpeg_exit_code: ffmpegExitCode,
-          });
-          jobSpan.addEvent("vaapi_marked_unsafe", {
-            video_id: job.video_id,
-            hwaccel: jobHwAccel.kind,
-            ffmpeg_exit_code: ffmpegExitCode,
-          });
-        }
+      // Three-tier failure cascade for VAAPI:
+      //   tier 1 (fast)  → tier 2 (sw-pad VAAPI) → tier 3 (software libx264)
+      // Other HW backends fall straight to software (no sw-pad equivalent).
+      // Each tier is a single retry; if every tier fails, mark the job errored.
+      const ffmpegStderr = stderrTail();
+      const ffmpegExitCode = exitCodeOf(err.message);
+
+      // Tier 2 → 3: sw-pad VAAPI failed; mark the source hw_unsafe and fall
+      // through to software libx264. After this, every future chunk of the
+      // same video skips both VAAPI tiers via the cache.
+      if (jobHwAccel.kind === "vaapi" && effUseSwVaapiPad && !effForceSoftware) {
+        vaapiVideoState.set(job.video_id, "hw_unsafe");
+        log.info("Marking video hw_unsafe — sw-pad VAAPI also failed; future chunks use software", {
+          video_id: job.video_id,
+          ffmpeg_exit_code: ffmpegExitCode,
+        });
+        jobSpan.addEvent("vaapi_marked_hw_unsafe", {
+          video_id: job.video_id,
+          ffmpeg_exit_code: ffmpegExitCode,
+        });
+        log.warn("Sw-pad VAAPI failed — falling back to software", {
+          job_id: job.id,
+          video_id: job.video_id,
+          resolution,
+          encode_duration_ms: encodeDurationMs,
+          ffmpeg_exit_code: ffmpegExitCode,
+          ffmpeg_stderr: ffmpegStderr,
+          message: err.message,
+        });
+        jobSpan.addEvent("transcode_fallback_to_software", {
+          hwaccel: "vaapi_sw_pad",
+          encode_duration_ms: encodeDurationMs,
+          ffmpeg_exit_code: ffmpegExitCode,
+          ffmpeg_stderr: ffmpegStderr,
+          message: err.message,
+        });
+        jobSpan.end();
+        void runFfmpeg(
+          job,
+          inputPath,
+          resolution,
+          segmentDir,
+          startTime,
+          endTime,
+          parentOtelCtx,
+          /* forceSoftware */ true,
+          /* useSwVaapiPad  */ false
+        );
+        return;
+      }
+
+      // Tier 1 → 2: fast VAAPI failed; mark the source needs_sw_pad and retry
+      // with the CPU-pad chain. After this, future chunks of the same video
+      // skip the fast tier and start at sw-pad.
+      if (jobHwAccel.kind === "vaapi" && !effUseSwVaapiPad && !effForceSoftware) {
+        vaapiVideoState.set(job.video_id, "needs_sw_pad");
+        log.info("Marking video needs_sw_pad — fast VAAPI failed; future chunks use sw-pad", {
+          video_id: job.video_id,
+          ffmpeg_exit_code: ffmpegExitCode,
+        });
+        jobSpan.addEvent("vaapi_marked_needs_sw_pad", {
+          video_id: job.video_id,
+          ffmpeg_exit_code: ffmpegExitCode,
+        });
+        log.warn("Fast VAAPI failed — retrying with sw-pad (CPU round-trip for the pad step)", {
+          job_id: job.id,
+          video_id: job.video_id,
+          resolution,
+          encode_duration_ms: encodeDurationMs,
+          ffmpeg_exit_code: ffmpegExitCode,
+          ffmpeg_stderr: ffmpegStderr,
+          message: err.message,
+        });
+        jobSpan.addEvent("transcode_fallback_to_vaapi_sw_pad", {
+          encode_duration_ms: encodeDurationMs,
+          ffmpeg_exit_code: ffmpegExitCode,
+          ffmpeg_stderr: ffmpegStderr,
+          message: err.message,
+        });
+        jobSpan.end();
+        void runFfmpeg(
+          job,
+          inputPath,
+          resolution,
+          segmentDir,
+          startTime,
+          endTime,
+          parentOtelCtx,
+          /* forceSoftware */ false,
+          /* useSwVaapiPad  */ true
+        );
+        return;
+      }
+
+      // Other HW backends (videotoolbox, qsv, …): no sw-pad tier exists, so
+      // a single failure goes straight to software libx264.
+      if (jobHwAccel.kind !== "software" && !effForceSoftware) {
         log.warn(`HW encode failed — retrying chunk with software (hwaccel: ${jobHwAccel.kind})`, {
           job_id: job.id,
           video_id: job.video_id,
@@ -534,9 +619,6 @@ async function runFfmpeg(
           message: err.message,
         });
         jobSpan.end();
-        // Reset job state so runFfmpeg's status transitions run cleanly on
-        // the retry. Kick off the retry without awaiting — the chunker's
-        // contract is fire-and-forget once the ActiveJob is in jobStore.
         void runFfmpeg(
           job,
           inputPath,
@@ -545,26 +627,27 @@ async function runFfmpeg(
           startTime,
           endTime,
           parentOtelCtx,
-          /* forceSoftware */ true
+          /* forceSoftware */ true,
+          /* useSwVaapiPad  */ false
         );
         return;
       }
 
-      const finalFfmpegStderr = stderrTail();
-      const finalFfmpegExitCode = exitCodeOf(err.message);
+      // Final tier — software libx264 also failed (or this was always a software
+      // run via env-disabled HW). Mark the job errored.
       log.error("Transcode error", {
         job_id: job.id,
         video_id: job.video_id,
         resolution,
         encode_duration_ms: encodeDurationMs,
-        ffmpeg_exit_code: finalFfmpegExitCode,
-        ffmpeg_stderr: finalFfmpegStderr,
+        ffmpeg_exit_code: ffmpegExitCode,
+        ffmpeg_stderr: ffmpegStderr,
         message: err.message,
       });
       jobSpan.addEvent("transcode_error", {
         encode_duration_ms: encodeDurationMs,
-        ffmpeg_exit_code: finalFfmpegExitCode,
-        ffmpeg_stderr: finalFfmpegStderr,
+        ffmpeg_exit_code: ffmpegExitCode,
+        ffmpeg_stderr: ffmpegStderr,
         message: err.message,
       });
       jobSpan.end();
