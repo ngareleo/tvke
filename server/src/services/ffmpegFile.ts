@@ -267,9 +267,19 @@ export class FFmpegFile {
     // SDR sources keep the padded output that's been working.
     const tonemap = isHdr ? "tonemap_vaapi=format=nv12:t=bt709:m=bt709:p=bt709," : "";
 
+    // For HDR sources, also force scale_vaapi to tag its output VAAPI surface
+    // as BT.709. Without `out_color_*`, the surface inherits the input's
+    // BT.2020 metadata even after `tonemap_vaapi` ran — h264_vaapi sees a
+    // BT.2020-tagged surface but our output flags say bt709, ffmpeg inserts
+    // an auto-scaler to bridge, libva returns -38 ("Function not implemented")
+    // for the colorspace conversion, and the encoder fails to open. Tagging
+    // the surface explicitly here makes the auto-scaler unnecessary.
+    const scaleColorTag = isHdr
+      ? ":out_color_matrix=bt709:out_color_primaries=bt709:out_color_transfer=bt709:out_range=tv"
+      : "";
     const scale =
       `scale_vaapi=w=${profile.width}:h=${profile.height}:` +
-      `force_original_aspect_ratio=decrease:format=nv12`;
+      `force_original_aspect_ratio=decrease:format=nv12${scaleColorTag}`;
     const padVaapi = `pad_vaapi=w=${profile.width}:h=${profile.height}:x=(ow-iw)/2:y=(oh-ih)/2`;
     // sw-pad branch: round-trip through CPU memory for the pad step only; one
     // system-memory copy per frame. Used as the cascade's middle tier when

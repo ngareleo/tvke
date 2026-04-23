@@ -563,7 +563,16 @@ async function runFfmpeg(
       // Tier 1 → 2: fast VAAPI failed; mark the source needs_sw_pad and retry
       // with the CPU-pad chain. After this, future chunks of the same video
       // skip the fast tier and start at sw-pad.
-      if (jobHwAccel.kind === "vaapi" && !effUseSwVaapiPad && !effForceSoftware) {
+      // Exception: HDR sources produce the SAME filter chain at both tiers
+      // (`tonemap_vaapi → scale_vaapi`, no pad in either) — retrying tier 2
+      // would just fail identically and burn another ~600 ms. Skip straight
+      // to software for HDR cascade-on-failure.
+      if (
+        jobHwAccel.kind === "vaapi" &&
+        !effUseSwVaapiPad &&
+        !effForceSoftware &&
+        !file.metadata.isHdr
+      ) {
         vaapiVideoState.set(job.video_id, "needs_sw_pad");
         log.info("Marking video needs_sw_pad — fast VAAPI failed; future chunks use sw-pad", {
           video_id: job.video_id,

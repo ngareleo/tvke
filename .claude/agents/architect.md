@@ -137,13 +137,15 @@ HDR sources (BT.2020 transfer / primaries — HDR10, HLG, DV) need two things VA
 |---|---|
 | SDR fast | `scale_vaapi → pad_vaapi` |
 | SDR sw-pad | `scale_vaapi → hwdownload → format=nv12 → pad → hwupload` |
-| HDR (any tier) | `tonemap_vaapi → scale_vaapi` (no pad of any kind) |
+| HDR (any tier) | `tonemap_vaapi → scale_vaapi` with `out_color_matrix=bt709:out_color_primaries=bt709:out_color_transfer=bt709:out_range=tv` (no pad of any kind) |
+
+**Why scale_vaapi needs explicit `out_color_*` tagging on HDR sources.** `tonemap_vaapi` does the actual color conversion but the resulting surface still inherits input metadata downstream unless overridden. Without these tags the `h264_vaapi` encoder sees a BT.2020-tagged surface but our `-colorspace bt709` output flag tells the bitstream "this is bt709" — ffmpeg inserts an auto-scaler to bridge, libva returns `-38` ("Function not implemented") for the colorspace conversion in HW, and the encoder never opens.
 
 HDR output has **variable dimensions** — `scale_vaapi` with `force_original_aspect_ratio=decrease` may produce a frame smaller than the profile's nominal target (e.g. 3840×1604 for a 2.39:1 source instead of 3840×2160). The browser's `<video>` element handles this transparently via the default `object-fit: contain` — the user sees natural letterboxing, no chroma artifacts.
 
 The output H.264 VUI is tagged bt709 via `-colorspace bt709 -color_primaries bt709 -color_trc bt709` so the browser's display transform matches the actual SDR pixel data tonemap produced.
 
-`transcode.job` spans carry `hwaccel.hdr_tonemap: bool`. The 3-tier cascade collapses to effectively 1 VAAPI tier for HDR (since both pad paths are broken) — sw-pad tier is still tried, fails fast on hwupload, and falls to software libx264. The cache (`vaapiVideoState`) marks the source `hw_unsafe` and subsequent chunks go straight to software. (Future improvement: skip the sw-pad attempt for HDR sources to save ~700 ms per source.)
+`transcode.job` spans carry `hwaccel.hdr_tonemap: bool`. The 3-tier cascade collapses to **2 effective tiers for HDR** (VAAPI tier 1 → software): the sw-pad tier-2 retry is short-circuited because HDR produces an identical filter chain at both tiers (no pad in either), so retrying would just fail the same way. The cache (`vaapiVideoState`) marks the source `hw_unsafe` after the single VAAPI failure; subsequent chunks of the same video skip VAAPI entirely.
 
 Driver requirement: jellyfin-ffmpeg + a VAAPI driver with `tonemap_vaapi` support (Intel iHD ≥ 22.x). If `tonemap_vaapi` itself fails the cascade falls through to software with the captured `ffmpeg_stderr` revealing the issue.
 
