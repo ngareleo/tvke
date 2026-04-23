@@ -1,19 +1,26 @@
 /**
  * Bun test preload — runs in every test worker before any test file is evaluated.
  *
- * Sets DB_PATH to a single shared temp file so all test files see the same
- * SQLite database. This avoids a race condition where multiple test workers
- * write to process.env.DB_PATH at startup and corrupt each other's singleton.
+ * Sets DB_PATH and SEGMENT_DIR to per-PID temp paths so all test files in the
+ * same worker share one isolated SQLite + segment cache, but concurrent
+ * `bun test` invocations don't collide.
  *
- * Tests must use unique IDs (not rely on total row counts) since they all share
- * this one database.
+ * SEGMENT_DIR isolation matters because `startTranscodeJob` derives the job
+ * cache key from `content_fingerprint + resolution + time range` — without
+ * a fresh dir, stale segments from a prior run let it "restore" the cached
+ * job and skip re-encoding, silently passing assertions about fresh behaviour.
  */
 import { mkdirSync } from "fs";
 import { tmpdir } from "os";
 import { join } from "path";
 
-// Namespace by PID so concurrent `bun test` invocations on the same machine
-// (e.g. parallel CI jobs) each get their own isolated SQLite file.
 const SHARED_TEST_DIR = join(tmpdir(), `xstream-test-${process.pid}`);
 mkdirSync(SHARED_TEST_DIR, { recursive: true });
 process.env.DB_PATH = join(SHARED_TEST_DIR, "test.db");
+process.env.SEGMENT_DIR = join(SHARED_TEST_DIR, "segments");
+mkdirSync(process.env.SEGMENT_DIR, { recursive: true });
+
+// Replaces the global TracerProvider with an in-memory one. Must happen
+// before any test file imports the chunker, since module-load `getTracer`
+// captures the current global provider — see `traceCapture.ts` for details.
+import "./traceCapture.js";
