@@ -243,7 +243,8 @@ export class FFmpegFile {
   private vaapiVideoOptions(
     profile: ResolutionProfile,
     device: string,
-    useSwPad: boolean
+    useSwPad: boolean,
+    isHdr: boolean
   ): { input: string[]; output: string[] } {
     // fluent-ffmpeg's inputOptions tokenises each array element on the FIRST
     // space, which mishandles values containing '=' or ':' — so pass each flag
@@ -257,24 +258,27 @@ export class FFmpegFile {
       "vaapi",
     ];
 
-    // Filter chain stays on the GPU. For 10-bit/HDR sources we still emit
-    // 8-bit H.264 today (matches the software path); the scale_vaapi filter
-    // handles the bit-depth conversion inline via `format=nv12`.
+    // For HDR sources, do BT.2020 → BT.709 tone-mapping on the GPU FIRST.
+    // Without this, HDR-tagged surfaces flow through the chain unchanged and
+    // both pad_vaapi (fast tier) and the post-pad hwupload (sw-pad tier) fail
+    // with "Impossible to convert between … and 'auto_scale_0'", exit 218 —
+    // ffmpeg can't synthesise a colorspace conversion in the HW filter graph.
+    // tonemap_vaapi outputs an SDR NV12 VAAPI surface that downstream filters
+    // accept normally. SDR sources skip this filter (no extra GPU work).
+    const tonemap = isHdr ? "tonemap_vaapi=format=nv12:t=bt709:m=bt709:p=bt709," : "";
+
     const scale =
       `scale_vaapi=w=${profile.width}:h=${profile.height}:` +
       `force_original_aspect_ratio=decrease:format=nv12`;
-    // pad_vaapi cannot accept some HDR/Dolby Vision surface formats — ffmpeg
-    // tries to insert auto_scale to bridge and fails with "Impossible to
-    // convert between the formats supported by the filter 'Parsed_pad_vaapi_1'
-    // and the filter 'auto_scale_0'", exit 218. The sw-pad path round-trips
-    // through CPU memory for the pad operation only — encode stays on GPU.
-    // Costs one system-memory copy per frame; works on every source we've
-    // seen including HDR + DV.
+    // pad_vaapi works once tonemap_vaapi has produced a SDR surface; the
+    // sw-pad branch round-trips through CPU memory for the pad step only,
+    // costing one system-memory copy per frame but keeping the encode on GPU.
     const filterChain = useSwPad
-      ? `${scale},hwdownload,format=nv12,` +
+      ? `${tonemap}${scale},hwdownload,format=nv12,` +
         `pad=${profile.width}:${profile.height}:(ow-iw)/2:(oh-ih)/2:color=black,` +
         `hwupload`
-      : `${scale},pad_vaapi=w=${profile.width}:h=${profile.height}:` + `x=(ow-iw)/2:y=(oh-ih)/2`;
+      : `${tonemap}${scale},pad_vaapi=w=${profile.width}:h=${profile.height}:` +
+        `x=(ow-iw)/2:y=(oh-ih)/2`;
 
     const maxBitrate = `${Math.round(parseInt(profile.videoBitrate) * 1.2)}k`;
     const bufSize = `${Math.round(parseInt(profile.videoBitrate) * 2)}k`;
@@ -343,7 +347,8 @@ export class FFmpegFile {
         const { input, output } = this.vaapiVideoOptions(
           profile,
           hwAccel.device,
-          opts.vaapiSwPad ?? false
+          opts.vaapiSwPad ?? false,
+          this.metadata.isHdr
         );
         return command
           .inputOptions(input)

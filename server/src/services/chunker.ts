@@ -382,6 +382,11 @@ async function runFfmpeg(
       probe_duration_ms: probeDurationMs,
       summary: file.summary(),
     });
+    // Surface whether tonemap_vaapi will run for this job. Set once we know
+    // the source's HDR status from probe — after the jobSpan was already
+    // opened (its attributes surface fields known up-front; per-source
+    // properties land here).
+    jobSpan.setAttribute("hwaccel.hdr_tonemap", jobHwAccel.kind === "vaapi" && file.metadata.isHdr);
   } catch (err) {
     const probeDurationMs = Date.now() - probeStart;
     const msg = `ffprobe failed: ${(err as Error).message}`;
