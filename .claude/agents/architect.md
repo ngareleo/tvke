@@ -127,13 +127,25 @@ Adding a backend = two edits (probe in `detectHwAccel`, ffmpeg flags in `applyOu
 
 ## HDR / VAAPI
 
-HDR sources (BT.2020 transfer / primaries — HDR10, HLG, DV) need actual on-GPU colorspace conversion to BT.709 SDR before any other VAAPI filter touches them. Without this, the HDR-tagged surfaces flow through `scale_vaapi` and `pad_vaapi` (or the sw-pad round-trip) and ffmpeg fails at filter-graph init with "Impossible to convert between … and 'auto_scale_0'", exit 218 — there is no auto-inserted scaler that bridges HDR VAAPI surfaces to SDR-tagged output.
+HDR sources (BT.2020 transfer / primaries — HDR10, HLG, DV) need two things VAAPI's default chain doesn't give us:
+1. **Actual on-GPU colorspace conversion** to BT.709 SDR. Without `tonemap_vaapi`, HDR-tagged surfaces flow through unchanged and the output bitstream's VUI tags lie about the actual pixel data.
+2. **No `pad_vaapi`.** Empirically, `pad_vaapi` rejects surface formats produced downstream of an HDR/DV source even AFTER `tonemap_vaapi` runs — driver returns libva `-38` ("Function not implemented") at the pad/encoder boundary. The sw-pad fallback's `hwupload` also fails on the CPU NV12 it produces. Both pad paths are broken on HDR sources on the current driver stack.
 
-`vaapiVideoOptions` in `ffmpegFile.ts` reads `metadata.isHdr` (computed in `probe()` from `colorTransfer`) and prepends `tonemap_vaapi=format=nv12:t=bt709:m=bt709:p=bt709,` to the filter chain for HDR sources. Both VAAPI tiers (fast and sw-pad) get the prefix; SDR sources skip it (no extra GPU work). The output H.264 VUI is also tagged via `-colorspace bt709 -color_primaries bt709 -color_trc bt709` — both pieces are needed (`tonemap_vaapi` does the actual conversion; the flags tag the bitstream so the browser's display transform is correct).
+`vaapiVideoOptions` in `ffmpegFile.ts` reads `metadata.isHdr` (computed in `probe()` from `colorTransfer`) and produces a different chain for HDR sources:
 
-`transcode.job` spans carry `hwaccel.hdr_tonemap: bool` so a Seq query can pick out which runs invoked tonemap.
+| Source | Filter chain |
+|---|---|
+| SDR fast | `scale_vaapi → pad_vaapi` |
+| SDR sw-pad | `scale_vaapi → hwdownload → format=nv12 → pad → hwupload` |
+| HDR (any tier) | `tonemap_vaapi → scale_vaapi` (no pad of any kind) |
 
-Driver requirement: jellyfin-ffmpeg + a modern VAAPI driver (Intel iHD ≥ 24.x). If the driver lacks `tonemap_vaapi`, the cascade falls through naturally — tier 2 (sw-pad with tonemap) → tier 3 (software) — but the captured `ffmpeg_stderr` will reveal the issue.
+HDR output has **variable dimensions** — `scale_vaapi` with `force_original_aspect_ratio=decrease` may produce a frame smaller than the profile's nominal target (e.g. 3840×1604 for a 2.39:1 source instead of 3840×2160). The browser's `<video>` element handles this transparently via the default `object-fit: contain` — the user sees natural letterboxing, no chroma artifacts.
+
+The output H.264 VUI is tagged bt709 via `-colorspace bt709 -color_primaries bt709 -color_trc bt709` so the browser's display transform matches the actual SDR pixel data tonemap produced.
+
+`transcode.job` spans carry `hwaccel.hdr_tonemap: bool`. The 3-tier cascade collapses to effectively 1 VAAPI tier for HDR (since both pad paths are broken) — sw-pad tier is still tried, fails fast on hwupload, and falls to software libx264. The cache (`vaapiVideoState`) marks the source `hw_unsafe` and subsequent chunks go straight to software. (Future improvement: skip the sw-pad attempt for HDR sources to save ~700 ms per source.)
+
+Driver requirement: jellyfin-ffmpeg + a VAAPI driver with `tonemap_vaapi` support (Intel iHD ≥ 22.x). If `tonemap_vaapi` itself fails the cascade falls through to software with the captured `ffmpeg_stderr` revealing the issue.
 
 When touching the VAAPI branch of `applyOutputOptions`, test with an HDR 4K source (e.g. Furiosa 2160p, Mad Max Fury Road 4K) — SDR-only smoke tests miss this.
 

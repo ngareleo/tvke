@@ -258,27 +258,37 @@ export class FFmpegFile {
       "vaapi",
     ];
 
-    // For HDR sources, do BT.2020 → BT.709 tone-mapping on the GPU FIRST.
-    // Without this, HDR-tagged surfaces flow through the chain unchanged and
-    // both pad_vaapi (fast tier) and the post-pad hwupload (sw-pad tier) fail
-    // with "Impossible to convert between … and 'auto_scale_0'", exit 218 —
-    // ffmpeg can't synthesise a colorspace conversion in the HW filter graph.
-    // tonemap_vaapi outputs an SDR NV12 VAAPI surface that downstream filters
-    // accept normally. SDR sources skip this filter (no extra GPU work).
+    // For HDR sources: do BT.2020 → BT.709 tone-mapping on the GPU AND drop
+    // pad_vaapi entirely. Empirically, pad_vaapi rejects the surface format
+    // produced downstream of an HDR/DV source even after tonemap_vaapi runs
+    // (driver returns libva -38 "Function not implemented" between pad_vaapi
+    // and the encoder). HDR output uses scale_vaapi alone — variable output
+    // dimensions are handled by the <video> element's object-fit: contain.
+    // SDR sources keep the padded output that's been working.
     const tonemap = isHdr ? "tonemap_vaapi=format=nv12:t=bt709:m=bt709:p=bt709," : "";
 
     const scale =
       `scale_vaapi=w=${profile.width}:h=${profile.height}:` +
       `force_original_aspect_ratio=decrease:format=nv12`;
-    // pad_vaapi works once tonemap_vaapi has produced a SDR surface; the
-    // sw-pad branch round-trips through CPU memory for the pad step only,
-    // costing one system-memory copy per frame but keeping the encode on GPU.
-    const filterChain = useSwPad
-      ? `${tonemap}${scale},hwdownload,format=nv12,` +
-        `pad=${profile.width}:${profile.height}:(ow-iw)/2:(oh-ih)/2:color=black,` +
-        `hwupload`
-      : `${tonemap}${scale},pad_vaapi=w=${profile.width}:h=${profile.height}:` +
-        `x=(ow-iw)/2:y=(oh-ih)/2`;
+    const padVaapi = `pad_vaapi=w=${profile.width}:h=${profile.height}:x=(ow-iw)/2:y=(oh-ih)/2`;
+    // sw-pad branch: round-trip through CPU memory for the pad step only; one
+    // system-memory copy per frame. Used as the cascade's middle tier when
+    // pad_vaapi rejects a SDR source's surface format (rare but possible).
+    const swPadChain =
+      `${scale},hwdownload,format=nv12,` +
+      `pad=${profile.width}:${profile.height}:(ow-iw)/2:(oh-ih)/2:color=black,` +
+      `hwupload`;
+
+    let filterChain: string;
+    if (isHdr) {
+      // No pad of any kind for HDR — pad_vaapi is broken on these sources and
+      // sw-pad's hwupload also fails on the CPU NV12 it produces.
+      filterChain = `${tonemap}${scale}`;
+    } else if (useSwPad) {
+      filterChain = swPadChain;
+    } else {
+      filterChain = `${scale},${padVaapi}`;
+    }
 
     const maxBitrate = `${Math.round(parseInt(profile.videoBitrate) * 1.2)}k`;
     const bufSize = `${Math.round(parseInt(profile.videoBitrate) * 2)}k`;
