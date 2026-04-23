@@ -298,6 +298,20 @@ export class BufferManager {
       this.afterAppendCb?.();
       if (this.segmentsAppended % this.config.healthLogIntervalSegments === 0) {
         const stats = this.bufferStats;
+        // Snapshot the actual SourceBuffer ranges so the next trace shows
+        // empirically *where* segments are landing — not just bufferedSeconds
+        // (which only reads the LAST range and hides chunk-stacking bugs).
+        // Trace b37fc612… showed end(last) plateauing at ~300 while chunk 2
+        // streamed in cleanly with TFDT 300 — needed range visibility to
+        // tell whether chunk 2 created a separate range, overlapped chunk 1,
+        // or landed somewhere else entirely.
+        const ranges: Array<[number, number]> = [];
+        for (let i = 0; i < sb.buffered.length; i++) {
+          ranges.push([
+            parseFloat(sb.buffered.start(i).toFixed(2)),
+            parseFloat(sb.buffered.end(i).toFixed(2)),
+          ]);
+        }
         log.info(
           `Buffer health — ${stats.segmentsAppended} segments, ${(stats.bytesInBuffer / 1_048_576).toFixed(1)} MB in buffer (${stats.bufferedSeconds.toFixed(1)}s), ${(stats.totalBytesAppended / 1_048_576).toFixed(1)} MB total appended`,
           {
@@ -307,6 +321,9 @@ export class BufferManager {
             buffered_s: parseFloat(stats.bufferedSeconds.toFixed(1)),
             total_bytes_appended: stats.totalBytesAppended,
             eviction_count: stats.evictionCount,
+            buffered_ranges_json: JSON.stringify(ranges),
+            buffered_range_count: ranges.length,
+            current_time_s: parseFloat(this.videoEl.currentTime.toFixed(2)),
           }
         );
       }
