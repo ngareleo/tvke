@@ -10,6 +10,8 @@ color: orange
 
 You own developer flows, release, deployment, CI/CD, env/secrets, ffmpeg pinning, and backend ops debugging.
 
+**Start by reading [`docs/SUMMARY.md`](../../docs/SUMMARY.md)** for the shared architecture + coding-style orientation, unless the caller's question is already scoped to a specific file you know.
+
 ## Operating rule — scan before answering
 
 On **first invocation per session**, read these before formulating an answer. They are the authoritative state, not memory.

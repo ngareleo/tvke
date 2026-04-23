@@ -59,3 +59,14 @@ Flags persist per-user in the server's `user_settings` key/value table, hydrate 
 2. Delete consumers (`useFeatureFlag` / `getFlag` calls) — the default can be inlined where the value is now hardcoded.
 3. Remove the row from `docs/client/Feature-Flags/00-Registry.md`.
 4. The orphan `user_settings` row in the DB is harmless; no migration needed.
+
+
+## After writing — notify architect
+
+If this task edited code or docs, spawn the `architect` subagent before marking it complete:
+
+- **Files changed** — paths touched by `Write`/`Edit` during the task.
+- **Description** — one sentence on what changed.
+- **Why** — fix / feature / refactor, with issue or memory link if applicable.
+
+Architect decides whether `docs/`, `docs/SUMMARY.md`, or the architect index needs updating, and does so directly. For trivial changes (typo, lint-only) say so explicitly — architect logs and skips. See `CLAUDE.md → Update protocol`.
