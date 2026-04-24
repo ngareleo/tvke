@@ -19,7 +19,7 @@ into the production client (`client/src/`).
 | `design/src/data/mock.ts` | GraphQL schema + Relay fragments |
 | `design/src/styles/shared.css` | Chakra UI theme tokens + global CSS |
 | `design/README.md` | Authoritative UI spec |
-| `docs/design/00-UI-Design-Spec.md` | Concise implementation reference |
+| `docs/design/UI-Design-Spec/00-Tokens-And-Layout.md` | Concise implementation reference |
 
 Always read the design file **and** `design/README.md` before writing production code.
 The README documents invariants and subtle UX flows that are not obvious from the code.
@@ -215,3 +215,14 @@ cd client && bun dev &
 cd server && bun dev &
 # Navigate to each route and compare against design lab screenshots
 ```
+
+
+## After writing — notify architect
+
+If this task edited code or docs, spawn the `architect` subagent before marking it complete:
+
+- **Files changed** — paths touched by `Write`/`Edit` during the task.
+- **Description** — one sentence on what changed.
+- **Why** — fix / feature / refactor, with issue or memory link if applicable.
+
+Architect decides whether `docs/`, `docs/SUMMARY.md`, or the architect index needs updating, and does so directly. For trivial changes (typo, lint-only) say so explicitly — architect logs and skips. See `CLAUDE.md → Update protocol`.

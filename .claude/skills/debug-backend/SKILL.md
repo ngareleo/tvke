@@ -137,3 +137,14 @@ bun test src/db/queries/jobs.test.ts
 # Watch
 bun test --watch
 ```
+
+
+## After writing — notify architect
+
+If this task edited code or docs, spawn the `architect` subagent before marking it complete:
+
+- **Files changed** — paths touched by `Write`/`Edit` during the task.
+- **Description** — one sentence on what changed.
+- **Why** — fix / feature / refactor, with issue or memory link if applicable.
+
+Architect decides whether `docs/`, `docs/SUMMARY.md`, or the architect index needs updating, and does so directly. For trivial changes (typo, lint-only) say so explicitly — architect logs and skips. See `CLAUDE.md → Update protocol`.

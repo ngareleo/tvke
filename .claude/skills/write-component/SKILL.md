@@ -79,7 +79,7 @@ If the component raises events (user interactions that propagate up to an ancest
 
 Do not use callback props (`onPlay`, `onChange`) for events that should propagate — use `bubble()`.
 
-## Common pitfalls — see `docs/client/02-Debugging-Playbooks.md`
+## Common pitfalls — see `docs/client/Debugging-Playbooks/00-Common-Issues.md`
 
 - Effect cleanup with nested timeouts
 - Relay "preloaded query was disposed" warning
@@ -186,3 +186,14 @@ After implementing any UI change, open the browser and visually confirm the feat
 6. If the change affects the video player or streaming pipeline, run `/e2e-test` to confirm playback still works end to end.
 
 **Never report a UI task as complete without having opened the browser and taken at least one screenshot.**
+
+
+## After writing — notify architect
+
+If this task edited code or docs, spawn the `architect` subagent before marking it complete:
+
+- **Files changed** — paths touched by `Write`/`Edit` during the task.
+- **Description** — one sentence on what changed.
+- **Why** — fix / feature / refactor, with issue or memory link if applicable.
+
+Architect decides whether `docs/`, `docs/SUMMARY.md`, or the architect index needs updating, and does so directly. For trivial changes (typo, lint-only) say so explicitly — architect logs and skips. See `CLAUDE.md → Update protocol`.

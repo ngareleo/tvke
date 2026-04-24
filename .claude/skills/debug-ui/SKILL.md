@@ -22,7 +22,7 @@ This skill adds the **diagnosis strategy** on top of that: what to look for, whi
 4. **Inspect client-side state** via `browser_evaluate`:
    - MSE / video state: `document.querySelector("video")` → `readyState`, `buffered`, `error`
    - Relay store: `window.__relayEnvironment?.getStore()?.getSource()?.toJSON()`
-5. **Match to a known playbook.** See `docs/client/02-Debugging-Playbooks.md` — most client bugs map to one of: subscription not firing, scan not refreshing, Relay query disposal, React state persisting across routes, Griffel type error, hook ordering, stream-log overlay reset.
+5. **Match to a known playbook.** See `docs/client/Debugging-Playbooks/00-Common-Issues.md` — most client bugs map to one of: subscription not firing, scan not refreshing, Relay query disposal, React state persisting across routes, Griffel type error, hook ordering, stream-log overlay reset.
 6. **Fix in code.** If the fix is a component pattern, delegate to the `write-component` skill.
 
 ## Storybook-based debugging
@@ -39,3 +39,14 @@ cd client && bun run storybook
 - **Controls** panel → prop edge cases
 
 If you can't reproduce the bug in Storybook, the bug is in the surrounding data/context, not the component.
+
+
+## After writing — notify architect
+
+If this task edited code or docs, spawn the `architect` subagent before marking it complete:
+
+- **Files changed** — paths touched by `Write`/`Edit` during the task.
+- **Description** — one sentence on what changed.
+- **Why** — fix / feature / refactor, with issue or memory link if applicable.
+
+Architect decides whether `docs/`, `docs/SUMMARY.md`, or the architect index needs updating, and does so directly. For trivial changes (typo, lint-only) say so explicitly — architect logs and skips. See `CLAUDE.md → Update protocol`.
