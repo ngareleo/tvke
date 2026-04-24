@@ -49,9 +49,10 @@ The client drives transcoding in **300-second chunks**. For each chunk, it fires
 | If you need… | Go to |
 |---|---|
 | System overview + component tables | [`architecture/00-System-Overview.md`](architecture/00-System-Overview.md) |
-| Streaming protocol + playback scenarios | [`architecture/Streaming/`](architecture/Streaming/README.md) |
+| Streaming protocol + playback scenarios + chunk-pipeline invariants + playback subsystems | [`architecture/Streaming/`](architecture/Streaming/README.md) |
 | Observability (spans, logging, Seq) | [`architecture/Observability/`](architecture/Observability/README.md) |
 | Relay / GraphQL contract | [`architecture/Relay/`](architecture/Relay/README.md) |
+| Test side-effects policy + encode-pipeline tests + encoder edge-case policy | [`architecture/Testing/`](architecture/Testing/README.md) |
 | Server config, ladder, schema, DB, HW-accel | [`server/`](server/README.md) |
 | Client feature flags, debugging playbooks | [`client/`](client/README.md) |
 | Invariants, naming, conventions, anti-patterns | [`code-style/`](code-style/README.md) |
@@ -62,4 +63,4 @@ The client drives transcoding in **300-second chunks**. For each chunk, it fires
 
 ---
 
-_Last regenerated: 2026-04-23. Owned by the `architect` subagent; regenerated mechanically by the `groom-knowledge-base` skill._
+_Last regenerated: 2026-04-24. Owned by the `architect` subagent; regenerated mechanically by the `groom-knowledge-base` skill._
