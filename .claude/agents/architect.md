@@ -26,6 +26,7 @@ I am the gatekeeper of xstream's knowledge base at `docs/`. I answer architectur
 | System overview, component tables | `docs/architecture/00-System-Overview.md` |
 | Binary streaming protocol (framing, init segment, hysteresis) | `docs/architecture/Streaming/00-Protocol.md` |
 | Playback scenarios (initial, backpressure, seek, resolution switch) | `docs/architecture/Streaming/01-Playback-Scenarios.md` |
+| Chunk pipeline invariants (PTS contract, per-chunk re-init, lookahead segment buffering) | `docs/architecture/Streaming/02-Chunk-Pipeline-Invariants.md` |
 | Relay / GraphQL fragment contract | `docs/architecture/Relay/00-Fragment-Contract.md` |
 | OTel architecture (both sides, dev/prod backends) | `docs/architecture/Observability/00-Architecture.md` |
 | Logging policy, trace-context threading | `docs/architecture/Observability/01-Logging-Policy.md` |
