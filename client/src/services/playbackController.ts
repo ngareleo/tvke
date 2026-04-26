@@ -121,6 +121,17 @@ export class PlaybackController {
   private cancelStartupHandler: (() => void) | null = null;
   private cancelBgReadyHandler: (() => void) | null = null;
 
+  // ── User-pause state ───────────────────────────────────────────────────────
+  // While the video element is paused by the user, `timeupdate` is silent so
+  // the BufferManager's backpressure check never runs — the network fetch
+  // would keep appending until MSE detaches the SourceBuffer. The poller
+  // below drives `tickBackpressure` on a 1 s interval to plug that gap.
+  // Once the buffer fills past forwardTargetS the prefetch for chunk N+1 is
+  // fired (server-side encode-to-disk; lookahead svc immediately suspended
+  // so no segments accumulate in RAM during the pause).
+  private userPauseInterval: ReturnType<typeof setInterval> | null = null;
+  private userPausePrefetchFired = false;
+
   private readonly timeline: PlaybackTimeline;
 
   private readonly stallTracker: StallTracker;
@@ -275,7 +286,18 @@ export class PlaybackController {
   // ── State helpers ──────────────────────────────────────────────────────────
 
   private setStatus(s: PlaybackStatus): void {
+    const from = this.status;
     this.status = s;
+    // Record every real transition so Seq can answer "during the seek window,
+    // did status flip back to playing prematurely?" — the spinner-race
+    // regression shape from before the handlePlaying isHandlingSeek guard.
+    if (from !== s) {
+      this.sessionSpan?.addEvent("playback.status_changed", {
+        from,
+        to: s,
+        is_handling_seek: this.isHandlingSeek,
+      });
+    }
     this.events.onStatusChange(s);
   }
 
@@ -289,6 +311,7 @@ export class PlaybackController {
     this.cancelStartupHandler = null;
     this.cancelPrefetchHandler = null;
     this.cancelBgReadyHandler = null;
+    this.clearUserPauseState();
     this.stallTracker.end(reason === "new_session" ? "new_session" : "teardown");
     this.pipeline?.cancel(reason);
     this.pipeline = null;
@@ -327,9 +350,16 @@ export class PlaybackController {
    * be ready for many seconds.
    */
   private waitForStartupBuffer(buffer: BufferManager, target: number, onPlay: () => void): void {
+    const videoEl = this.deps.videoEl;
     const tryPlay = (): void => {
       if (this.hasStartedPlayback) return;
-      if (buffer.bufferedEnd >= target) {
+      // Compare seconds-buffered-AHEAD-of-currentTime, not absolute bufferedEnd.
+      // After a seek to e.g. 600s, the first appended segment lands at PTS≈600
+      // (chunker emits with -output_ts_offset), so absolute bufferedEnd≈602 vs
+      // a target of 5s would trivially pass after one segment — video.play()
+      // would fire with only ~2s of data ahead and immediately stall.
+      const ahead = buffer.getBufferedAheadSeconds(videoEl.currentTime);
+      if (ahead !== null && ahead >= target) {
         this.hasStartedPlayback = true;
         buffer.setAfterAppend(null);
         onPlay();
@@ -974,6 +1004,12 @@ export class PlaybackController {
 
     // Show spinner immediately — seek requires flushing and reloading the buffer.
     this.setStatus("loading");
+    // Reset hasStartedPlayback NOW (not inside the buf.seek().then) so that any
+    // residual `playing` event the video element fires while the buffer flush
+    // is in flight does not flip status back to "playing" via handlePlaying —
+    // which would briefly hide the spinner until the StallTracker debounce
+    // (~2s) re-shows it from the eventual `waiting` event.
+    this.hasStartedPlayback = false;
 
     playbackLog.info(
       `Seek to ${seekTime.toFixed(1)}s → flushing buffer, restarting from chunk boundary ${snapTime}s`,
@@ -987,6 +1023,9 @@ export class PlaybackController {
     this.pipeline?.cancel("seek");
     this.timeline.clearLookahead();
     this.prefetchFired = false;
+    // Seek invalidates the user-pause prefetch (different chunk now). Cleanup
+    // is idempotent so it's safe to call even when not paused.
+    this.clearUserPauseState();
 
     const buf = this.buffer;
     void buf.seek(snapTime).then(() => {
@@ -995,15 +1034,16 @@ export class PlaybackController {
 
       // Wait for the startup buffer threshold before resuming playback so the
       // video doesn't immediately stall after seeking to an unbuffered region.
-      this.hasStartedPlayback = false;
       const startupTarget = STARTUP_BUFFER_S[this.resolution];
       this.waitForStartupBuffer(buf, startupTarget, () => {
         videoEl.play().catch(() => {});
         this.setStatus("playing");
+        const aheadAtPlay = buf.getBufferedAheadSeconds(videoEl.currentTime) ?? 0;
         playbackLog.info(
-          `Seek ready — ${buf.bufferedEnd.toFixed(1)}s buffered, resuming playback`,
+          `Seek ready — ${aheadAtPlay.toFixed(1)}s buffered ahead (target: ${startupTarget}s), resuming playback`,
           {
-            buffered_s: parseFloat(buf.bufferedEnd.toFixed(1)),
+            buffered_ahead_s: parseFloat(aheadAtPlay.toFixed(1)),
+            buffered_end_s: parseFloat(buf.bufferedEnd.toFixed(1)),
             startup_target_s: startupTarget,
           }
         );
@@ -1014,6 +1054,17 @@ export class PlaybackController {
   };
 
   private handlePlaying = (): void => {
+    // If a seek is mid-flight (buffer flushing, new chunk requested), do not
+    // touch state. A residual `playing` event from the pre-flush playhead
+    // would otherwise revert status to "playing" and hide the seek spinner.
+    if (this.isHandlingSeek) {
+      // Logged (not just span-evented) so Seq surfaces it mid-session — the
+      // residual-`playing` race is timing-dependent and we need to see the
+      // guard catching it without waiting for the session span to close.
+      playbackLog.info("Skipping `playing` event — seek in flight");
+      this.sessionSpan?.addEvent("playback.playing_event_skipped_during_seek");
+      return;
+    }
     // Seek has resolved — clear the dedup guard so future seeks can proceed.
     this.seekTarget = null;
     // StallTracker closes its span + clears its debounce timer.
@@ -1024,17 +1075,112 @@ export class PlaybackController {
     }
   };
 
+  private handleUserPause = (): void => {
+    // Don't react to the implicit pause that fires when playback ends.
+    if (this.deps.videoEl.ended) return;
+    // Don't react to pauses we haven't started yet, or to the pause-side of
+    // a seek (the browser fires pause/seeking/play in some seek paths).
+    if (!this.hasStartedPlayback || this.isHandlingSeek) return;
+    if (this.userPauseInterval !== null) return;
+
+    playbackLog.info("User paused — driving backpressure check until buffer fills");
+    // Tick once immediately so the buffer-fill threshold is checked before the
+    // first interval tick — saves up to 1 s on the prefetch fire.
+    this.checkUserPauseTick();
+    this.userPauseInterval = setInterval(() => this.checkUserPauseTick(), 1000);
+  };
+
+  private handleUserPlay = (): void => {
+    if (this.userPauseInterval === null && !this.userPausePrefetchFired) return;
+    playbackLog.info("User resumed — clearing pause poller, resuming lookahead");
+    this.clearUserPauseState();
+    // Wake the lookahead's reader so it pulls its on-disk segments through to
+    // the queue, ready for promotion when the foreground chunk ends. Safe if
+    // no lookahead exists.
+    this.pipeline?.resumeLookahead();
+  };
+
+  /** One iteration of the user-pause poller. Drives backpressure (since
+   *  `timeupdate` is silent while paused), and once the buffer is full,
+   *  fires the chunk N+1 prefetch exactly once. */
+  private checkUserPauseTick(): void {
+    if (!this.buffer || !this.pipeline) return;
+    this.buffer.tickBackpressure();
+    if (this.userPausePrefetchFired) return;
+
+    const ahead = this.buffer.getBufferedAheadSeconds(this.deps.videoEl.currentTime);
+    const forwardTargetS = getEffectiveBufferConfig().forwardTargetS;
+    if (ahead === null || ahead < forwardTargetS) return;
+
+    // Buffer is full. Fire the prefetch for chunk N+1 if there's a next chunk
+    // and we don't already have a lookahead in flight.
+    const videoDurationS = this.deps.getVideoDurationS();
+    const nextStart = this.chunkEnd;
+    if (nextStart <= 0 || nextStart >= videoDurationS) return;
+    if (this.pipeline.hasLookahead()) return;
+
+    this.userPausePrefetchFired = true;
+    const nextEnd = Math.min(nextStart + CHUNK_DURATION_S, videoDurationS);
+    const buffer = this.buffer;
+    const res = this.resolution;
+    playbackLog.info(
+      `Pause prefetch — requesting chunk N+1 [${nextStart}s, ${nextEnd}s) for warm cache on resume`,
+      { next_start_s: nextStart, next_end_s: nextEnd }
+    );
+    void this.requestChunk(res, nextStart, nextEnd, true)
+      .then((rawJobId) => {
+        if (!this.pipeline) return;
+        // Open the lookahead so the orphan_no_connection 30 s timer doesn't
+        // fire server-side, then immediately suspend the reader so segments
+        // don't accumulate in queuedSegments RAM during the pause. ffmpeg
+        // keeps writing to disk regardless; on resume, the lookahead reader
+        // wakes up and pulls them through to the queue for promotion.
+        this.timeline.recordLookaheadOpened(rawJobId);
+        this.updateSessionTimelineAttrs();
+        this.pipeline.openLookahead({
+          jobId: rawJobId,
+          chunkStartS: nextStart,
+          isFirstChunk: false,
+          resolution: res,
+          onStreamEnded: (outcome) => this.handleChunkEnded(res, nextStart, buffer, outcome),
+          onError: (err) => this.setError(err.message),
+          onFirstMediaSegmentArrived: (atMs) =>
+            this.timeline.recordLookaheadFirstByte(rawJobId, atMs),
+        });
+        this.pipeline.pauseLookahead();
+        // Mirror startPrefetchLoop's bookkeeping so the RAF loop doesn't
+        // re-fire the same prefetch on its next tick.
+        this.prefetchFired = true;
+      })
+      .catch(() => {
+        // Allow a retry on the next pause-tick (or RAF prefetch when playing).
+        this.userPausePrefetchFired = false;
+      });
+  }
+
+  private clearUserPauseState(): void {
+    if (this.userPauseInterval !== null) {
+      clearInterval(this.userPauseInterval);
+      this.userPauseInterval = null;
+    }
+    this.userPausePrefetchFired = false;
+  }
+
   private attachVideoListeners(): void {
     const el = this.deps.videoEl;
     el.addEventListener("seeking", this.handleSeeking);
     el.addEventListener("waiting", this.stallTracker.onWaiting);
     el.addEventListener("stalled", this.stallTracker.onStalled);
     el.addEventListener("playing", this.handlePlaying);
+    el.addEventListener("pause", this.handleUserPause);
+    el.addEventListener("play", this.handleUserPlay);
     this.detachListeners.push(
       () => el.removeEventListener("seeking", this.handleSeeking),
       () => el.removeEventListener("waiting", this.stallTracker.onWaiting),
       () => el.removeEventListener("stalled", this.stallTracker.onStalled),
-      () => el.removeEventListener("playing", this.handlePlaying)
+      () => el.removeEventListener("playing", this.handlePlaying),
+      () => el.removeEventListener("pause", this.handleUserPause),
+      () => el.removeEventListener("play", this.handleUserPlay)
     );
   }
 }

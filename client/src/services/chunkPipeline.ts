@@ -217,6 +217,23 @@ export class ChunkPipeline {
     this.lookahead?.svc.resume();
   }
 
+  /** Pause only the lookahead's reader. Used by the user-pause prefetch path:
+   *  open chunk N+1 as a lookahead so server keeps the connection alive past
+   *  the orphan_no_connection 30 s timer, but immediately suspend the read so
+   *  segments don't accumulate in the slot's queuedSegments RAM buffer for
+   *  the duration of the pause (could otherwise reach 200-400 MB on a 4K
+   *  pre-encode). ffmpeg keeps writing segments to disk regardless. */
+  pauseLookahead(): void {
+    this.lookahead?.svc.pause();
+  }
+
+  /** Resume only the lookahead's reader. Paired with pauseLookahead — called
+   *  on user resume so the lookahead starts pulling its on-disk segments
+   *  through to the queue, ready for promotion at the next chunk handover. */
+  resumeLookahead(): void {
+    this.lookahead?.svc.resume();
+  }
+
   /** Acts on a stream outcome — called for foreground naturally and for the
    *  lookahead's deferred outcome on promotion. Owns the markStreamDone call
    *  for `no_real_content`, which must NOT happen while the foreground is
