@@ -10,6 +10,7 @@ import {
   CHUNK_DURATION_S,
   type PlaybackStatus,
   PREFETCH_THRESHOLD_S,
+  SEGMENT_DURATION_S,
   STARTUP_BUFFER_S,
 } from "./playbackConfig.js";
 import { isPlaybackError } from "./playbackErrors.js";
@@ -616,7 +617,11 @@ export class PlaybackController {
     res: Resolution,
     startS: number,
     buffer: BufferManager,
-    isFirstChunk: boolean
+    isFirstChunk: boolean,
+    /** Server-side segment skip via `?from=K`. Non-zero only on seeks that
+     *  land mid-chunk — see handleSeeking for the rationale. Default 0 keeps
+     *  initial play / MSE recovery / chunk N→N+1 chain unchanged. */
+    fromIndex = 0
   ): void {
     const videoDurationS = this.deps.getVideoDurationS();
     const chunkEnd = Math.min(startS + CHUNK_DURATION_S, videoDurationS);
@@ -633,6 +638,7 @@ export class PlaybackController {
           chunkStartS: startS,
           isFirstChunk,
           resolution: res,
+          fromIndex,
           onStreamEnded: (outcome) => this.handleChunkEnded(res, startS, buffer, outcome),
           onError: (err) => this.setError(err.message),
           onFirstChunkInit: isFirstChunk
@@ -1063,7 +1069,18 @@ export class PlaybackController {
         );
       });
 
-      this.startChunkSeries(this.resolution, snapTime, buf, false);
+      // Skip server-side segments that land entirely behind seekTime. Each
+      // segment is SEGMENT_DURATION_S of media, ffmpeg emits PTS-aligned
+      // segments starting at chunkStart=snapTime. So segments 0 .. K-1
+      // cover [snapTime, snapTime + K*SEGMENT_DURATION_S) which is BEHIND
+      // currentTime=seekTime. Chrome's MSE auto-evicts those frames as we
+      // append them (mode="segments" places them at their PTS, behind the
+      // playhead), wasting bandwidth + serial appendBuffer calls.
+      // Trace 941c2a50… caught it: 496 MB / 38 s / 0 buffered ranges before
+      // the few useful segments past seekTime started sticking. With from=K
+      // the server skips that prefix; only ahead-of-playhead segments arrive.
+      const fromIndex = Math.max(0, Math.floor((seekTime - snapTime) / SEGMENT_DURATION_S));
+      this.startChunkSeries(this.resolution, snapTime, buf, false, fromIndex);
     });
   };
 

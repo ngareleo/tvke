@@ -377,4 +377,38 @@ describe("PlaybackController.handleSeeking (slider snap-back + stale-prefetch fi
       expect(call[1]).toBe(600); // snapTime, not seekTime
     });
   });
+
+  it("computes fromIndex = floor((seekTime - snapTime) / SEGMENT_DURATION_S) for mid-chunk seeks", () => {
+    // Trace 941c2a50… caught the perf bug: seek to 564.9 in chunk [300, 600]
+    // streamed 132 segments (PTS 300..564) that Chrome auto-evicted because
+    // they landed BEHIND currentTime in the same SourceBuffer (mode=segments
+    // places them at their PTS). Fix: skip those segments server-side via
+    // ?from=K. Each segment is SEGMENT_DURATION_S (=2s), so K = floor(264.9/2).
+    const { controller, priv, buf } = setUpSeekable(564.9);
+
+    controller.seekTo(564.9);
+    priv.handleSeeking();
+    buf.resolveSeek();
+
+    return Promise.resolve().then(() => {
+      const call = (priv.startChunkSeries as ReturnType<typeof vi.fn>).mock.calls[0];
+      // call args: (res, snapTime, buf, isFirstChunk, fromIndex)
+      const fromIndex = call[4];
+      expect(fromIndex).toBe(132); // floor((564.9 - 300) / 2)
+    });
+  });
+
+  it("fromIndex is 0 when seekTime exactly hits a chunk boundary", () => {
+    const { controller, priv, buf } = setUpSeekable(600);
+
+    controller.seekTo(600);
+    priv.handleSeeking();
+    buf.resolveSeek();
+
+    return Promise.resolve().then(() => {
+      const call = (priv.startChunkSeries as ReturnType<typeof vi.fn>).mock.calls[0];
+      expect(call[1]).toBe(600); // snapTime
+      expect(call[4]).toBe(0); // fromIndex
+    });
+  });
 });
