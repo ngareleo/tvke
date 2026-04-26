@@ -25,6 +25,7 @@ Keep rows short (≤ ~120 chars). When adding a new topic file to `docs/`, add i
 | Server boot sequence + graceful shutdown | `docs/architecture/Startup/00-Boot-And-Shutdown.md` |
 | Library scanner pipeline | `docs/architecture/Library-Scan/00-Flow.md` |
 | Rust + Tauri port plan, stable contracts | `docs/architecture/Deployment/00-Rust-Tauri-Port.md` |
+| Streaming layer migration (pull → axum, semaphore cap, content-addressed cache, per-consumer isolation) | `docs/architecture/Deployment/01-Streaming-Layer.md` |
 | Resolution ladder + enum mirror chain | `docs/server/Config/01-Resolution-Ladder.md` |
 | AppConfig, `mediaFiles.json` | `docs/server/Config/00-AppConfig.md` |
 | GraphQL schema surface | `docs/server/GraphQL-Schema/00-Surface.md` |
