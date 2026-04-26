@@ -12,3 +12,4 @@ How xstream ships to users. Current: local dev only. Future: Tauri desktop bundl
 | [`05-Database-Layer.md`](05-Database-Layer.md) | bun:sqlite → rusqlite (bundled); identical schema + WAL pragma; two-DB split (cache vs identity) for forward sharing. |
 | [`06-File-Handling-Layer.md`](06-File-Handling-Layer.md) | Library walk → walkdir + buffer_unordered; fs.watch → notify; ffmpeg manifest pinning; content-addressed cache index + per-job dir layout. |
 | [`07-Bun-To-Rust-Migration.md`](07-Bun-To-Rust-Migration.md) | Synthesis: runtime model shift, concurrency primitives map, idiom translations, locked crate picks, phased migration order, post-cutover workspace layout. |
+| [`08-Tauri-Packaging.md`](08-Tauri-Packaging.md) | Tauri shell + bundle layout, embedded server option (in-process loopback), bundled jellyfin-ffmpeg, VAAPI fallback, Ed25519 self-hosted updates, code-signing per OS, CI matrix. |
