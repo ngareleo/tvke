@@ -6,7 +6,7 @@ How xstream handles the filesystem: library walk + ffprobe pipeline, segment-dir
 
 ### Library walk + ffprobe
 
-`server/src/services/libraryScanner.ts` (353 lines) owns the scan pipeline. The structure is:
+`server/src/services/libraryScanner.ts` (352 lines) owns the scan pipeline. The structure is:
 
 1. `walkDirectory(dir, extensions)` — async generator, depth-first, yields paths whose lowercase extension is in the configured set (`server/src/services/libraryScanner.ts:80-97`).
 2. `processFile(filePath, libraryId)` — `stat()` → `Promise.all([probeVideo, computeContentFingerprint])` → upsert `VideoRow` + replace stream rows (`server/src/services/libraryScanner.ts:104-155`).
