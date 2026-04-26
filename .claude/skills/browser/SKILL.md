@@ -10,6 +10,8 @@ Every browser interaction goes through this skill. If the task asks you to verif
 
 **Reading Seq logs/traces does NOT belong here.** Use the `seq` skill — its HTTP API is faster, cheaper, and returns parsable JSON. Only drive Seq in a browser if the user explicitly asks to see the live UI.
 
+**Before verifying any code change, read `docs/architecture/Observability/04-Verification-Workflow.md`.** The short form: (1) decide which span/log line proves the change worked before opening the browser; (2) add any missing instrumentation first; (3) query Seq to confirm the expected signal — don't rely on "did the spinner disappear". Visual checks catch symptoms; traces catch invariant breaks.
+
 ## Self-update rule (read first, obey always)
 
 When you discover a new Playwright quirk, a new page-specific gotcha, or a new interaction pattern during this task, **append it to the "Known Quirks" section of this file before finishing**. Future sessions rely on this; don't make them rediscover what you just learned. Use the `Edit` tool to append — do not rewrite the file.
