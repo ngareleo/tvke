@@ -37,7 +37,7 @@ function computeJobId(
   start: number,
   end: number
 ): string {
-  return createHash("sha1").update(`v2|${contentKey}|${resolution}|${start}|${end}`).digest("hex");
+  return createHash("sha1").update(`v3|${contentKey}|${resolution}|${start}|${end}`).digest("hex");
 }
 
 function seedCompleteJob(

@@ -107,10 +107,11 @@ export class PlaybackController {
   private hasStartedPlayback = false;
 
   private isHandlingSeek = false;
-  // Tracks the chunk-boundary snap target of the most-recent seek so that the
-  // asynchronously-queued "seeking" event fired by BufferManager.seek()'s own
-  // videoEl.currentTime assignment doesn't re-trigger a full seek/flush cycle.
-  // Cleared when the video fires "playing" (seek resolved, playback resumed).
+  // The user's most-recent seek target (their actual position, not a snap).
+  // Filters out the asynchronously-queued "seeking" event fired by
+  // BufferManager.seek()'s own videoEl.currentTime assignment so it doesn't
+  // re-trigger a full seek/flush cycle. Cleared when the video fires
+  // "playing" (seek resolved, playback resumed).
   private seekTarget: number | null = null;
   // Set by seekTo() before updating currentTime so handleSeeking can read the
   // unclamped target instead of whatever the browser clamped currentTime to.
@@ -682,22 +683,26 @@ export class PlaybackController {
 
     const videoEl = this.deps.videoEl;
     const savedTime = videoEl.currentTime;
-    const chunkStart = Math.floor(savedTime / CHUNK_DURATION_S) * CHUNK_DURATION_S;
+    // Recovery is seek-anchored — resume at the user's exact position so the
+    // new ffmpeg run starts at `-ss savedTime` and produces the user's first
+    // useful segment immediately. Same rationale as the seek path; matches
+    // Invariant #1 in `02-Chunk-Pipeline-Invariants.md`.
+    const chunkStart = savedTime;
     const attempt = 4 - this.mseRecreatesRemaining; // 1-based for span/log readability
 
     playbackLog.warn(
-      `MSE SourceBuffer detached — rebuilding MediaSource (attempt ${attempt}/3, resume at ${chunkStart}s)`,
+      `MSE recovery — rebuilding MediaSource (attempt ${attempt}/3, resume at ${chunkStart.toFixed(2)}s)`,
       {
         mse_recreate_attempt: attempt,
         current_time_s: parseFloat(savedTime.toFixed(2)),
-        resume_chunk_start_s: chunkStart,
+        resume_chunk_start_s: parseFloat(chunkStart.toFixed(2)),
       }
     );
     this.sessionSpan?.addEvent("playback.mse_recovery", {
       attempt,
       attempt_max: 3,
       current_time_s: parseFloat(savedTime.toFixed(2)),
-      resume_chunk_start_s: chunkStart,
+      resume_chunk_start_s: parseFloat(chunkStart.toFixed(2)),
     });
 
     if (this.mseRecreatesRemaining <= 0) {

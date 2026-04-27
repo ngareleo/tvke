@@ -357,6 +357,15 @@ export class FFmpegFile {
     // server-side strip. Removing both halves collapses two compensating hacks.
     // See `02-Chunk-Pipeline-Invariants.md` Invariant #1.
 
+    // ffmpeg writes SPS/PPS NAL units only to the avcC box of init.mp4 by
+    // default. Chromium's chunk demuxer needs them in-band on every keyframe
+    // to reset its decoder context across fragment seams, otherwise it can
+    // call `endOfStream(decode_error)` internally on a sample-prepare failure
+    // and silently seal the MediaSource ~5 s into a fresh seek (trace
+    // 38e711a9…). `dump_extra=keyframe` is the bitstream filter that injects
+    // them. Encoder-agnostic — works after both libx264 and h264_vaapi.
+    const inBandSpsPps = ["-bsf:v dump_extra=keyframe"];
+
     switch (hwAccel.kind) {
       case "software":
         return command
@@ -369,6 +378,7 @@ export class FFmpegFile {
           ])
           .audioCodec("aac")
           .outputOptions(audio)
+          .outputOptions(inBandSpsPps)
           .outputOptions(hls);
 
       case "vaapi": {
@@ -385,6 +395,7 @@ export class FFmpegFile {
           .outputOptions(output)
           .audioCodec("aac")
           .outputOptions(audio)
+          .outputOptions(inBandSpsPps)
           .outputOptions(hls);
       }
 
