@@ -10,7 +10,6 @@ import {
   CHUNK_DURATION_S,
   type PlaybackStatus,
   PREFETCH_THRESHOLD_S,
-  SEGMENT_DURATION_S,
   STARTUP_BUFFER_S,
 } from "./playbackConfig.js";
 import { isPlaybackError } from "./playbackErrors.js";
@@ -994,19 +993,26 @@ export class PlaybackController {
     // range, so close it here with a distinct reason. Also clears the pending
     // buffering-debounce timer so we don't double-fire the spinner.
     this.stallTracker.end("seek");
-    const snapTime = Math.floor(seekTime / CHUNK_DURATION_S) * CHUNK_DURATION_S;
+    // The seek chunk is anchored at the user's actual position, not the chunk
+    // grid — ffmpeg's `-ss seekTime` produces the user's first segment
+    // immediately. The seek chunk ends at the next snap boundary so the
+    // prefetched continuation chunk is back on the canonical grid (cache
+    // friendly for forward play). See `02-Chunk-Pipeline-Invariants.md` § 1.
+    // The +0.001 nudges seeks that land exactly on a boundary to the *next*
+    // boundary, avoiding a degenerate zero-length seek chunk.
+    const nextSnap = Math.ceil((seekTime + 0.001) / CHUNK_DURATION_S) * CHUNK_DURATION_S;
 
     // Guard against re-entrancy: BufferManager.seek() sets videoEl.currentTime
     // to reposition the playhead, which queues a second "seeking" task. By the
     // time that task fires, .then() has already reset isHandlingSeek (a
     // microtask), so the second event would re-enter and cancel the streaming
-    // that just started. seekTarget persists across the .then() reset and
-    // blocks that spurious re-entry. Cleared when "playing" fires.
-    if (this.seekTarget === snapTime) {
+    // that just started. Storing seekTime (not a snap-derived value) keeps
+    // distinct in-chunk seeks distinguishable. Cleared when "playing" fires.
+    if (this.seekTarget === seekTime) {
       this.isHandlingSeek = false;
       return;
     }
-    this.seekTarget = snapTime;
+    this.seekTarget = seekTime;
 
     // Show spinner immediately — seek requires flushing and reloading the buffer.
     this.setStatus("loading");
@@ -1018,10 +1024,10 @@ export class PlaybackController {
     this.hasStartedPlayback = false;
 
     playbackLog.info(
-      `Seek to ${seekTime.toFixed(1)}s → flushing buffer, restarting from chunk boundary ${snapTime}s`,
+      `Seek to ${seekTime.toFixed(1)}s → flushing buffer, requesting [${seekTime.toFixed(1)}, ${nextSnap}) anchored at the seek position`,
       {
         seek_target_s: parseFloat(seekTime.toFixed(1)),
-        snapped_to_s: snapTime,
+        next_snap_s: nextSnap,
       }
     );
 
@@ -1029,25 +1035,16 @@ export class PlaybackController {
     this.pipeline?.cancel("seek");
     this.timeline.clearLookahead();
     this.prefetchFired = false;
-    // Invalidate chunkEnd BEFORE buf.seek().then() runs. The RAF prefetch loop
-    // gates on `chunkEnd > 0 && chunkEnd < videoDurationS`; without this reset
-    // the loop sees the OLD chunkEnd and the NEW (post-user-seekTo)
-    // currentTime, computes a hugely negative timeUntilEnd, and fires a stale
-    // prefetch. Trace 5d5b5137… caught it: chunk [900, 1200] requested while
-    // the seek target was 1500. startChunkSeries restores chunkEnd inside the
-    // .then() once the new chunk is known.
-    this.chunkEnd = 0;
+    // Set chunkEnd to the next-snap boundary so the RAF prefetch fires when
+    // currentTime > nextSnap - PREFETCH_THRESHOLD_S. The RAF guard requires
+    // chunkEnd > 0 (otherwise it ignores ticks); we want it active immediately
+    // since on a deep seek the seek chunk may be only a few seconds long.
+    this.chunkEnd = nextSnap;
     // Seek invalidates the user-pause prefetch (different chunk now). Cleanup
     // is idempotent so it's safe to call even when not paused.
     this.clearUserPauseState();
 
     const buf = this.buffer;
-    // Pass the user's INTENDED position (seekTime), not the snapped chunk
-    // boundary. The chunk REQUEST below still uses snapTime so the server's
-    // job-cache key stays aligned and ffmpeg's `-ss` boundary is unchanged —
-    // only videoEl.currentTime differs. Without this, currentTime would be
-    // forced back to the chunk boundary (e.g. 720s click → playhead snaps
-    // to 600s), which is the visible "slider moves backward" UX bug.
     void buf.seek(seekTime).then(() => {
       this.isHandlingSeek = false;
       if (!this.buffer) return;
@@ -1069,18 +1066,11 @@ export class PlaybackController {
         );
       });
 
-      // Skip server-side segments that land entirely behind seekTime. Each
-      // segment is SEGMENT_DURATION_S of media, ffmpeg emits PTS-aligned
-      // segments starting at chunkStart=snapTime. So segments 0 .. K-1
-      // cover [snapTime, snapTime + K*SEGMENT_DURATION_S) which is BEHIND
-      // currentTime=seekTime. Chrome's MSE auto-evicts those frames as we
-      // append them (mode="segments" places them at their PTS, behind the
-      // playhead), wasting bandwidth + serial appendBuffer calls.
-      // Trace 941c2a50… caught it: 496 MB / 38 s / 0 buffered ranges before
-      // the few useful segments past seekTime started sticking. With from=K
-      // the server skips that prefix; only ahead-of-playhead segments arrive.
-      const fromIndex = Math.max(0, Math.floor((seekTime - snapTime) / SEGMENT_DURATION_S));
-      this.startChunkSeries(this.resolution, snapTime, buf, false, fromIndex);
+      // Anchor the chunk REQUEST at seekTime — ffmpeg's `-ss seekTime` produces
+      // the user's first segment in ~1-2 s instead of waiting through the
+      // chunk-prefix encode that snap-aligned starts forced. No `?from=K`
+      // skip needed: every segment ffmpeg emits is at-or-ahead of seekTime.
+      this.startChunkSeries(this.resolution, seekTime, buf, false, 0);
     });
   };
 

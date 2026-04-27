@@ -131,9 +131,15 @@ export async function killAllActiveJobs(timeoutMs = 5000): Promise<void> {
   activeCommands.clear();
 }
 
+// `v2` invalidates pre-existing on-disk chunks that were encoded with
+// `-output_ts_offset` and therefore carry an `elst` empty edit in their
+// init.mp4. New encodes (without that flag) hash differently and produce
+// edts-free init segments. Old segment dirs become unreachable; safe to
+// `rm -rf tmp/segments/*` to reclaim. Bump again if the segment-on-disk
+// format changes in a way that breaks playback against an in-memory job.
 function jobId(contentKey: string, resolution: Resolution, start?: number, end?: number): string {
   return createHash("sha1")
-    .update(`${contentKey}|${resolution}|${start ?? ""}|${end ?? ""}`)
+    .update(`v2|${contentKey}|${resolution}|${start ?? ""}|${end ?? ""}`)
     .digest("hex");
 }
 

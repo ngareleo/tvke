@@ -28,15 +28,16 @@ import { upsertVideo } from "../../db/queries/videos.js";
 import type { Resolution } from "../../types.js";
 import { killAllActiveJobs, startTranscodeJob } from "../chunker.js";
 
-// Chunker derives jobId as sha1("<contentKey>|<resolution>|<start>|<end>").
-// Re-implemented here so the test can pre-seed DB+disk for the exact id.
+// Mirrors `chunker.ts::jobId` exactly — bump the version prefix here in
+// lockstep when the production hash changes. Re-implemented in the test so
+// fixtures can pre-seed DB+disk for the exact id.
 function computeJobId(
   contentKey: string,
   resolution: Resolution,
   start: number,
   end: number
 ): string {
-  return createHash("sha1").update(`${contentKey}|${resolution}|${start}|${end}`).digest("hex");
+  return createHash("sha1").update(`v2|${contentKey}|${resolution}|${start}|${end}`).digest("hex");
 }
 
 function seedCompleteJob(

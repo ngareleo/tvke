@@ -5,7 +5,6 @@ import { join } from "path";
 import { getJobById } from "../db/queries/jobs.js";
 import { getSegmentsByJob } from "../db/queries/segments.js";
 import { killJob } from "../services/chunker.js";
-import { stripEdtsBoxes } from "../services/initSegment.js";
 import { addConnection, getJob, removeConnection } from "../services/jobStore.js";
 import { getOtelLogger, getTracer } from "../telemetry/index.js";
 
@@ -56,8 +55,6 @@ export function handleStream(req: Request): Response {
   const url = new URL(req.url);
   const parts = url.pathname.split("/");
   const jobId = parts[2];
-  const fromParam = parseInt(url.searchParams.get("from") ?? "0", 10);
-  const fromIndex = Number.isFinite(fromParam) && fromParam >= 0 ? fromParam : 0;
 
   if (!jobId) {
     return new Response("Missing jobId", { status: 400 });
@@ -72,7 +69,7 @@ export function handleStream(req: Request): Response {
   const incomingCtx = propagation.extract(context.active(), carrier);
   const span = streamTracer.startSpan(
     "stream.request",
-    { attributes: { "job.id": jobId, "stream.from_index": fromIndex } },
+    { attributes: { "job.id": jobId } },
     incomingCtx
   );
 
@@ -97,7 +94,7 @@ export function handleStream(req: Request): Response {
   const streamStartAt = Date.now();
   let totalBytesSent = 0;
   let sentCount = 0;
-  let index = fromIndex;
+  let index = 0;
   let initSent = false;
   let lastSentAt = Date.now();
   let closed = false;
@@ -192,7 +189,7 @@ export function handleStream(req: Request): Response {
 
   const stream = new ReadableStream({
     start(): void {
-      span.addEvent("stream_started", { from_index: fromIndex });
+      span.addEvent("stream_started");
       addConnection(jobId);
     },
 
@@ -261,26 +258,10 @@ export function handleStream(req: Request): Response {
         }
 
         try {
-          // Reuse the per-job cached strip on reconnects; populate on first hit.
-          // Falls through to fresh strip when activeJob is null (DB-restored
-          // path) — caching only makes sense while the job is in memory.
-          const cachedJob = getJob(jobId);
-          let stripped = cachedJob?.strippedInitBytes;
-          let originalBytes: number;
-          if (stripped) {
-            originalBytes = stripped.byteLength;
-          } else {
-            const initBytes = await readFile(initPath);
-            originalBytes = initBytes.byteLength;
-            stripped = stripEdtsBoxes(new Uint8Array(initBytes));
-            if (cachedJob) cachedJob.strippedInitBytes = stripped;
-          }
-          totalBytesSent += stripped.byteLength;
-          span.addEvent("init_sent", {
-            bytes: stripped.byteLength,
-            bytes_stripped: originalBytes - stripped.byteLength,
-          });
-          writeLengthPrefixed(controller, stripped);
+          const initBytes = await readFile(initPath);
+          totalBytesSent += initBytes.byteLength;
+          span.addEvent("init_sent", { bytes: initBytes.byteLength });
+          writeLengthPrefixed(controller, new Uint8Array(initBytes));
           lastSentAt = Date.now();
           initSent = true;
         } catch (err) {

@@ -65,4 +65,4 @@ The client drives transcoding in **300-second chunks**. For each chunk, it fires
 
 ---
 
-_Last regenerated: 2026-04-24. Owned by the `architect` subagent; regenerated mechanically by the `groom-knowledge-base` skill._
+_Last regenerated: 2026-04-27. Owned by the `architect` subagent; regenerated mechanically by the `groom-knowledge-base` skill._
