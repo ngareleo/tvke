@@ -10,12 +10,27 @@ Before the pool existed the cap state (`activeCommands`, `killedJobs`, `inflight
 
 ```
 usedSlots = liveCommands.size − dyingJobIds.size + reservations.size
-cap hit   = usedSlots >= MAX_CONCURRENT_JOBS (3)
+cap hit   = usedSlots >= config.transcode.maxConcurrentJobs (default 3)
 ```
 
 - `liveCommands` — spawned ffmpeg processes, live or dying.
 - `dyingJobIds` — subset of `liveCommands` that have been SIGTERM'd but not yet exited. Their slot is freed immediately on kill.
 - `reservations` — claimed but not yet spawned (covers the `startTranscodeJob` registration window).
+
+## Configuration
+
+The pool's tunable knobs live on `AppConfig` (`server/src/config.ts`) so service-level policy is consolidated in one place rather than scattered as module-private constants:
+
+| Field | Default | Purpose |
+|---|---|---|
+| `transcode.maxConcurrentJobs` | 3 | Cap limit. |
+| `transcode.forceKillTimeoutMs` | 2 000 | SIGTERM → SIGKILL grace per job. |
+| `transcode.shutdownTimeoutMs` | 5 000 | Total wait in `killAllJobs` before the terminal SIGKILL pass. |
+| `transcode.orphanTimeoutMs` | 30 000 | Kill ffmpeg if a job has zero connections after this long (chunker timer). |
+| `transcode.maxEncodeRateMultiplier` | 3 | Wall-clock encode budget = `chunk_duration_s × this × 1000` (chunker timer). |
+| `transcode.capacityRetryHintMs` | 1 000 | `retryAfterMs` returned to clients on `CAPACITY_EXHAUSTED`. |
+| `transcode.inflightDedupTimeoutMs` | 5 000 | Max wait for a concurrent caller to register a peer's job. |
+| `stream.connectionIdleTimeoutMs` | 180 000 | Idle window before `/stream/:jobId` declares the connection dead. |
 
 ## Lifecycle
 
@@ -36,7 +51,7 @@ onProcessExit(id, "end" | "error")              # cleans all state; dispatches e
 1. Moves `id` from active to `dyingJobIds` — slot freed immediately for the cap formula.
 2. Sets `killReasons[id]` so `onProcessExit` knows this was intentional.
 3. Sends `SIGTERM`.
-4. Schedules a `SIGKILL` after `FORCE_KILL_TIMEOUT_MS = 2000 ms`.
+4. Schedules a `SIGKILL` after `config.transcode.forceKillTimeoutMs` (default 2 000 ms).
 5. When the process exits (either signal), `onProcessExit` calls `onKilled(reason)`.
 
 Idempotent: calling `killJob` twice on the same id is a no-op after the first call. Calling it on an unknown id is a no-op. Calling it on a not-yet-spawned reservation releases the reservation instead.
@@ -58,13 +73,13 @@ All kill-reason strings are now type-checked at the call site. The `cascade_retr
 
 ## Shutdown sweep
 
-`killAllJobs(timeoutMs = 5000)`:
+`killAllJobs(timeoutMs?)` — when omitted, defaults to `config.transcode.shutdownTimeoutMs` (5 000 ms):
 
-1. Calls `killJob(id, "server_shutdown")` on every live command (per-job 2 s SIGKILL escalation starts).
+1. Calls `killJob(id, "server_shutdown")` on every live command (per-job SIGKILL escalation starts).
 2. `Promise.race([all exits, timeout])`.
 3. After the timeout, SIGKILL any remaining stragglers.
 
-Called from `server/src/index.ts` shutdown handler. The 5 s sweep > 2 s per-job escalation, so most jobs are already gone by the time the sweep timeout fires.
+Called from `server/src/index.ts` shutdown handler. The default sweep timeout (5 s) > the per-job force-kill timeout (2 s), so most jobs are already gone by the time the sweep timeout fires.
 
 ## Telemetry
 
@@ -80,12 +95,13 @@ The older fields (`cap.active_jobs_json`, `cap.inflight_ids_json`, `cap.requeste
 ## Public API
 
 ```typescript
-MAX_CONCURRENT_JOBS: number           // = 3
 tryReserveSlot(jobId): Reservation | null
 hasInflightOrLive(id): boolean
 snapshotCap(): CapSnapshot
-getCapLimit(): number
+getCapLimit(): number                 // returns config.transcode.maxConcurrentJobs
 spawnProcess(reservation, command, hooks): void
 killJob(id, reason): void
 killAllJobs(timeoutMs?): Promise<void>
 ```
+
+The pool exports no module-private timing constants; all tunables come from `AppConfig` so callers and tests can read them through one source of truth.

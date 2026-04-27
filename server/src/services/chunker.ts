@@ -42,11 +42,6 @@ const chunkerTracer = getTracer("chunker");
 type VaapiVideoState = "needs_sw_pad" | "hw_unsafe";
 const vaapiVideoState = new Map<string, VaapiVideoState>();
 
-/** Server's hint to the client orchestrator for cap-rejection retry backoff.
- * Kept short — the cap typically clears as soon as the next chunk's
- * `notifySubscribers("transcode_complete")` fires. */
-const CAPACITY_RETRY_HINT_MS = 1_000;
-
 /**
  * Discriminated result for `startTranscodeJob`. The mutation resolver maps
  * `kind: "ok"` to a `TranscodeJob` GraphQL type and `kind: "error"` to a
@@ -68,11 +63,11 @@ export type StartJobResult =
 /**
  * Inflight dedup polling: when a concurrent call finds the same job already
  * in-flight, it sleeps INFLIGHT_DEDUP_POLL_MS and re-checks jobStore until the
- * job appears or the total wait exceeds INFLIGHT_DEDUP_TIMEOUT_MS.
+ * job appears or the total wait exceeds config.transcode.inflightDedupTimeoutMs.
+ * The poll interval is an internal step; the timeout is the policy knob and
+ * lives in config.
  */
 const INFLIGHT_DEDUP_POLL_MS = 100;
-const INFLIGHT_DEDUP_TIMEOUT_MS = 5_000;
-const INFLIGHT_DEDUP_MAX_RETRIES = INFLIGHT_DEDUP_TIMEOUT_MS / INFLIGHT_DEDUP_POLL_MS;
 
 function jobId(contentKey: string, resolution: Resolution, start?: number, end?: number): string {
   return createHash("sha1")
@@ -128,7 +123,8 @@ export async function startTranscodeJob(
   // function's entry and the setJob() call below), wait for it to register rather
   // than spawning a second ffmpeg process.
   if (hasInflightOrLive(id)) {
-    for (let i = 0; i < INFLIGHT_DEDUP_MAX_RETRIES; i++) {
+    const maxRetries = Math.ceil(config.transcode.inflightDedupTimeoutMs / INFLIGHT_DEDUP_POLL_MS);
+    for (let i = 0; i < maxRetries; i++) {
       await Bun.sleep(INFLIGHT_DEDUP_POLL_MS);
       const pending = getJob(id);
       if (pending) {
@@ -136,7 +132,7 @@ export async function startTranscodeJob(
         return { kind: "ok", job: pending };
       }
     }
-    // If still not registered after INFLIGHT_DEDUP_TIMEOUT_MS, fall through.
+    // If still not registered within inflightDedupTimeoutMs, fall through.
     log.warn("Inflight dedup timeout — proceeding", { job_id: id });
   }
 
@@ -180,7 +176,7 @@ export async function startTranscodeJob(
       code: "CAPACITY_EXHAUSTED",
       message: `Too many concurrent streams (limit: ${snap.limit}). Close another player tab and try again.`,
       retryable: true,
-      retryAfterMs: CAPACITY_RETRY_HINT_MS,
+      retryAfterMs: config.transcode.capacityRetryHintMs,
     };
   }
 
@@ -443,34 +439,34 @@ async function runFfmpeg(
   // segment events.
   watchSegments(job, segmentDir, initPath);
 
-  // Kill orphaned jobs — prefetched chunks that start encoding but whose stream
-  // connection is never opened (e.g. user seeks away before the stream starts).
-  // If connections is still 0 after 30 s, no client is watching: kill ffmpeg.
-  const ORPHAN_TIMEOUT_MS = 30_000;
+  // Kill orphaned jobs — prefetched chunks that start encoding but whose
+  // stream connection is never opened (e.g. user seeks away before the stream
+  // starts). If connections is still 0 after orphanTimeoutMs, no client is
+  // watching: kill ffmpeg.
   const orphanTimer = setTimeout(() => {
     const currentJob = getJob(job.id);
     if (currentJob && currentJob.connections === 0 && currentJob.status === "running") {
       killJob(job.id, "orphan_no_connection");
     }
-  }, ORPHAN_TIMEOUT_MS);
+  }, config.transcode.orphanTimeoutMs);
 
   // Wall-clock upper bound on encode time. orphan_no_connection covers the
-  // "client never connected" case; the 180s idle_timeout in stream.ts covers
+  // "client never connected" case; the stream-side idle timeout covers
   // "ffmpeg stopped producing segments". Neither catches a job that makes
   // slow but non-zero progress while a client is still subscribed — that
   // would otherwise tie up a pool slot indefinitely.
   //
-  // Budget = 3× chunk duration. Realistic worst case on this system is
-  // SW libx264 at 1080p (~10 min for a 5-min chunk; SW 4K is architecturally
-  // ruled out — VAAPI-required); 3× gives ~5 min headroom. For ad-hoc
-  // full-video transcodes (no startTime/endTime), fall back to an absolute
-  // 1-hour cap — pre-Tauri prototype path; not the primary use case.
-  const MAX_ENCODE_RATE_MULTIPLIER = 3;
+  // Budget = chunk duration × maxEncodeRateMultiplier. Realistic worst case
+  // on this system is SW libx264 at 1080p (~10 min for a 5-min chunk; SW 4K
+  // is architecturally ruled out — VAAPI-required); the default 3× gives
+  // ~5 min headroom. For ad-hoc full-video transcodes (no startTime/endTime),
+  // fall back to an absolute 1-hour cap — pre-Tauri prototype path; not the
+  // primary use case.
   const ABSOLUTE_FALLBACK_MS = 60 * 60 * 1000; // 1 h, only for full-video transcodes
   const chunkWindowSeconds = endTime != null && startTime != null ? endTime - startTime : null;
   const MAX_ENCODE_MS =
     chunkWindowSeconds != null
-      ? Math.ceil(chunkWindowSeconds * MAX_ENCODE_RATE_MULTIPLIER * 1000)
+      ? Math.ceil(chunkWindowSeconds * config.transcode.maxEncodeRateMultiplier * 1000)
       : ABSOLUTE_FALLBACK_MS;
   const maxEncodeTimer = setTimeout(() => {
     const currentJob = getJob(job.id);

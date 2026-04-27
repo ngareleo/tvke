@@ -14,15 +14,17 @@ import { EventEmitter } from "events";
 import type { FfmpegCommand } from "fluent-ffmpeg";
 
 import {
+  getCapLimit,
   hasInflightOrLive,
   killAllJobs,
   killJob,
-  MAX_CONCURRENT_JOBS,
   type ProcessHooks,
   snapshotCap,
   spawnProcess,
   tryReserveSlot,
 } from "../ffmpegPool.js";
+
+const CAP_LIMIT = getCapLimit();
 
 /** Minimal stand-in for fluent-ffmpeg's FfmpegCommand. The pool only uses
  * .on/.once for events, .kill(signal) for SIGTERM/SIGKILL, and .run() to
@@ -60,9 +62,9 @@ afterEach(async () => {
 });
 
 describe("ffmpegPool — cap accounting", () => {
-  it("tryReserveSlot returns up to MAX_CONCURRENT_JOBS reservations and then null", () => {
+  it("tryReserveSlot returns up to CAP_LIMIT reservations and then null", () => {
     const reservations = [];
-    for (let i = 0; i < MAX_CONCURRENT_JOBS; i++) {
+    for (let i = 0; i < CAP_LIMIT; i++) {
       const r = tryReserveSlot(`cap-test-${i}`);
       expect(r).not.toBeNull();
       if (r) reservations.push(r);
@@ -124,7 +126,7 @@ describe("ffmpegPool — cap accounting", () => {
     expect(r2).not.toBeNull();
 
     let snap = snapshotCap();
-    expect(snap.limit).toBe(MAX_CONCURRENT_JOBS);
+    expect(snap.limit).toBe(CAP_LIMIT);
     expect(snap.liveJobIds).toContain("snap-live");
     expect(snap.inflightJobIds).toContain("snap-inflight");
     expect(snap.dyingJobIds).toEqual([]);

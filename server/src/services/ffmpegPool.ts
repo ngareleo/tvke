@@ -1,21 +1,9 @@
 import type { FfmpegCommand } from "fluent-ffmpeg";
 
+import { config } from "../config.js";
 import { getOtelLogger } from "../telemetry/index.js";
 
 const log = getOtelLogger("ffmpegPool");
-
-/** Maximum number of concurrently encoding ffmpeg jobs. */
-export const MAX_CONCURRENT_JOBS = 3;
-
-/** SIGTERM grace period before escalating to SIGKILL on per-job kills.
- * Software 4K encodes can hold a fragment buffer for tens of seconds
- * after SIGTERM while flushing; this caps the dying-zombie window. */
-const FORCE_KILL_TIMEOUT_MS = 2_000;
-
-/** Default shutdown sweep timeout. Greater than FORCE_KILL_TIMEOUT_MS so
- * the per-job escalation has already SIGKILLed laggards by the time the
- * shutdown timer expires. */
-const SHUTDOWN_TIMEOUT_MS = 5_000;
 
 export type KillReason =
   | "client_request"
@@ -77,12 +65,12 @@ function liveActiveCount(): number {
 }
 
 export function getCapLimit(): number {
-  return MAX_CONCURRENT_JOBS;
+  return config.transcode.maxConcurrentJobs;
 }
 
 /** Try to claim a slot. Returns null if the cap is exhausted. */
 export function tryReserveSlot(jobId: string): Reservation | null {
-  if (liveActiveCount() + reservations.size >= MAX_CONCURRENT_JOBS) return null;
+  if (liveActiveCount() + reservations.size >= config.transcode.maxConcurrentJobs) return null;
   reservations.add(jobId);
   let released = false;
   return {
@@ -104,7 +92,7 @@ export function hasInflightOrLive(id: string): boolean {
 export function snapshotCap(): CapSnapshot {
   const liveIds = [...liveCommands.keys()].filter((id) => !dyingJobIds.has(id));
   return {
-    limit: MAX_CONCURRENT_JOBS,
+    limit: config.transcode.maxConcurrentJobs,
     liveCount: liveIds.length,
     inflightCount: reservations.size,
     dyingCount: dyingJobIds.size,
@@ -165,7 +153,7 @@ function onProcessExit(id: string, kind: "end" | "error", err?: Error): void {
   }
 }
 
-/** SIGTERM the process; schedule SIGKILL after FORCE_KILL_TIMEOUT_MS if alive.
+/** SIGTERM the process; schedule SIGKILL after config.transcode.forceKillTimeoutMs if alive.
  * Idempotent — second kill on the same id is a no-op (escalation already pending).
  * No-op if the id is unknown. If the id is a not-yet-spawned reservation, the
  * reservation is released. */
@@ -195,11 +183,11 @@ export function killJob(id: string, reason: KillReason): void {
     escalationTimers.delete(id);
     if (!liveCommands.has(id)) return;
     log.warn(
-      `ffmpeg did not exit within ${FORCE_KILL_TIMEOUT_MS}ms after SIGTERM — escalating to SIGKILL`,
+      `ffmpeg did not exit within ${config.transcode.forceKillTimeoutMs}ms after SIGTERM — escalating to SIGKILL`,
       {
         job_id: id,
         kill_reason: reason,
-        sigterm_timeout_ms: FORCE_KILL_TIMEOUT_MS,
+        sigterm_timeout_ms: config.transcode.forceKillTimeoutMs,
       }
     );
     try {
@@ -207,15 +195,16 @@ export function killJob(id: string, reason: KillReason): void {
     } catch {
       // already gone between the check and the signal
     }
-  }, FORCE_KILL_TIMEOUT_MS);
+  }, config.transcode.forceKillTimeoutMs);
   escalationTimers.set(id, timer);
 }
 
 /** Server-shutdown sweep: SIGTERM every live job, await up to timeoutMs,
- * SIGKILL any laggards. Per-job escalation (FORCE_KILL_TIMEOUT_MS) is the
+ * SIGKILL any laggards. Per-job escalation (config.transcode.forceKillTimeoutMs) is the
  * primary defence; this terminal SIGKILL pass exists in case the timer
  * itself was preempted. */
-export async function killAllJobs(timeoutMs: number = SHUTDOWN_TIMEOUT_MS): Promise<void> {
+export async function killAllJobs(timeoutMs?: number): Promise<void> {
+  const sweepTimeoutMs = timeoutMs ?? config.transcode.shutdownTimeoutMs;
   if (liveCommands.size === 0) return;
 
   const ids = [...liveCommands.keys()];
@@ -229,7 +218,7 @@ export async function killAllJobs(timeoutMs: number = SHUTDOWN_TIMEOUT_MS): Prom
     });
   });
 
-  const timeout = new Promise<void>((resolve) => setTimeout(resolve, timeoutMs));
+  const timeout = new Promise<void>((resolve) => setTimeout(resolve, sweepTimeoutMs));
   await Promise.race([Promise.all(exits), timeout]);
 
   for (const [id, command] of liveCommands) {
