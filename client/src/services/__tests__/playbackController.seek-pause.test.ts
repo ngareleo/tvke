@@ -296,6 +296,7 @@ describe("PlaybackController.handleSeeking (slider snap-back + stale-prefetch fi
     handleSeeking: () => void;
     seekTo: (t: number) => void;
     chunkEnd: number;
+    seekTarget: number | null;
     status: "idle" | "loading" | "playing";
     hasStartedPlayback: boolean;
     isHandlingSeek: boolean;
@@ -327,7 +328,7 @@ describe("PlaybackController.handleSeeking (slider snap-back + stale-prefetch fi
     return { controller, priv, buf };
   }
 
-  it("passes the user's intended seekTime to buf.seek (NOT the snapped chunk boundary)", () => {
+  it("passes the user's intended seekTime to buf.seek (NOT a snapped chunk boundary)", () => {
     // The slider snap-back bug: clicking at 720s used to call buf.seek(600)
     // (the chunk boundary), which then set videoEl.currentTime = 600 and the
     // playhead visually jumped backward. Fix: pass seekTime so currentTime
@@ -338,31 +339,30 @@ describe("PlaybackController.handleSeeking (slider snap-back + stale-prefetch fi
     priv.handleSeeking();
 
     expect(buf.seekCalls).toEqual([720]);
-    // The chunk REQUEST still uses snapTime — that assertion lives in the
-    // companion test below (must wait for buf.seek's .then to fire).
   });
 
-  it("invalidates chunkEnd before buf.seek so RAF prefetch can't fire stale", () => {
-    // Trace 5d5b5137… caught the regression: prefetchFired was reset to false
-    // synchronously, but chunkEnd was only updated INSIDE the buf.seek().then.
-    // RAF could fire between, prefetch the OLD chunk against the NEW
-    // currentTime, and request chunk [900, 1200] while the seek was to 1500.
+  it("sets chunkEnd to the next-snap boundary so RAF prefetch fires at the correct boundary", () => {
+    // Pre-fix: chunkEnd was reset to 0 to gate out a stale prefetch race
+    // (trace 5d5b5137…). Post-fix: chunkEnd is set to nextSnap synchronously
+    // so the RAF gate is active immediately — the seek chunk may be only
+    // a few seconds long if the user seeks deep into a chunk window.
     const { controller, priv } = setUpSeekable(1500);
     expect(priv.chunkEnd).toBe(900); // baseline: stale value from prior chunk
 
     controller.seekTo(1500);
     priv.handleSeeking();
 
-    // Synchronously after handleSeeking returns, chunkEnd is 0. The RAF
-    // prefetch loop's gate (`chunkEnd > 0 && chunkEnd < videoDurationS`) now
-    // bails until startChunkSeries restores it inside the .then().
-    expect(priv.chunkEnd).toBe(0);
+    // nextSnap = ceil((1500 + 0.001) / 300) * 300 = 1800
+    expect(priv.chunkEnd).toBe(1800);
   });
 
-  it("passes the snapped chunk boundary to startChunkSeries (server cache key unchanged)", () => {
-    // Companion to the snap-back test — the chunk REQUEST must keep using
-    // snapTime so the server's job-cache key (sha1 of contentKey|res|start|end)
-    // matches across seeks within the same chunk window.
+  it("anchors the chunk REQUEST at seekTime — no longer snaps to chunk boundary", () => {
+    // Inversion of the previous "snap-aligned cache key" assertion. The 300s
+    // grid was forcing ffmpeg to encode segments 0..K-1 the user didn't need
+    // before reaching their first useful one (16-60s wall-clock for fresh
+    // 4K seeks, trace 9da5539d…). Now the chunk request anchors at seekTime
+    // directly so ffmpeg's `-ss seekTime` produces the user's first segment
+    // in ~1-2s. Continuation chunks return to the canonical grid.
     const { controller, priv, buf } = setUpSeekable(720);
 
     controller.seekTo(720);
@@ -370,35 +370,19 @@ describe("PlaybackController.handleSeeking (slider snap-back + stale-prefetch fi
     // Resolve the in-flight buf.seek so the .then() body fires.
     buf.resolveSeek();
 
-    // Wait one microtask for the .then to run, then assert.
     return Promise.resolve().then(() => {
       expect(priv.startChunkSeries).toHaveBeenCalledTimes(1);
       const call = (priv.startChunkSeries as ReturnType<typeof vi.fn>).mock.calls[0];
-      expect(call[1]).toBe(600); // snapTime, not seekTime
+      // call args: (res, chunkStartS, buf, isFirstChunk, fromIndex)
+      expect(call[1]).toBe(720); // chunkStartS = seekTime, not snapTime (600)
+      expect(call[4]).toBe(0); // fromIndex always 0; ?from=K is gone
     });
   });
 
-  it("computes fromIndex = floor((seekTime - snapTime) / SEGMENT_DURATION_S) for mid-chunk seeks", () => {
-    // Trace 941c2a50… caught the perf bug: seek to 564.9 in chunk [300, 600]
-    // streamed 132 segments (PTS 300..564) that Chrome auto-evicted because
-    // they landed BEHIND currentTime in the same SourceBuffer (mode=segments
-    // places them at their PTS). Fix: skip those segments server-side via
-    // ?from=K. Each segment is SEGMENT_DURATION_S (=2s), so K = floor(264.9/2).
-    const { controller, priv, buf } = setUpSeekable(564.9);
-
-    controller.seekTo(564.9);
-    priv.handleSeeking();
-    buf.resolveSeek();
-
-    return Promise.resolve().then(() => {
-      const call = (priv.startChunkSeries as ReturnType<typeof vi.fn>).mock.calls[0];
-      // call args: (res, snapTime, buf, isFirstChunk, fromIndex)
-      const fromIndex = call[4];
-      expect(fromIndex).toBe(132); // floor((564.9 - 300) / 2)
-    });
-  });
-
-  it("fromIndex is 0 when seekTime exactly hits a chunk boundary", () => {
+  it("anchors at seekTime even when it lands exactly on a chunk boundary", () => {
+    // Edge case: with the +0.001 nudge in nextSnap derivation, a seek to
+    // exactly 600 still produces a [600, 900) chunk (NOT a degenerate
+    // [600, 600) zero-length one).
     const { controller, priv, buf } = setUpSeekable(600);
 
     controller.seekTo(600);
@@ -407,8 +391,22 @@ describe("PlaybackController.handleSeeking (slider snap-back + stale-prefetch fi
 
     return Promise.resolve().then(() => {
       const call = (priv.startChunkSeries as ReturnType<typeof vi.fn>).mock.calls[0];
-      expect(call[1]).toBe(600); // snapTime
+      expect(call[1]).toBe(600); // chunkStartS = seekTime
       expect(call[4]).toBe(0); // fromIndex
+      expect(priv.chunkEnd).toBe(900); // nextSnap, not 600
     });
+  });
+
+  it("re-entrancy guard uses seekTime — distinct in-chunk seeks are NOT collapsed", () => {
+    // Pre-fix the dedup compared against snapTime, which would silently let
+    // two rapid in-chunk seeks both slip through (architect catch). Now the
+    // guard uses seekTime — only the spurious second `seeking` event from
+    // BufferManager.seek()'s own currentTime reassign is filtered out.
+    const { controller, priv } = setUpSeekable(564.9);
+
+    controller.seekTo(564.9);
+    priv.handleSeeking();
+
+    expect(priv.seekTarget).toBe(564.9); // not 300 (the old snapTime)
   });
 });

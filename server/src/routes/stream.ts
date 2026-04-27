@@ -55,8 +55,6 @@ export function handleStream(req: Request): Response {
   const url = new URL(req.url);
   const parts = url.pathname.split("/");
   const jobId = parts[2];
-  const fromParam = parseInt(url.searchParams.get("from") ?? "0", 10);
-  const fromIndex = Number.isFinite(fromParam) && fromParam >= 0 ? fromParam : 0;
 
   if (!jobId) {
     return new Response("Missing jobId", { status: 400 });
@@ -71,7 +69,7 @@ export function handleStream(req: Request): Response {
   const incomingCtx = propagation.extract(context.active(), carrier);
   const span = streamTracer.startSpan(
     "stream.request",
-    { attributes: { "job.id": jobId, "stream.from_index": fromIndex } },
+    { attributes: { "job.id": jobId } },
     incomingCtx
   );
 
@@ -96,7 +94,7 @@ export function handleStream(req: Request): Response {
   const streamStartAt = Date.now();
   let totalBytesSent = 0;
   let sentCount = 0;
-  let index = fromIndex;
+  let index = 0;
   let initSent = false;
   let lastSentAt = Date.now();
   let closed = false;
@@ -191,7 +189,7 @@ export function handleStream(req: Request): Response {
 
   const stream = new ReadableStream({
     start(): void {
-      span.addEvent("stream_started", { from_index: fromIndex });
+      span.addEvent("stream_started");
       addConnection(jobId);
     },
 
