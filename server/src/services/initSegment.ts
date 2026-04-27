@@ -2,15 +2,19 @@
  * Strips the `edts` (edit list) box from each `trak` inside `moov` of an
  * fMP4 init segment. ffmpeg's mov muxer writes an empty `elst` of duration
  * `-output_ts_offset` whenever the chunker uses that flag (every chunk with
- * `chunkStartSeconds > 0`); Chromium MSE honours that empty edit and
- * subtracts the offset back out from each segment's PTS at playback time —
- * which undoes the deliberate source-time PTS stamping the chunker did.
+ * `chunkStartSeconds > 0`).
  *
- * Removing `edts` makes the SourceBuffer treat segment PTS as absolute
- * source-time positions, which is what the rest of the pipeline expects.
+ * Defense-in-depth, not load-bearing: Chromium MSE in `mode = "segments"`
+ * ignores edit lists today, so the empty edit has no observable effect — the
+ * actual PTS shift lives in the client's per-chunk `sourceBuffer.timestampOffset`
+ * (see `client/services/bufferManager.ts::setTimestampOffset`). Stripping it
+ * up front guards against a future browser that starts honouring edit lists,
+ * which would otherwise double-shift PTS (elst empty edit + client offset)
+ * and silently re-introduce the post-seek stuck-buffer symptom.
+ *
  * Idempotent: an init with no `edts` is returned unchanged.
  *
- * See `docs/architecture/Streaming/02-Chunk-Pipeline-Invariants.md` § 2.
+ * See `docs/architecture/Streaming/02-Chunk-Pipeline-Invariants.md` § 2a.
  */
 export function stripEdtsBoxes(buf: Uint8Array): Uint8Array {
   const moov = findTopLevelBox(buf, "moov");
