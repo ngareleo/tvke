@@ -90,6 +90,17 @@ export class PlaybackController {
   private status: PlaybackStatus = "idle";
   private resolution: Resolution = "240p";
   private sessionSpan: Span | null = null;
+  // Wall-clock anchor for cold-start latency metrics — captured at session
+  // span creation, used to derive `playback.time_to_first_frame_ms` and
+  // `playback.time_to_first_prefetch_ms` as first-class span attributes.
+  private sessionStartMs: number | null = null;
+  // One-shot flag: only the very first `video.play()` of a session writes
+  // `time_to_first_frame_ms` (seek-resumes pass through the same code path
+  // but represent re-fills, not cold-start, so they must not overwrite).
+  private firstFrameRecorded = false;
+  // Same shape for the first prefetch RAF fire — `prefetchFired` is reset on
+  // every chunk boundary, so a separate session-scoped flag is needed.
+  private firstPrefetchRecorded = false;
 
   private buffer: BufferManager | null = null;
   private pipeline: ChunkPipeline | null = null;
@@ -212,6 +223,7 @@ export class PlaybackController {
       attributes: { "video.id": videoId, "playback.resolution": res },
     });
     this.sessionSpan = sessionSpan;
+    this.sessionStartMs = performance.now();
     const traceId = sessionSpan.spanContext().traceId;
 
     // Record the session in the DB so the user can look it up in Seq later.
@@ -353,6 +365,9 @@ export class PlaybackController {
       this.sessionSpan.end();
       this.sessionSpan = null;
     }
+    this.sessionStartMs = null;
+    this.firstFrameRecorded = false;
+    this.firstPrefetchRecorded = false;
     clearSessionContext();
 
     this.events.onJobCreated(null);
@@ -378,6 +393,18 @@ export class PlaybackController {
       const ahead = buffer.getBufferedAheadSeconds(videoEl.currentTime);
       if (ahead !== null && ahead >= target) {
         this.hasStartedPlayback = true;
+        // Promote time-to-first-frame to a first-class session-span attribute
+        // so cold-start regressions show up as a single Seq column instead of
+        // log-line correlation. `firstFrameRecorded` is the one-shot guard —
+        // seek-resumes also pass through this code path but represent re-fills,
+        // not cold-start, so they must not overwrite the metric.
+        if (!this.firstFrameRecorded && this.sessionSpan && this.sessionStartMs !== null) {
+          this.firstFrameRecorded = true;
+          this.sessionSpan.setAttribute(
+            "playback.time_to_first_frame_ms",
+            parseFloat((performance.now() - this.sessionStartMs).toFixed(2))
+          );
+        }
         buffer.setAfterAppend(null);
         onPlay();
       }
@@ -816,6 +843,17 @@ export class PlaybackController {
         const timeUntilEnd = chunkEnd - videoEl.currentTime;
         if (timeUntilEnd <= PREFETCH_THRESHOLD_S) {
           this.prefetchFired = true;
+          // Record the FIRST prefetch fire of the session as a span attribute —
+          // a key signal for whether the small-first-chunk path is doing its
+          // job (expected ≤1 s post-Play with FIRST_CHUNK_DURATION_S=30; pre-
+          // change baseline was ~9.5 s on a 4K cold start).
+          if (!this.firstPrefetchRecorded && this.sessionSpan && this.sessionStartMs !== null) {
+            this.firstPrefetchRecorded = true;
+            this.sessionSpan.setAttribute(
+              "playback.time_to_first_prefetch_ms",
+              parseFloat((performance.now() - this.sessionStartMs).toFixed(2))
+            );
+          }
           const nextStart = chunkEnd;
           const nextEnd = Math.min(nextStart + CHUNK_DURATION_S, videoDurationS);
           const buffer = this.buffer;
