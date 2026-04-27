@@ -2,22 +2,15 @@ import { context, propagation } from "@opentelemetry/api";
 import { access, readFile } from "fs/promises";
 import { join } from "path";
 
+import { config } from "../config.js";
 import { getJobById } from "../db/queries/jobs.js";
 import { getSegmentsByJob } from "../db/queries/segments.js";
-import { killJob } from "../services/chunker.js";
+import { killJob } from "../services/ffmpegPool.js";
 import { addConnection, getJob, removeConnection } from "../services/jobStore.js";
 import { getOtelLogger, getTracer } from "../telemetry/index.js";
 
 const log = getOtelLogger("stream");
 const streamTracer = getTracer("stream");
-
-/**
- * Maximum idle time before the stream assumes the connection is dead and kills
- * the job. Must be larger than the widest back-pressure halt the client can
- * induce. With forwardTargetS=60 and forwardResumeS=0 (the flag's min), halts
- * can reach ~60s; 180s leaves ~120s of defensive margin for real network blips.
- */
-const CONNECTION_TIMEOUT_MS = 180_000;
 
 /** How long (ms) between polls when waiting for the encoder to produce a segment. */
 const ENCODER_POLL_MS = 100;
@@ -138,7 +131,7 @@ export function handleStream(req: Request): Response {
       log.warn(`Stream idle timeout after ${sentCount} segments — killing ffmpeg`, {
         job_id: jobId,
         segments_sent: sentCount,
-        idle_ms: CONNECTION_TIMEOUT_MS,
+        idle_ms: config.stream.connectionIdleTimeoutMs,
       });
       span.addEvent("idle_timeout", { segments_sent: sentCount });
       const idleJob = getJob(jobId);
@@ -272,7 +265,7 @@ export function handleStream(req: Request): Response {
       }
 
       // Media segment flow. Try to resolve the path; if not yet available,
-      // wait (bounded by CONNECTION_TIMEOUT_MS) for the encoder.
+      // wait (bounded by config.stream.connectionIdleTimeoutMs) for the encoder.
       while (!req.signal?.aborted) {
         const path = await resolveNextSegmentPath();
         if (path) {
@@ -342,7 +335,7 @@ export function handleStream(req: Request): Response {
           return;
         }
 
-        if (Date.now() - lastSentAt > CONNECTION_TIMEOUT_MS) {
+        if (Date.now() - lastSentAt > config.stream.connectionIdleTimeoutMs) {
           finalise("idle_timeout");
           controller.close();
           return;

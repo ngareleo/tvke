@@ -26,7 +26,8 @@ import { upsertLibrary } from "../../db/queries/libraries.js";
 import { insertSegment } from "../../db/queries/segments.js";
 import { upsertVideo } from "../../db/queries/videos.js";
 import type { Resolution } from "../../types.js";
-import { killAllActiveJobs, startTranscodeJob } from "../chunker.js";
+import { startTranscodeJob } from "../chunker.js";
+import { killAllJobs } from "../ffmpegPool.js";
 
 // Mirrors `chunker.ts::jobId` exactly — bump the version prefix here in
 // lockstep when the production hash changes. Re-implemented in the test so
@@ -113,7 +114,7 @@ describe("chunker inflight slot accounting", () => {
   afterAll(async () => {
     // Defensive — restore-only test should never start ffmpeg, but honor the
     // suite-wide policy of leaving no live processes behind.
-    await killAllActiveJobs();
+    await killAllJobs();
   });
 
   it("does not leak inflight slots across job_restored_from_db exits", async () => {
