@@ -681,7 +681,13 @@ export class PlaybackController {
     const windowSize = isFirstChunk ? FIRST_CHUNK_DURATION_S : CHUNK_DURATION_S;
     const chunkEnd = override?.endS ?? Math.min(startS + windowSize, videoDurationS);
     this.chunkEnd = chunkEnd;
-    this.prefetchFired = false;
+    // NOTE: `prefetchFired` is intentionally NOT reset here. Every caller
+    // (handleChunkEnded, handleSeeking, handleMseDetached, switchResolution,
+    // startPlayback via fresh state) already resets it before reaching this
+    // point. Resetting again here would double-reset across the async gap in
+    // the seek/MSE-recreate paths (caller reset → RAF fires prefetch #1 →
+    // .then() reaches us → reset again → RAF fires prefetch #2), causing a
+    // duplicate prefetch mutation observed in trace b3dbbc34… on a seek.
 
     const jobIdPromise = override?.preIssuedJobId
       ? Promise.resolve(override.preIssuedJobId)

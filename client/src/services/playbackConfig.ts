@@ -26,14 +26,18 @@ export const PREFETCH_THRESHOLD_S = 90;
 
 /** Minimum buffered seconds before `video.play()` is called on initial load.
  *  Larger resolutions need more lead-time because the first frames take longer
- *  to decode/render. */
+ *  to decode/render. The 4K value was reduced from 10s after a Seq trace
+ *  analysis showed the startup-buffer fill phase accounted for ~69% of TTFF
+ *  on cold-start (~2.1s of a ~3.1s total). 5s cuts ~1s off TTFF directly;
+ *  if a 4K cold-start stalls immediately after `play()`, the existing
+ *  `playback.stalled` span flags it. */
 export const STARTUP_BUFFER_S: Record<Resolution, number> = {
   "240p": 2,
   "360p": 2,
   "480p": 3,
   "720p": 4,
   "1080p": 6,
-  "4k": 10,
+  "4k": 5,
 };
 
 /** Show the mid-playback buffering spinner only after this much continuous

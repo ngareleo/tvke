@@ -152,7 +152,9 @@ Trade-off: re-seeking to the same exact second misses the chunk cache (the `jobI
 | `480p` | 3s |
 | `720p` | 4s |
 | `1080p` | 6s |
-| `4k` | 10s |
+| `4k` | 5s |
+
+The 4K threshold was lowered from 10 s after a Seq cold-start trace showed the startup-buffer fill phase accounted for ~69 % of TTFF (~2.1 s of a ~3.1 s total). 5 s gives ~1 s back to the user; immediate post-`play()` stalls are surfaced by the existing `playback.stalled` span.
 
 Detection is driven by `BufferManager.setAfterAppend(tryStart)` — a callback that fires synchronously inside `drainQueue` after every real `appendBuffer` call. This works correctly in headless environments (Playwright, CI) where `requestAnimationFrame` fires slowly or not at all between segment appends. A RAF loop is also started as a fallback for slow live-transcode paths where no new segment arrives for several seconds.
 
