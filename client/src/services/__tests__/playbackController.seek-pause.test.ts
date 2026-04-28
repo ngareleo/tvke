@@ -65,6 +65,7 @@ interface PrivateController {
   buffer: FakeBuffer | null;
   pipeline: FakePipeline | { hasLookahead: () => boolean; resumeLookahead: () => void } | null;
   hasStartedPlayback: boolean;
+  firstFrameRecorded: boolean;
   isHandlingSeek: boolean;
   status: "idle" | "loading" | "playing";
   userPauseInterval: ReturnType<typeof setInterval> | null;
@@ -212,11 +213,49 @@ describe("PlaybackController.handlePlaying (spinner-race fix)", () => {
     const priv = controller as unknown as PrivateController;
     priv.isHandlingSeek = false;
     priv.hasStartedPlayback = true;
+    priv.firstFrameRecorded = true;
     priv.status = "loading";
 
     priv.handlePlaying();
 
     expect(priv.status).toBe("playing");
+  });
+
+  it("restores playing status on seek-resume auto-resume (hasStartedPlayback=false, firstFrameRecorded=true)", () => {
+    // Seek-resume bug: video element auto-resumes as soon as the new buffer
+    // is available, firing DOM `playing` BEFORE tryPlay's startup-buffer
+    // threshold is met. handleSeeking has reset hasStartedPlayback to false,
+    // so the previous `&& hasStartedPlayback` guard kept status="loading"
+    // for the whole startup-fill window — user saw spinner over playing
+    // video. firstFrameRecorded persists across seeks (only reset on
+    // resetForNewSession), so it correctly admits this case.
+    const { controller } = makeController();
+    const priv = controller as unknown as PrivateController;
+    priv.isHandlingSeek = false;
+    priv.hasStartedPlayback = false; // reset by handleSeeking
+    priv.firstFrameRecorded = true; // set by cold-start tryPlay earlier in the session
+    priv.status = "loading";
+
+    priv.handlePlaying();
+
+    expect(priv.status).toBe("playing");
+  });
+
+  it("does NOT restore playing status during cold-start before any frame has rendered", () => {
+    // Cold-start, before tryPlay's threshold has been met. Video element is
+    // paused (videoEl.play() not called yet), so no spurious DOM `playing`
+    // event would actually fire — but if one did, status must remain
+    // "loading" until the proper cold-start gate (tryPlay → onPlay).
+    const { controller } = makeController();
+    const priv = controller as unknown as PrivateController;
+    priv.isHandlingSeek = false;
+    priv.hasStartedPlayback = false;
+    priv.firstFrameRecorded = false;
+    priv.status = "loading";
+
+    priv.handlePlaying();
+
+    expect(priv.status).toBe("loading");
   });
 });
 

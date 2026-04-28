@@ -1235,8 +1235,23 @@ export class PlaybackController {
     this.firstRenderGraceUntil = null;
     // StallTracker closes its span + clears its debounce timer.
     this.stallTracker.onPlaying();
-    // Restore "playing" if the spinner was showing because of a mid-playback stall.
-    if (this.status === "loading" && this.hasStartedPlayback) {
+    // Restore "playing" whenever the video element genuinely starts rendering
+    // frames after a "loading" state. Two cases land here:
+    //   1. Mid-playback stall recovery — `hasStartedPlayback` is still true,
+    //      `onSpinnerShow` flipped status to "loading" via the 2 s debounce,
+    //      and the resume's `playing` event clears it.
+    //   2. Seek-resume auto-resume — the video element auto-resumes as soon
+    //      as the new buffer is available (we never `pause()` during seek),
+    //      firing `playing` BEFORE `tryPlay`'s startup-buffer threshold is
+    //      met. Without this branch, status would stay "loading" for the
+    //      whole startup-buffer fill — the user sees video playing under a
+    //      spinner for several seconds.
+    // `firstFrameRecorded` (set once per session in `tryPlay`'s threshold
+    // branch, only reset by `resetForNewSession`) is the load-bearing gate:
+    // it filters out spurious cold-start `playing` events (which can't
+    // actually fire because the video is paused until `videoEl.play()` runs
+    // in `onPlay`), but admits everything mid-session.
+    if (this.status === "loading" && this.firstFrameRecorded) {
       this.setStatus("playing");
     }
   };
