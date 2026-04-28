@@ -137,13 +137,13 @@ Seeks anchor a fresh ffmpeg encode at the user's seek position. The chunk runs f
 
 Trade-off: re-seeking to the same exact second misses the chunk cache (the `jobId` hash is keyed on `start_s`). Acceptable — interactive scrubbing dominates, and the seek-to-ready latency benefit (sub-5 s vs. 16–60 s pre-refactor) is the load-bearing UX win.
 
-**Seek accuracy:** the first appended segment starts at the keyframe ffmpeg's `-ss` lands on (typically within ~1 s of `seekTime`); the video element resumes at `seekTime` once `bufferedAhead ≥ STARTUP_BUFFER_S[res]`.
+**Seek accuracy:** the first appended segment starts at the keyframe ffmpeg's `-ss` lands on (typically within ~1 s of `seekTime`); the video element resumes at `seekTime` once `bufferedAhead ≥ clientConfig.playback.startupBufferS[res]`.
 
 ---
 
 ## Startup Buffer
 
-`useChunkedPlayback` waits until `bufferedEnd >= STARTUP_BUFFER_S[res]` before calling `video.play()`. This keeps the loading spinner up long enough for smooth initial playback, calibrated per resolution:
+`useChunkedPlayback` waits until `bufferedEnd >= clientConfig.playback.startupBufferS[res]` before calling `video.play()`. This keeps the loading spinner up long enough for smooth initial playback, calibrated per resolution:
 
 | Resolution | Startup threshold |
 |---|---|
@@ -271,7 +271,7 @@ Easy to conflate, but each knob affects a different part of the pipeline:
 | `clientConfig.buffer.forwardTargetS` (`client/src/config/appConfig.ts`) | 60s | Client-side buffer ceiling — how much media is resident in the SourceBuffer. Independent of ffmpeg; the network can deliver hundreds of segments but the client only keeps `forwardTargetS` ahead of the playhead |
 
 If playback feels choppy at 4K, the right lever depends on the symptom:
-- Long time-to-first-frame → shrink `CHUNK_DURATION_S` (documented in `docs/todo.md` CHUNK-001)
+- Long time-to-first-frame → shrink `clientConfig.playback.chunkDurationS` (documented in `docs/todo.md` CHUNK-001)
 - Decoder underruns mid-stream → raise `forwardResumeS` (more cushion when stream resumes)
 - Out-of-memory on a low-spec client → lower `forwardTargetS`
 

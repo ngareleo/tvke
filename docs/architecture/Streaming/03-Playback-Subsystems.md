@@ -6,8 +6,8 @@ Three small, single-purpose modules that `PlaybackController` composes to keep t
 
 `client/src/services/playbackTicker.ts` is the one `requestAnimationFrame` tick that drives every per-frame poll the playback subsystem needs:
 
-- Startup-buffer check (waits for ≥ `STARTUP_BUFFER_S` seconds buffered before calling `video.play()`)
-- Prefetch trigger (fires when `currentTime` crosses `chunkEnd - PREFETCH_THRESHOLD_S`)
+- Startup-buffer check (waits for ≥ `clientConfig.playback.startupBufferS` seconds buffered before calling `video.play()`)
+- Prefetch trigger (fires when `currentTime` crosses `chunkEnd - clientConfig.playback.prefetchThresholdS`)
 - Background-buffer ready check during a resolution swap
 - `StallTracker`'s 2 s spinner debounce
 
@@ -19,7 +19,7 @@ Owned by `PlaybackController`; passed into `StallTracker` via deps so the spinne
 
 ## `StallTracker` — buffering-spinner debounce
 
-`client/src/services/stallTracker.ts` watches the HTMLMediaElement `waiting` event and shows the buffering spinner only after a continuous stall exceeds `BUFFERING_SPINNER_DELAY_MS` (default 2 s). Brief decoder hiccups under the threshold are swallowed.
+`client/src/services/stallTracker.ts` watches the HTMLMediaElement `waiting` event and shows the buffering spinner only after a continuous stall exceeds `clientConfig.playback.bufferingSpinnerDelayMs` (default 2 s). Brief decoder hiccups under the threshold are swallowed.
 
 Uses the shared `PlaybackTicker` for its delay timer (registered handler fires every frame, checks elapsed time vs the threshold). Opens the `playback.stalled` span when the threshold trips, ends it on `playing` / `seek` / `teardown`.
 
