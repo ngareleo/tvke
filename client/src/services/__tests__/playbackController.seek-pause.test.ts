@@ -352,9 +352,11 @@ describe("PlaybackController.handleSeeking (slider snap-back + stale-prefetch fi
     controller: PlaybackController;
     priv: SeekableController;
     buf: FakeBuffer;
+    videoEl: HTMLVideoElement;
   } {
     const { controller, videoEl } = makeController({ currentTime });
-    (videoEl as unknown as { currentTime: number }).currentTime = currentTime;
+    (videoEl as unknown as { currentTime: number; paused: boolean }).currentTime = currentTime;
+    (videoEl as unknown as { paused: boolean }).paused = false;
     const priv = controller as unknown as SeekableController;
     priv.status = "playing";
     priv.hasStartedPlayback = true;
@@ -364,7 +366,7 @@ describe("PlaybackController.handleSeeking (slider snap-back + stale-prefetch fi
     priv.timeline = { clearLookahead: vi.fn() };
     priv.chunkEnd = 900; // stale value from a prior chunk — must be reset on seek
     priv.startChunkSeries = vi.fn();
-    return { controller, priv, buf };
+    return { controller, priv, buf, videoEl };
   }
 
   it("passes the user's intended seekTime to buf.seek (NOT a snapped chunk boundary)", () => {
@@ -450,5 +452,44 @@ describe("PlaybackController.handleSeeking (slider snap-back + stale-prefetch fi
     priv.handleSeeking();
 
     expect(priv.seekTarget).toBe(564.9); // not 300 (the old snapTime)
+  });
+
+  it("does NOT call videoEl.play() after seek when user was paused", async () => {
+    // Pre-fix: handleSeeking's onPlay callback unconditionally called
+    // videoEl.play(), auto-resuming a user who had intentionally paused
+    // before seeking. Fix: respect videoEl.paused at onPlay time.
+    const { controller, priv, buf, videoEl } = setUpSeekable(720);
+    (videoEl as unknown as { paused: boolean }).paused = true; // user is paused
+
+    controller.seekTo(720);
+    priv.handleSeeking();
+    buf.resolveSeek();
+    // Yield so buf.seek().then() runs and waitForStartupBuffer wires up.
+    await Promise.resolve();
+    await Promise.resolve();
+
+    // Drive tryPlay's threshold: STARTUP_BUFFER_S["240p"] = 2 (default).
+    buf.bufferedAhead = 5;
+    buf.triggerAppend();
+
+    expect(videoEl.play).not.toHaveBeenCalled();
+    expect(priv.status).toBe("playing"); // spinner still hides
+  });
+
+  it("DOES call videoEl.play() after seek when user was playing", async () => {
+    const { controller, priv, buf, videoEl } = setUpSeekable(720);
+    (videoEl as unknown as { paused: boolean }).paused = false; // user is playing
+
+    controller.seekTo(720);
+    priv.handleSeeking();
+    buf.resolveSeek();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    buf.bufferedAhead = 5;
+    buf.triggerAppend();
+
+    expect(videoEl.play).toHaveBeenCalledTimes(1);
+    expect(priv.status).toBe("playing");
   });
 });

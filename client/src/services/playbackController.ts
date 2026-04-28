@@ -1187,15 +1187,24 @@ export class PlaybackController {
       // video doesn't immediately stall after seeking to an unbuffered region.
       const startupTarget = STARTUP_BUFFER_S[this.resolution];
       this.waitForStartupBuffer(buf, startupTarget, () => {
-        videoEl.play().catch(() => {});
+        // Respect the user's pause state. If they paused before seeking (or
+        // paused during the seek-fill), don't auto-resume — show the
+        // seek-target frame and stay paused, matching the browser's default
+        // behaviour on `<video>`. Checking `videoEl.paused` at onPlay time
+        // (not at handleSeeking start) means a pause/play toggle DURING the
+        // seek-fill takes effect.
+        if (!videoEl.paused) {
+          videoEl.play().catch(() => {});
+        }
         this.setStatus("playing");
         const aheadAtPlay = buf.getBufferedAheadSeconds(videoEl.currentTime) ?? 0;
         playbackLog.info(
-          `Seek ready — ${aheadAtPlay.toFixed(1)}s buffered ahead (target: ${startupTarget}s), resuming playback`,
+          `Seek ready — ${aheadAtPlay.toFixed(1)}s buffered ahead (target: ${startupTarget}s)${videoEl.paused ? ", staying paused" : ", resuming playback"}`,
           {
             buffered_ahead_s: parseFloat(aheadAtPlay.toFixed(1)),
             buffered_end_s: parseFloat(buf.bufferedEnd.toFixed(1)),
             startup_target_s: startupTarget,
+            stayed_paused: videoEl.paused,
           }
         );
       });
