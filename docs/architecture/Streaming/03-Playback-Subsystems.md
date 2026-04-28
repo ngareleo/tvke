@@ -23,7 +23,17 @@ Owned by `PlaybackController`; passed into `StallTracker` via deps so the spinne
 
 Uses the shared `PlaybackTicker` for its delay timer (registered handler fires every frame, checks elapsed time vs the threshold). Opens the `playback.stalled` span when the threshold trips, ends it on `playing` / `seek` / `teardown`.
 
-Gated on `hasStartedPlayback` — the initial startup-buffer wait is its own loading path, not a stall.
+The spinner-state machine has **three mutually exclusive layers**, checked in order inside `onWaiting`:
+
+| Layer | Guard | Suppresses |
+|---|---|---|
+| Cold-start loading | `hasStartedPlayback === false` | `onWaiting` arming the debounce — startup has its own loading-spinner path |
+| Decoder warmup post-`play()` | `isInFirstRenderGrace()` — a 5 s timestamp window set in `waitForStartupBuffer.tryPlay` when `hasStartedPlayback` flips true, cleared on the first DOM `playing` event or `resetForNewSession` | `onWaiting` arming the debounce — the decoder fires `waiting` for hundreds of ms after `video.play()` before rendering the first frame; this is not a stall |
+| Mid-playback stall | neither guard active | debounce arms; spinner shows after 2 s; `playback.stalled` span opens |
+
+Only the third layer represents a genuine user-visible stall. `playback.stalled` spans are therefore always mid-playback events, never startup or warmup noise.
+
+`isInFirstRenderGrace` is supplied as a dep `() => boolean` from `PlaybackController` so `StallTracker` stays free of controller state.
 
 ## `PlaybackTimeline` — observability data
 
