@@ -308,7 +308,7 @@ export class PlaybackController {
       return Promise.all([initPromise, chunkPromise])
         .then(([, rawJobId]) => {
           if (!this.pipeline) return; // Tore down between request and response.
-          this.startChunkSeries(res, 0, buffer, true, 0, {
+          this.startChunkSeries(res, 0, buffer, true, {
             endS: firstChunkEnd,
             preIssuedJobId: rawJobId,
           });
@@ -700,10 +700,6 @@ export class PlaybackController {
     startS: number,
     buffer: BufferManager,
     isFirstChunk: boolean,
-    /** Server-side segment skip via `?from=K`. Non-zero only on seeks that
-     *  land mid-chunk — see handleSeeking for the rationale. Default 0 keeps
-     *  initial play / MSE recovery / chunk N→N+1 chain unchanged. */
-    fromIndex = 0,
     /** Optional overrides. `endS` lets the seek path clamp the chunk end to
      *  `nextSnap` so the continuation re-aligns with the canonical 300s grid.
      *  `preIssuedJobId` lets startPlayback hand in a jobId already fetched in
@@ -744,7 +740,6 @@ export class PlaybackController {
           chunkStartS: startS,
           isFirstChunk,
           resolution: res,
-          fromIndex,
           onStreamEnded: (outcome) => this.handleChunkEnded(res, startS, chunkEnd, buffer, outcome),
           onError: (err) => this.setError(err.message),
           onFirstChunkInit: isFirstChunk
@@ -1211,15 +1206,17 @@ export class PlaybackController {
 
       // Anchor the chunk REQUEST at seekTime — ffmpeg's `-ss seekTime` produces
       // the user's first segment in ~1-2 s instead of waiting through the
-      // chunk-prefix encode that snap-aligned starts forced. No `?from=K`
-      // skip needed: every segment ffmpeg emits is at-or-ahead of seekTime.
-      // `endS: seekChunkEnd` clamps the window to FIRST_CHUNK_DURATION_S (or
-      // to nextSnap if shorter), so the prefetch RAF threshold trips
-      // immediately and the continuation chunk eager-warms ffmpeg in parallel.
-      // `isFirstChunk: false` keeps the existing seek startup-buffer wiring
-      // (waitForStartupBuffer call above) — armStartupBufferCheck is reserved
-      // for the very first chunk of a session, not for re-fills after seek.
-      this.startChunkSeries(this.resolution, seekTime, buf, false, 0, {
+      // chunk-prefix encode that snap-aligned starts forced. Every segment
+      // ffmpeg emits is at-or-ahead of seekTime, so the chunk consumer
+      // doesn't need to skip any leading segments. `endS: seekChunkEnd`
+      // clamps the window to FIRST_CHUNK_DURATION_S (or to nextSnap if
+      // shorter), so the prefetch RAF threshold trips immediately and the
+      // continuation chunk eager-warms ffmpeg in parallel. `isFirstChunk:
+      // false` keeps the existing seek startup-buffer wiring
+      // (waitForStartupBuffer call above) — armStartupBufferCheck is
+      // reserved for the very first chunk of a session, not for re-fills
+      // after seek.
+      this.startChunkSeries(this.resolution, seekTime, buf, false, {
         endS: seekChunkEnd,
       });
     });

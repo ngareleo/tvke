@@ -54,14 +54,6 @@ export interface ChunkOpts {
    *  measure prefetch-to-first-byte latency. The wall-clock instant is
    *  captured at arrival, not after the append resolves. */
   onFirstMediaSegmentArrived?: (atMs: DOMHighResTimeStamp) => void;
-  /** Server-side segment skip — sent as `?from=K` on the /stream/<jobId>
-   *  request. Used by the seek path to skip segments that land entirely
-   *  behind the user's seekTime (Chrome MSE auto-evicts those frames as
-   *  they're appended in `mode="segments"`, wasting bandwidth + append
-   *  serialization time). 0 / undefined means start at the chunk's first
-   *  segment, which is the right default for initial play, MSE recovery,
-   *  resolution switch, and chunk N→N+1 continuation. */
-  fromIndex?: number;
 }
 
 interface QueuedSegment {
@@ -311,7 +303,6 @@ export class ChunkPipeline {
 
     void slot.svc.start(
       opts.jobId,
-      opts.fromIndex ?? 0,
       async (segData, isInit) => {
         // Lookahead slots queue segments instead of appending — see
         // `Slot.isLookahead` doc for the elst/init-clash rationale. The

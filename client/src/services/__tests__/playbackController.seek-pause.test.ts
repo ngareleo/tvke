@@ -416,9 +416,8 @@ describe("PlaybackController.handleSeeking (slider snap-back + stale-prefetch fi
     return Promise.resolve().then(() => {
       expect(priv.startChunkSeries).toHaveBeenCalledTimes(1);
       const call = (priv.startChunkSeries as ReturnType<typeof vi.fn>).mock.calls[0];
-      // call args: (res, chunkStartS, buf, isFirstChunk, fromIndex)
+      // call args: (res, chunkStartS, buf, isFirstChunk, override)
       expect(call[1]).toBe(720); // chunkStartS = seekTime, not snapTime (600)
-      expect(call[4]).toBe(0); // fromIndex always 0; ?from=K is gone
     });
   });
 
@@ -435,7 +434,6 @@ describe("PlaybackController.handleSeeking (slider snap-back + stale-prefetch fi
     return Promise.resolve().then(() => {
       const call = (priv.startChunkSeries as ReturnType<typeof vi.fn>).mock.calls[0];
       expect(call[1]).toBe(600); // chunkStartS = seekTime
-      expect(call[4]).toBe(0); // fromIndex
       // seekChunkEnd = min(600 + 30, nextSnap=900, dur) = 630
       expect(priv.chunkEnd).toBe(630);
     });
