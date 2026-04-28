@@ -32,6 +32,8 @@ The spinner-state machine has **four mutually exclusive layers**. The first thre
 | Mid-playback stall | `StallTracker` | neither guard active | debounce arms; spinner shows after 2 s; `playback.stalled` span opens |
 | Seek-resume auto-resume | `PlaybackController` | `firstFrameRecorded === true` in `handlePlaying` | status staying "loading" after a seek — `handleSeeking` sets `status("loading")` but the video element auto-resumes (we never `pause()` on seek), so the DOM `playing` event fires before `tryPlay → onPlay` does; `firstFrameRecorded` (set once per session in `tryPlay`'s threshold-met branch, reset only by `resetForNewSession`) is the correct discriminator: session has played before → flip status immediately; true cold-start → wait for `tryPlay` |
 
+**Note — paused-at-seek case (PR #35):** when the user is already paused at `handleSeeking` time, the startup-buffer path still runs (so the spinner hides via `setStatus("playing")`), but `onPlay` checks `videoEl.paused` before calling `videoEl.play()` and skips it if true. `status` and `videoEl.paused` are independent axes — controller-level "in session" vs DOM-level "actively rendering frames" — and seek-resume must respect both.
+
 Only the third layer represents a genuine user-visible stall. `playback.stalled` spans are therefore always mid-playback events, never startup or warmup noise. The fourth layer is not a stall at all — it is a status-flip gap unique to the seek path where the browser's auto-resume races ahead of the controller's startup-buffer machinery.
 
 `isInFirstRenderGrace` is supplied as a dep `() => boolean` from `PlaybackController` so `StallTracker` stays free of controller state.
