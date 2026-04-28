@@ -35,7 +35,11 @@ For the full tradeoff explainer (mental model, memory table per resolution, chun
 
 ### telemetry, ui, experimental
 
-No flags registered yet. The categories exist so future flags can slot in without a UI change.
+| Key | Type | Default | Category | Purpose |
+|---|---|---|---|---|
+| `flag.devForceShortChunkAtZero` | boolean | `false` | `experimental` | Dev-only escape hatch. When on, bypasses the three `startS === 0` guards in `PlaybackController` (`startPlayback`, `startChunkSeries`, `handleSeeking`) so a cold-start or seek-to-0 issues a short (30 s) first chunk even at position 0. Used to reproduce the VAAPI HDR silent-zero-output bug (`-ss 0 -t 30` exits cleanly with `segmentCount: 0`) and capture its stderr. Ships off by default; remove when the root-cause fix lands. |
+
+**Convention — `experimental` category:** flags in this category are dev-only escape hatches that ship off by default. They exist to reproduce or diagnose specific bugs and are expected to be removed once the root-cause fix lands. Do not surface them in release builds; they bypass production safety guards.
 
 ## Naming convention
 
