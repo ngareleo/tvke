@@ -1,6 +1,7 @@
 import { context, type Span, SpanStatusCode, trace } from "@opentelemetry/api";
 
-import { getEffectiveBufferConfig } from "~/config/featureFlags.js";
+import { getEffectiveBufferConfig, getFlag } from "~/config/featureFlags.js";
+import { FLAG_KEYS } from "~/config/flagRegistry.js";
 import { getClientLogger, getClientTracer } from "~/telemetry.js";
 import { type Resolution, RESOLUTION_MIME_TYPE } from "~/types.js";
 
@@ -278,8 +279,13 @@ export class PlaybackController {
     // works — only the `start=0 + short window` combination triggers it.
     // Until the ffmpeg root cause is found, cold-start uses the full
     // CHUNK_DURATION_S window. The small-first-chunk optimization is
-    // preserved for mid-file seeks (startS > 0) where it's safe.
-    const firstChunkEnd = Math.min(CHUNK_DURATION_S, videoDurationS);
+    // preserved for mid-file seeks (startS > 0) where it's safe. The dev
+    // flag `devForceShortChunkAtZero` flips this off so the bug fires and
+    // `transcode_silent_failure` events land in Seq for diagnosis.
+    const forceShortChunk = getFlag<boolean>(FLAG_KEYS.devForceShortChunkAtZero, false);
+    const firstChunkEnd = forceShortChunk
+      ? Math.min(FIRST_CHUNK_DURATION_S, videoDurationS)
+      : Math.min(CHUNK_DURATION_S, videoDurationS);
     void context.with(sessionCtx, () => {
       const initPromise = buffer.init(RESOLUTION_MIME_TYPE[res]).then(() => {
         playbackLog.info(`MSE ready: ${RESOLUTION_MIME_TYPE[res]}`, {
@@ -690,8 +696,10 @@ export class PlaybackController {
     // startPlayback for the VAAPI HDR 4K trace. Mid-file recovery (e.g.
     // handleMseDetached at currentTime < 300, which floors chunkStart to 0)
     // would otherwise hit the same bug. Force the safe 300 s window when
-    // startS === 0.
-    const windowSize = isFirstChunk && startS > 0 ? FIRST_CHUNK_DURATION_S : CHUNK_DURATION_S;
+    // startS === 0 unless the dev flag opts in to reproducing the bug.
+    const forceShortChunk = getFlag<boolean>(FLAG_KEYS.devForceShortChunkAtZero, false);
+    const windowSize =
+      isFirstChunk && (startS > 0 || forceShortChunk) ? FIRST_CHUNK_DURATION_S : CHUNK_DURATION_S;
     const chunkEnd = override?.endS ?? Math.min(startS + windowSize, videoDurationS);
     this.chunkEnd = chunkEnd;
     // NOTE: `prefetchFired` is intentionally NOT reset here. Every caller
@@ -1102,7 +1110,10 @@ export class PlaybackController {
     // Seeking to exactly 0 (e.g. user "restart") would otherwise trigger the
     // same VAAPI HDR 4K `-ss 0 -t 30` bug as cold-start. Use the safe 300 s
     // window when seekTime === 0; only mid-file seeks get the small window.
-    const seekWindowSize = seekTime > 0 ? FIRST_CHUNK_DURATION_S : CHUNK_DURATION_S;
+    // The dev flag opts in to the small window even at seekTime=0 for repro.
+    const forceShortChunk = getFlag<boolean>(FLAG_KEYS.devForceShortChunkAtZero, false);
+    const seekWindowSize =
+      seekTime > 0 || forceShortChunk ? FIRST_CHUNK_DURATION_S : CHUNK_DURATION_S;
     const seekChunkEnd = Math.min(seekTime + seekWindowSize, nextSnap, videoDurationS);
 
     // Guard against re-entrancy: BufferManager.seek() sets videoEl.currentTime
