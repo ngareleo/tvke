@@ -37,6 +37,7 @@ Keep rows short (≤ ~120 chars). When adding a new topic file to `docs/`, add i
 | Bun → Rust synthesis (runtime model, concurrency primitives, idiom translation, crate picks, migration order) | `docs/migrations/rust-rewrite/07-Bun-To-Rust-Migration.md` |
 | Tauri packaging (bundle layout, embedded server, bundled ffmpeg, Ed25519 self-hosted updates, code-signing, CI matrix) | `docs/migrations/rust-rewrite/08-Tauri-Packaging.md` |
 | Peer-to-peer streaming model (passthrough, Ed25519 invite tokens, content-addressed cache reuse, cross-peer traceparent, invariants) | `docs/architecture/Sharing/00-Peer-Streaming.md` |
+| Interim desktop-shell packaging (Electron / Tauri+Bun-sidecar / Electrobun trade-off, caveats, OS bundles, updates, CI) | `docs/architecture/Deployment/00-Interim-Desktop-Shell.md` |
 | Resolution ladder + enum mirror chain | `docs/server/Config/01-Resolution-Ladder.md` |
 | AppConfig, `mediaFiles.json` | `docs/server/Config/00-AppConfig.md` |
 | GraphQL schema surface | `docs/server/GraphQL-Schema/00-Surface.md` |

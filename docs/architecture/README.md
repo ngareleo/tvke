@@ -18,4 +18,5 @@ Cross-cutting concepts that span client and server, or that describe the system 
 | [`Startup/`](Startup/README.md) | Server boot sequence + graceful shutdown. |
 | [`Library-Scan/`](Library-Scan/README.md) | How the library scanner walks media directories and fingerprints files. |
 | [`Sharing/`](Sharing/README.md) | Forward-looking peer-to-peer media sharing model — invite tokens, content-addressed cache reuse, cross-peer traceparent. |
+| [`Deployment/`](Deployment/README.md) | Interim desktop-shell packaging analysis (Electron / Tauri+Bun-sidecar / Electrobun) for the Bun prototype, before the Rust+Tauri port lands. |
 | [`Testing/`](Testing/README.md) | Test side-effects policy, encode-pipeline real-media tests, encoder edge-case test policy. |
