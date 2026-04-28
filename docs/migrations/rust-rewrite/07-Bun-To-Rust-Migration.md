@@ -35,7 +35,7 @@ Anything stored in `AppState` (which is shared across handler tasks) must be `Se
 | In-process pub/sub for streaming subscribers | `tokio::sync::mpsc` per consumer + a producer that fans out by enqueueing on each | Per-connection backpressure, see `01-Streaming-Layer.md`. |
 | `AbortController.signal` passed down a call tree | Pass `CancellationToken` by reference; nested cancellation via `child_token()` | Streaming pipeline, ffmpeg supervision. |
 | `AbortController.abort()` | `token.cancel()` | Idempotent. Pairs with `child.kill_on_drop(true)` for ffmpeg cleanup. |
-| `Map<K, V>` / `Set<T>` mutated freely from multiple async functions | `Arc<DashMap<K, V>>` / `Arc<DashSet<T>>` | The current `jobStore`, `inflightJobIds`, `killedJobs` sets all become DashMap/DashSet. |
+| `Map<K, V>` / `Set<T>` mutated freely from multiple async functions | `Arc<DashMap<K, V>>` / `Arc<DashSet<T>>` | The current `jobStore`, `ffmpegPool`'s `reservations`/`liveCommands`/`dyingJobIds` sets all become DashMap/DashSet on `AppState`. |
 | `setTimeout(f, ms)` | `tokio::time::sleep(Duration::from_millis(ms)).await` (in a `tokio::spawn`) | One-shot delayed action. |
 | `setInterval(f, ms)` | `tokio::time::interval(Duration::from_millis(ms))` polled in a `tokio::spawn` | The connection-liveness ticker, scan-progress flush. |
 
@@ -191,7 +191,7 @@ Rust forces things the Bun prototype only enforces by convention. These are **be
 | TS-prototype invariant | What enforces it today | What enforces it in Rust |
 |---|---|---|
 | Invariant #7 — one resolver per field | Eslint + `validateSchema.ts` runtime check (silent overwrites are still possible mid-bundling) | `#[Object]` derive — proc-macro merge fails at compile time on duplicate field names. The invariant becomes informational, not load-bearing. (See `03-GraphQL-Layer.md`.) |
-| `setFfmpegPath` discipline (one caller, at startup, never per-module) | Convention + the comment block in `libraryScanner.ts:27-29` | No global to clobber — every ffmpeg invocation is `tokio::process::Command::new(&app_state.ffmpeg_paths.ffmpeg)`. (See `06-File-Handling-Layer.md`.) |
+| `setFfmpegPath` discipline (one caller, at startup, never per-module) | Convention + the comment block in `libraryScanner.ts:25-28` | No global to clobber — every ffmpeg invocation is `tokio::process::Command::new(&app_state.ffmpeg_paths.ffmpeg)`. (See `06-File-Handling-Layer.md`.) |
 | Non-null assertions banned in client code (`!`) | `eslint-plugin-react-hooks` + `no-non-null-assertion` rule | `Option<T>` is the only nullable type; `unwrap()` is visible at every site and grep-able. |
 | `bun:sqlite` column-index access (e.g. `row[0]`) | Code review | `rusqlite::Row::get::<&str, T>("col_name")` — every column access is named. (See `05-Database-Layer.md`.) |
 | Module-global state (e.g. `setFfmpegPath`, the in-memory `jobStore`) | Module pattern | `AppState` is the only shared state surface; nothing is implicitly global. |
@@ -206,18 +206,19 @@ Rust forces things the Bun prototype only enforces by convention. These are **be
 |---|---|
 | GraphQL SDL | Byte-identical. Verified by introspection diff against the Bun server. |
 | Wire framing | 4-byte BE uint32 length prefix + raw fMP4 bytes. Init segment first. (`01-Streaming-Layer.md`.) |
-| `?from=K` mid-chunk skip query | Same semantics. (`01-Streaming-Layer.md`.) |
-| 180s `CONNECTION_TIMEOUT_MS` | Do NOT weaken. (User feedback memory: safety timeouts encode intent.) |
-| `MAX_CONCURRENT_JOBS = 3` (default; configurable) | Same. Becomes `Arc<Semaphore>`. |
+| 180s idle kill (`config.stream.connectionIdleTimeoutMs`) | Do NOT weaken. (User feedback memory: safety timeouts encode intent.) |
+| `config.transcode.maxConcurrentJobs = 3` (default; configurable) | Same. Becomes `Arc<Semaphore>`. AppConfig consolidation (commits `d3f98fa`/`9d146b3`) is already landed on main; Phase A inherits the structured `transcode`/`stream` shape rather than building it from scattered consts. |
+| Two-layer config model — `AppConfig` (server) ↔ `clientConfig` (client) | Preserve the deliberate symmetry. `client/src/config/appConfig.ts`'s docstring states verbatim "Mirrors the server's `AppConfig` shape" (commits `680e209`, `dbe2a8b`). Same nested namespaces (`playback`, `streaming`, `transcode`, `stream`, etc.) on both sides where the concept overlaps. |
 | DB schema | Identical. WAL pragma, FK pragma, `CREATE TABLE IF NOT EXISTS` migrations. (`05-Database-Layer.md`.) |
 | `content_fingerprint` formula `<sizeBytes>:<sha1(first 64 KB)>` | Same. |
 | Job ID derivation `sha1(contentKey | resolution | startS | endS)` | Same. |
-| OTel attribute names (e.g. `kill_reason`, `job.id`, `job.video_id`, `chunk.start_s`) | Same. |
-| `kill_reason` enum values (`client_disconnected`, `stream_idle_timeout`, `orphan_no_connection`, `server_shutdown`, `max_encode_timeout`) | Same. |
+| OTel attribute names (e.g. `kill_reason`, `job.id`, `job.video_id`, `chunk.start_s`, `hwaccel.hdr_tonemap`) | Same. See `01-Streaming-Layer.md` §1.5 for the full surface including `transcode_silent_failure`. |
+| `kill_reason` enum values (`client_request`, `client_disconnected`, `stream_idle_timeout`, `orphan_no_connection`, `max_encode_timeout`, `cascade_retry`, `server_shutdown`) | Same. |
 | Logging policy | Implementation-agnostic. `docs/architecture/Observability/01-Logging-Policy.md` survives unchanged. |
+| One-shot vs snapshot span-attribute pattern (commits `419861a`, `b6db738`) | Rust `tracing` layer must support both: long-lived spans (`playback.session`) accept post-creation `set_attribute(...)` for one-shot session metrics (`time_to_first_frame_ms`) and `add_event(...)` for periodic snapshots. (`02-Observability-Layer.md` §1.4.) |
 | Test side-effects policy (per-PID temp dir, orphan reaper) | Re-implement against real SQLite + real ffmpeg in Rust. (`docs/architecture/Testing/00-Side-Effects-Policy.md`.) |
 | Tmp segment layout `tmp/segments/<jobId>/init.mp4` + `segment_NNNN.m4s` | Same. (`06-File-Handling-Layer.md`.) |
-| Subscription transport | **Flips** — graphql-yoga + Bun ships SSE today (graphql-ws upgrade not wired); `async-graphql-axum` ships true `graphql-transport-ws` WebSocket. The client's `graphql-ws` `createClient` works against this without changes. |
+| Subscription transport | Same — `graphql-ws` WebSocket on both sides (current Bun server already wires `graphql-ws/lib/use/bun` at `server/src/index.ts:6, 87-92, 111-112`). The Rust port reproduces it via `async-graphql-axum`'s WebSocket subscription handler. No client change. |
 
 ## 7. Migration order
 
@@ -246,11 +247,11 @@ Goal: byte-identical SDL exposed by an `async-graphql` server, no resolvers wire
 
 ### Phase C — Streaming pipeline
 
-Goal: the binary stream protocol works end-to-end, with `MAX_CONCURRENT_JOBS` enforcement and idle-timeout semantics intact.
+Goal: the binary stream protocol works end-to-end, with concurrent-jobs cap enforcement and idle-timeout semantics intact.
 
-- Port `server/src/services/chunker.ts` → `server-rust/src/services/chunker/`.
+- Port `server/src/services/chunker.ts` + `server/src/services/ffmpegPool.ts` → `server-rust/src/services/chunker/` + `ffmpeg_pool/`.
   - In-memory `jobStore` → `Arc<DashMap<JobId, ActiveJob>>`.
-  - `MAX_CONCURRENT_JOBS` counter → `Arc<Semaphore>` with 3 permits.
+  - `ffmpegPool`'s reservation/cap/dying-set bookkeeping → `Arc<Semaphore>` with `config.transcode.max_concurrent_jobs` permits + a `dying_jobs` set on `AppState` so SIGTERM frees the slot immediately.
   - Segment watcher → `notify::RecommendedWatcher` + `tokio::sync::mpsc`.
 - Port `server/src/services/ffmpegFile.ts` argv builder → `server-rust/src/services/ffmpeg_file.rs`. Cover the three-tier VAAPI cascade per `01-Streaming-Layer.md`.
 - Port `server/src/services/ffmpegPath.ts` → `server-rust/src/services/ffmpeg_path.rs` (no `setFfmpegPath` global).
@@ -335,9 +336,9 @@ Post-cutover, `bun run lint` only covers `client/`. The Rust workspace owns its 
 ## Cross-references
 
 - [`00-Rust-Tauri-Port.md`](00-Rust-Tauri-Port.md) — anchor doc with stable contracts.
-- [`01-Streaming-Layer.md`](01-Streaming-Layer.md) — segment serving, MAX_CONCURRENT_JOBS, ffmpeg supervision.
+- [`01-Streaming-Layer.md`](01-Streaming-Layer.md) — segment serving, concurrent-jobs cap, ffmpeg supervision.
 - [`02-Observability-Layer.md`](02-Observability-Layer.md) — tracing + OTLP, traceparent threading.
-- [`03-GraphQL-Layer.md`](03-GraphQL-Layer.md) — async-graphql migration, SDL parity, subscription transport flip.
+- [`03-GraphQL-Layer.md`](03-GraphQL-Layer.md) — async-graphql migration, SDL parity, subscription transport (already WebSocket on the Bun side).
 - [`04-Web-Server-Layer.md`](04-Web-Server-Layer.md) — axum router, RequestContext middleware, configurable CORS/bind.
 - [`05-Database-Layer.md`](05-Database-Layer.md) — rusqlite (bundled), two-DB split for sharing.
 - [`06-File-Handling-Layer.md`](06-File-Handling-Layer.md) — walkdir + notify, content-addressed cache index.

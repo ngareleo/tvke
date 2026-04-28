@@ -91,7 +91,15 @@ Three routes, plus the implicit WS upgrade path:
 
 There is **no static-file serving** — the Rsbuild dev server (`localhost:5173`) serves the React bundle and proxies `/graphql`, `/stream`, and `/ingest/otlp` to the Bun server (`localhost:3001`) and Seq (`localhost:5341`). See §1.3.
 
-**`idleTimeout: 0` is load-bearing.** The default Bun idle timeout (10 s) would cut a `/stream/:jobId` connection mid-encode. The actual idle policy is enforced inside `stream.ts` itself via `CONNECTION_TIMEOUT_MS = 180_000` (cf. [`01-Streaming-Layer.md`](01-Streaming-Layer.md) §1.1).
+**`idleTimeout: 0` is load-bearing.** The default Bun idle timeout (10 s) would cut a `/stream/:jobId` connection mid-encode. The actual idle policy is enforced inside `stream.ts` itself via `config.stream.connectionIdleTimeoutMs` (default 180 000 ms, in `server/src/config.ts`'s `StreamConfig`); cf. [`01-Streaming-Layer.md`](01-Streaming-Layer.md) §1.1.
+
+### 1.1.5 Two-layer config model — `AppConfig` (server) ↔ `clientConfig` (client)
+
+Server tunables live on `AppConfig` (`server/src/config.ts`, 159 lines) under two structured namespaces — `transcode` (`maxConcurrentJobs`, `forceKillTimeoutMs`, `shutdownTimeoutMs`, `orphanTimeoutMs`, `maxEncodeRateMultiplier`, `capacityRetryHintMs`, `inflightDedupTimeoutMs`) and `stream` (`connectionIdleTimeoutMs`) — plus top-level fields (`port`, `segmentDir`, `dbPath`, `scanIntervalMs`, `hardwareAcceleration`). Commits `d3f98fa` and `9d146b3` consolidated previously-scattered module-level consts into this shape.
+
+Client tunables live on `clientConfig` (`client/src/config/appConfig.ts`, 124 lines) and are **deliberately structured to mirror `AppConfig`** — the file's docstring says verbatim "Mirrors the server's `AppConfig` shape". Same nested-namespace style, camelCase, side-effect-free; non-toggleable defaults only (runtime-mutable user preferences live in `featureFlags.ts`). Commits `680e209` (consolidation), `dbe2a8b` (two-layer doc), `484fd97` and `e832cd1` (groom sweeps that retired the old UPPER_SNAKE_CASE constant references).
+
+**Forward constraint.** The Rust port (server) and the Tauri-bundled client should preserve this two-layer symmetry — same nested namespaces (`playback`, `streaming`, `transcode`, `stream`, etc.) on both sides where the concept overlaps. The Rust server's `AppState` reads `AppConfig` once at boot and threads it into handlers; the client's clientConfig stays a compile-time module on the React side. Cross-link to [`../../client/Config/00-ClientConfig.md`](../../client/Config/00-ClientConfig.md) (client-side authoritative doc) and [`../../server/Config/00-AppConfig.md`](../../server/Config/00-AppConfig.md) (server-side).
 
 ### 1.2 GraphQL handler mount — `server/src/routes/graphql.ts` (57 lines)
 
@@ -143,7 +151,7 @@ server: {
 ```ts
 async function shutdown(signal: string): Promise<void> {
   log.info("Shutdown initiated", { signal });
-  await killAllActiveJobs(5000);    // SIGTERM ffmpeg children, 5s deadline, then SIGKILL
+  await killAllJobs();              // SIGTERM ffmpeg children via ffmpegPool, then SIGKILL after config.transcode.shutdownTimeoutMs
   closeDb();                         // Flushes WAL
   log.info("Shutdown complete");
   process.exit(0);
@@ -163,8 +171,8 @@ What's NOT in the shutdown today (and should be): no OTel flush. Spans / log rec
 | Routes: `POST /graphql`, `WS /graphql`, `GET /stream/:jobId` | `index.ts:87-106` | Same paths, same methods |
 | Long-lived `/stream/:jobId` body (no idle cut at the server) | `Bun.serve idleTimeout: 0` + `stream.ts` 180 s self-policed | Same: no server-frame idle timeout, app-level 180 s |
 | WS subprotocol: `graphql-ws` (i.e. `graphql-transport-ws`) | `graphql-ws/lib/use/bun` `handleProtocols` | Use the same subprotocol via `async-graphql-axum::GraphQLSubscription` |
-| Default dev port: `3001` | `config.ts:24` | Same default; same `PORT` env var override |
-| Prod port: `process.env.PORT ?? 8080` | `config.ts:34` | Same |
+| Default dev port: `3001` | `config.ts:78` | Same default; same `PORT` env var override |
+| Prod port: `process.env.PORT ?? 8080` | `config.ts:90` | Same |
 | Bind interface in dev: loopback only | implicit (Bun.serve default) | Same — loopback only by default; remote-bind is a future, opt-in step |
 | 404 on unknown paths | `index.ts:108` | Same |
 | SIGTERM + SIGINT trigger graceful shutdown | `index.ts:126-131` | Same |
@@ -286,7 +294,7 @@ async fn graphql_subscription(
 
 ### 3.5 Idle-timeout policy
 
-axum / hyper do NOT impose a default idle timeout on response bodies; long-lived `/stream/:jobId` works without configuration. **No equivalent of `Bun.serve idleTimeout: 0` is needed.** The 180 s app-level idle policy lives entirely in the streaming handler (cf. [`01-Streaming-Layer.md`](01-Streaming-Layer.md) §1.1, `CONNECTION_TIMEOUT_MS`).
+axum / hyper do NOT impose a default idle timeout on response bodies; long-lived `/stream/:jobId` works without configuration. **No equivalent of `Bun.serve idleTimeout: 0` is needed.** The 180 s app-level idle policy lives entirely in the streaming handler (cf. [`01-Streaming-Layer.md`](01-Streaming-Layer.md) §1.1, `config.stream.connectionIdleTimeoutMs`).
 
 ### 3.6 Graceful shutdown
 
@@ -382,6 +390,6 @@ Today there is no `x-request-id` header. The Rust port adds one as a side effect
 |---|---|---|
 | `server/src/index.ts` | 136 | Replaced by `main()` + `build_router()` + `run()` in Rust |
 | `server/src/routes/graphql.ts` | 57 | Yoga mount → `async-graphql-axum::GraphQL` + `GraphQLSubscription` |
-| `server/src/routes/stream.ts` | 377 | Already covered by [`01-Streaming-Layer.md`](01-Streaming-Layer.md) |
+| `server/src/routes/stream.ts` | 368 | Already covered by [`01-Streaming-Layer.md`](01-Streaming-Layer.md) |
 | `server/src/config.ts` | 102 | `AppConfig` shape — extend with `cors_allowlist` and `bind_addr` (cf. [`05-Database-Layer.md`](05-Database-Layer.md) for DB-path additions) |
 | `client/rsbuild.config.ts` | 168 | Dev proxy unchanged for the Rust port; eliminated under Tauri |

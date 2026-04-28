@@ -18,9 +18,9 @@ Forward design that ships AFTER the rewrite (peer-to-peer sharing) lives at [`do
 | File | Hook |
 |---|---|
 | [`00-Rust-Tauri-Port.md`](00-Rust-Tauri-Port.md) | Anchor: stable contracts (SDL, global IDs, binary framing, subscription transport, bundleable ffmpeg) + forward pointer to Sharing. |
-| [`01-Streaming-Layer.md`](01-Streaming-Layer.md) | Stream endpoint + chunker — pull contract → axum, MAX_CONCURRENT_JOBS → Semaphore, content-addressed cache key, per-consumer pull isolation. |
+| [`01-Streaming-Layer.md`](01-Streaming-Layer.md) | Stream endpoint + chunker + ffmpegPool — pull contract → axum, `config.transcode.maxConcurrentJobs` cap → `Arc<Semaphore>` + dying-set, content-addressed cache key, per-consumer pull isolation, full span surface incl. `transcode_silent_failure`. |
 | [`02-Observability-Layer.md`](02-Observability-Layer.md) | OTel SDK → tracing + opentelemetry-otlp; W3C extraction middleware; cross-peer traceparent flow. |
-| [`03-GraphQL-Layer.md`](03-GraphQL-Layer.md) | graphql-yoga → async-graphql; SDL parity; typed-error union; subscription transport flips from SSE to true WebSocket. |
+| [`03-GraphQL-Layer.md`](03-GraphQL-Layer.md) | graphql-yoga → async-graphql; SDL parity; typed-error union; subscription transport already on `graphql-ws` WebSocket on the Bun side. |
 | [`04-Web-Server-Layer.md`](04-Web-Server-Layer.md) | Bun.serve → axum router + tower stack; RequestContext middleware threaded from day one; configurable CORS + bind addr. |
 | [`05-Database-Layer.md`](05-Database-Layer.md) | bun:sqlite → rusqlite (bundled); identical schema + WAL pragma; two-DB split (cache vs identity) for forward sharing. |
 | [`06-File-Handling-Layer.md`](06-File-Handling-Layer.md) | Library walk → walkdir + buffer_unordered; fs.watch → notify; ffmpeg manifest pinning; content-addressed cache index. |

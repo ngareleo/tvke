@@ -15,9 +15,9 @@
 
 ### 1.1 Stream endpoint — `server/src/routes/stream.ts`
 
-Single function, 377 lines. Pull-based `ReadableStream` bound to a Bun `Response`.
+Single function, 368 lines. Pull-based `ReadableStream` bound to a Bun `Response`.
 
-**Length-prefixed framing** (`stream.ts:28-34`):
+**Length-prefixed framing** (`stream.ts:21-27`):
 
 ```ts
 function writeLengthPrefixed(controller: ReadableStreamDefaultController, data: Uint8Array): void {
@@ -29,33 +29,30 @@ function writeLengthPrefixed(controller: ReadableStreamDefaultController, data: 
 }
 ```
 
-**Boundary constants** (`stream.ts:20-27`):
+**Boundary constants and config-derived tunables.** Two values still live as module-local consts in `stream.ts` (`ENCODER_POLL_MS = 100` at line 16 and `INIT_WAIT_ATTEMPTS = 600` at line 19 — pure implementation detail of the polling loop). The idle-kill threshold has moved to `AppConfig`:
 
-| Constant | Value | Purpose |
-|---|---|---|
-| `CONNECTION_TIMEOUT_MS` | 180 000 ms | Idle kill-switch — must exceed widest client backpressure halt (~60 s with `forwardTargetS=60`). Do **not** weaken (feedback memory). |
-| `ENCODER_POLL_MS` | 100 ms | Sleep between disk re-checks when ffmpeg hasn't yet produced the next segment. |
-| `INIT_WAIT_ATTEMPTS` | 600 | 60 s budget for `init.mp4` to appear (slow ffprobe on large HEVC). |
+| Tunable | Source | Value | Purpose |
+|---|---|---|---|
+| `config.stream.connectionIdleTimeoutMs` | `server/src/config.ts` (`StreamConfig`) | 180 000 ms (default) | Idle kill-switch — must exceed widest client backpressure halt (~60 s with `forwardTargetS=60`). Do **not** weaken (feedback memory). Read at `stream.ts:134, 268, 338`. Was a module-local `CONNECTION_TIMEOUT_MS` const before commit `d3f98fa`. |
+| `ENCODER_POLL_MS` | `stream.ts:16` | 100 ms | Sleep between disk re-checks when ffmpeg hasn't yet produced the next segment. |
+| `INIT_WAIT_ATTEMPTS` | `stream.ts:19` | 600 | 60 s budget for `init.mp4` to appear (slow ffprobe on large HEVC). |
 
-**Pull-shape** (`stream.ts:192-356`):
+The Rust port should mirror this split: idle timeout reaches via `AppState`, polling cadence stays a private const inside the stream module.
+
+**Pull-shape** (`stream.ts:183-347`):
 
 The `ReadableStream` `pull(controller)` body runs at most one segment worth of work per call — driven by the consumer's `reader.read()` cadence. No internal queue, no internal loop over segments. This is invariant #12 in [`code-style/Invariants/00-Never-Violate.md`](../../code-style/Invariants/00-Never-Violate.md) and translates 1:1 to `axum::body::Body::from_stream` driven by an `mpsc::Receiver`.
 
 Two distinct phases inside `pull`:
 
-1. **Init phase** (`stream.ts:211-274`) — first pull blocks until `job.initSegmentPath` is set or 60 s elapses, then writes init bytes once.
-2. **Media phase** (`stream.ts:276-352`) — every subsequent pull resolves the path for `segment_NNNN.m4s`, reads it from disk, writes it length-prefixed, increments `index`. If the file isn't yet on disk, the pull sleeps `ENCODER_POLL_MS` and re-checks; the loop bails out into the `idle_timeout` close path after `CONNECTION_TIMEOUT_MS` of inactivity.
+1. **Init phase** (`stream.ts:202-265`) — first pull blocks until `job.initSegmentPath` is set or 60 s elapses, then writes init bytes once.
+2. **Media phase** (`stream.ts:267-346`) — every subsequent pull resolves the path for `segment_NNNN.m4s`, reads it from disk, writes it length-prefixed, increments `index`. If the file isn't yet on disk, the pull sleeps `ENCODER_POLL_MS` and re-checks; the loop bails out into the `idle_timeout` close path after `config.stream.connectionIdleTimeoutMs` of inactivity (`stream.ts:338`).
 
-**`?from=K` mid-chunk skip** (`stream.ts:58-59`):
+**`?from=K` mid-chunk skip — REMOVED on main (commit `cbfdd56`).**
 
-```ts
-const fromParam = parseInt(url.searchParams.get("from") ?? "0", 10);
-const fromIndex = Number.isFinite(fromParam) && fromParam >= 0 ? fromParam : 0;
-```
+The earlier query parameter and the matching `fromIndex` were removed in the seek refactor: ffmpeg's `-ss seekTime` produces the user's first segment directly, so the client no longer instructs the server to skip leading segments. **The Rust port must NOT reintroduce a server-side skip mechanism.** Lines `stream.ts:58–59` (where the parameter used to be parsed) now hold the `traceparent` carrier setup. See [`../../architecture/Streaming/00-Protocol.md`](../../architecture/Streaming/00-Protocol.md) for the live seek protocol.
 
-The handler starts streaming at `segment_${fromIndex}.m4s` rather than 0. Used by the client during seeks within an in-flight chunk to avoid re-streaming already-buffered segments. The init segment is still sent first.
-
-**traceparent extraction** (`stream.ts:67-76`):
+**traceparent extraction** (`stream.ts:56-67`):
 
 ```ts
 const carrier: Record<string, string> = {};
@@ -66,23 +63,38 @@ const span = streamTracer.startSpan("stream.request", { … }, incomingCtx);
 
 W3C trace-context flows in via the `traceparent` request header; the `stream.request` span is opened as a child of whatever the client sent. This is already cross-instance compatible — preserves trivially across peer-streaming.
 
-**Connection lifecycle** (`stream.ts:105-152`):
+**Connection lifecycle** (`stream.ts:96-143`):
 
-`finalise(reason)` is the single cleanup path; reasons are `"complete" | "client_disconnected" | "idle_timeout"`. It calls `removeConnection(jobId)` and, when the active-connection count reaches zero with the job still `running`, calls `killJob(jobId, kill_reason)` with the matching `kill_reason` enum value (see [`Observability/01-Logging-Policy.md`](../../architecture/Observability/01-Logging-Policy.md)).
+`finalise(reason)` is the single cleanup path; reasons are `"complete" | "client_disconnected" | "idle_timeout"`. It calls `removeConnection(jobId)` and, when the active-connection count reaches zero with the job still `running`, calls `killJob(jobId, kill_reason)` with the matching `kill_reason` enum value (see [`../../architecture/Observability/01-Logging-Policy.md`](../../architecture/Observability/01-Logging-Policy.md)). `killJob` is now imported from `services/ffmpegPool.ts` (see §1.2 below).
 
-### 1.2 Chunker — `server/src/services/chunker.ts`
+**Cold-start path (post `8927c92`/`4d6f2ba`/`987ff10`/`a8ac700`).** The first-chunk path is no longer a simple "request 30 s, wait for ffmpeg, send segments" loop — it's a cooperative dance between client and server with several behaviors the Rust port must preserve as part of the protocol contract:
 
-927 lines. Owns ffmpeg lifecycle, job registration, segment-watch loop, and the three-tier VAAPI fallback.
+- **Parallel mutation+init** (commit `8927c92`) — the client issues the `appendBuffer` for the previous chunk's init segment while the next chunk's `startTranscode` mutation is still in flight; the stream endpoint must serve the init segment as the very first frame on the wire (already true; see invariant #2).
+- **Small first chunk on mid-file seek** — when the client requests `startS > 0`, it requests a short window (`firstChunkDurationS` from `clientConfig.playback`, in `client/src/config/appConfig.ts`) so the prefetch RAF trips and eager-warms ffmpeg for the next chunk. The server side is unchanged — chunkDuration is just a request parameter — but the Rust port should not assume a uniform 30 s cadence on every chunk.
+- **DO NOT shorten the first chunk at `startS = 0`** (commit `987ff10`). VAAPI HDR 4K silently produces zero segments on `-ss 0 -t 30` (see [`../../server/Hardware-Acceleration/01-HDR-Pad-Artifact.md`](../../server/Hardware-Acceleration/01-HDR-Pad-Artifact.md)). The first-chunk shortening is an `startS > 0` optimization only; a Rust port that mistakenly applies it uniformly will resurrect this VAAPI pathology.
+- **4K startup buffer cut to 5 s** (commit `4d6f2ba`) — the client's playback gate now opens at 5 s of buffered media (was 10 s); the server must therefore deliver the first ~5 s of media within the user's perceived wait budget. This pressures the cold-start ffmpeg path (probe + first segment) more than the older 10 s gate did, making the silent-failure event below load-bearing.
+- **Decoder-warmup spinner suppression** (commit `a8ac700`) — purely client-side, not a server contract, but documented here so the Rust port's acceptance criteria include it.
 
-**Concurrency cap** (`chunker.ts:57`):
+### 1.2 Chunker — `server/src/services/chunker.ts` + `services/ffmpegPool.ts`
+
+866 lines (`chunker.ts`) plus a 232-line `ffmpegPool.ts` extracted in commit `c8cb229`. The chunker owns job registration, the three-tier VAAPI fallback, segment-watch, and DB persistence; the pool owns the live-process map, the cap, kill dispatch, and SIGTERM→SIGKILL escalation.
+
+**Concurrency cap — now in `ffmpegPool.ts`.** The cap limit is read from config (`config.transcode.maxConcurrentJobs`, default 3) and enforced via reservations rather than a count over a single map:
 
 ```ts
-const MAX_CONCURRENT_JOBS = 3;
+// ffmpegPool.ts:67-84
+export function getCapLimit(): number { return config.transcode.maxConcurrentJobs; }
+
+export function tryReserveSlot(jobId: string): Reservation | null {
+  if (liveActiveCount() + reservations.size >= config.transcode.maxConcurrentJobs) return null;
+  reservations.add(jobId);
+  return { jobId, release(): void { /* idempotent */ reservations.delete(jobId); } };
+}
 ```
 
-Enforced as a count over `activeCommands.size + inflightJobIds.size` (`chunker.ts:225`). Two maps because there's an async window between `startTranscodeJob` entry and `activeCommands.set()` (during ffprobe + mkdir) where a job is committed but not yet running — both must count toward the cap. The cap rejection returns a typed `CAPACITY_EXHAUSTED` error with a `CAPACITY_RETRY_HINT_MS = 1000` hint (`chunker.ts:62`).
+Three sets (`reservations`, `liveCommands`, `dyingJobIds` at `ffmpegPool.ts:56-58`) replace the old two-map count. A reservation is held during the `ffprobe + mkdir` window, then consumed by `spawnProcess` which moves the id into `liveCommands`. Dying jobs (SIGTERM dispatched, exit pending) are tracked in `dyingJobIds` and **do not** count toward the cap — slots free immediately on SIGTERM, eliminating the cap-starvation bug fixed in PR #33. The chunker calls `tryReserveSlot` at `chunker.ts:153` and rejects with a typed `CAPACITY_EXHAUSTED` error at `chunker.ts:185` carrying `retryAfterMs: config.transcode.capacityRetryHintMs` (default 1000). The Rust port collapses these three sets into one `Arc<Semaphore>` plus a `dyingJobIds` set carried on `AppState` (see §3); the dying-set bookkeeping is what makes the semaphore release race-free across SIGTERM kills.
 
-**Job ID derivation** (`chunker.ts:134-138`):
+**Job ID derivation** (`chunker.ts:81`):
 
 ```ts
 function jobId(contentKey: string, resolution: Resolution, start?: number, end?: number): string {
@@ -92,41 +104,42 @@ function jobId(contentKey: string, resolution: Resolution, start?: number, end?:
 }
 ```
 
-`contentKey` is the video's `content_fingerprint`, which is itself `SHA-1(first 64 KB) prefixed with byte size` ([`server/DB-Schema/00-Tables.md`](../../server/DB-Schema/00-Tables.md)). The job ID is therefore deterministic across restarts and across nodes — two callers asking for byte-identical `(contentKey, resolution, start, end)` get the same job ID. **This is the foundation of the content-addressed cache constraint in §5 below.**
+`contentKey` is the video's `content_fingerprint`, which is itself `SHA-1(first 64 KB) prefixed with byte size` ([`server/DB-Schema/00-Tables.md`](../../server/DB-Schema/00-Tables.md)). The job ID is therefore deterministic across restarts and across nodes — two callers asking for byte-identical `(contentKey, resolution, start, end)` get the same job ID. **This is the foundation of the content-addressed cache constraint in §4 below.**
 
-**Inflight dedup** (`chunker.ts:208-219`):
+**Inflight dedup** (`chunker.ts:130-148`):
 
-When a concurrent call finds the same job ID already in `inflightJobIds`, it polls `getJob(id)` every 100 ms up to 5 s instead of spawning a second ffmpeg.
+When a concurrent call finds `hasInflightOrLive(id)` true (helper at `ffmpegPool.ts:87`), it polls `getJob(id)` every `INFLIGHT_DEDUP_POLL_MS` (100 ms) up to `config.transcode.inflightDedupTimeoutMs` (default 5 s) instead of spawning a second ffmpeg.
 
-**Job restoration from disk** (`chunker.ts:269-319`):
-
-If the SQLite `transcode_jobs` row says `status = "complete"` AND `init.mp4` exists on disk, `startTranscodeJob` reconstructs the `ActiveJob` from DB rows and skips ffmpeg entirely. Missing `init.mp4` for a "complete" job → wipe the segment dir and re-encode (`chunker.ts:312-318`).
+**Job restoration from disk.** If the SQLite `transcode_jobs` row says `status = "complete"` AND `init.mp4` exists on disk, `startTranscodeJob` reconstructs the `ActiveJob` from DB rows and skips ffmpeg entirely. Missing `init.mp4` for a "complete" job → wipe the segment dir and re-encode (the reservation is released along the non-spawn path; see `chunker.ts:229-232, 285-303`).
 
 **Boot-time job restoration** — separate file `server/src/services/jobRestore.ts` (25 lines): on startup, every `transcode_jobs` row with `status = "running"` is forcibly marked `error` — the server died mid-encode, the partial segment dir cannot safely be served. `startTranscodeJob` then wipes and re-encodes on the next request.
 
-**ffmpeg supervision** (`chunker.ts:392-836` — function `runFfmpeg`):
+**ffmpeg supervision** (`chunker.ts:316-755` — function `runFfmpeg`):
 
-- Probe via `FFmpegFile.probe()` ([`ffmpegFile.ts:96`](../../../server/src/services/ffmpegFile.ts)) — derives codec, pix_fmt, bit depth, HDR transfer.
+- Probe via `FFmpegFile.probe()` ([`ffmpegFile.ts`](../../../server/src/services/ffmpegFile.ts)) — derives codec, pix_fmt, bit depth, HDR transfer.
 - `applyOutputOptions` builds the encode argv (per-resolution profile, hwaccel chain).
-- Spawn via `fluent-ffmpeg`'s `.run()`; `activeCommands.set(job.id, command)` registers the process.
-- Watch `segment_dir` via `fs.watch` (NOT `fs/promises.watch` — Bun-specific bug, see `chunker.ts:840-843`).
-- Three-tier VAAPI cascade (`chunker.ts:623-759`): fast-VAAPI → sw-pad VAAPI → software libx264. Per-source state cached in `vaapiVideoState: Map<videoId, "needs_sw_pad" | "hw_unsafe">` (`chunker.ts:54`) so subsequent chunks skip already-known-failing tiers.
+- Spawn via `ffmpegPool.spawnProcess(id, command, hooks)` (`ffmpegPool.ts:107`); the pool registers the process in `liveCommands` and wires per-job `ProcessHooks` (`onStart`/`onStderr`/`onProgress`/`onComplete`/`onKilled`/`onError`).
+- `command.inputOptions(["-loglevel", "error"])` at `chunker.ts:418` keeps real errors but suppresses frame/info chatter, so the chunker can stream stderr lines as warnings without log spam.
+- Watch `segment_dir` via `fs.watch` (NOT `fs/promises.watch` — Bun-specific bug, comment at `chunker.ts:780`).
+- Three-tier VAAPI cascade in `runFfmpeg`: fast-VAAPI → sw-pad VAAPI → software libx264. Per-source state cached in `vaapiVideoState: Map<videoId, "needs_sw_pad" | "hw_unsafe">` (`chunker.ts:43`) so subsequent chunks skip already-known-failing tiers. The `transcode.job` span is opened at `chunker.ts:346`; the tonemap attribute (`hwaccel.hdr_tonemap`) is set at `chunker.ts:386`. See §1.5 below for the full span surface.
 
-**Kill paths**:
+**Kill paths — now in `ffmpegPool.ts`:**
 
-- `killJob(id, reason)` (`chunker.ts:144-159`) — single-job kill; `reason` is the `kill_reason` enum value.
-- `killAllActiveJobs(timeoutMs = 5000)` (`chunker.ts:97-132`) — graceful SIGTERM with 5 s deadline, then SIGKILL stragglers. Called from the `index.ts` shutdown handler.
+- `killJob(id, reason)` (`ffmpegPool.ts:160`) — single-job kill; `reason` is the `kill_reason` enum value (defined in `ffmpegPool.ts:8-15`). Adds the id to `dyingJobIds` so the cap frees immediately, dispatches SIGTERM, schedules a SIGKILL escalation after `config.transcode.forceKillTimeoutMs` (default 2 s).
+- `killAllJobs(timeoutMs?)` (`ffmpegPool.ts:206`) — graceful SIGTERM with `config.transcode.shutdownTimeoutMs` deadline (default 5 s), then SIGKILL stragglers. Called from the `index.ts` shutdown handler.
 
-**The `killedJobs` set** (`chunker.ts:33`) flags a deliberate kill so the `.on("end")` handler treats a clean exit-after-SIGTERM as an error rather than a successful completion (which would mark the job `complete` with truncated segments).
+The old `killedJobs` set on `chunker.ts:33` is gone. The pool now keeps the equivalent state as `dyingJobIds: Set<string>` (`ffmpegPool.ts:58`) and `killReasons: Map<string, KillReason>` (`ffmpegPool.ts:59`), so the `.on("end")` handler can distinguish a deliberate kill from a clean self-exit and emit the right `kill_reason` attribute on the span.
 
-**Wall-clock budgets** (`chunker.ts:534-572`):
+**Silent-failure event** (`chunker.ts:586`). When ffmpeg exits 0 with `segmentCount === 0` — the VAAPI HDR 4K silent-success class — the chunker emits a `transcode_silent_failure` span event on the live `transcode.job` span, sets the span status to `ERROR`, and propagates the failure into the cascade as if ffmpeg had errored. The event payload carries the 4 KB stderr tail, `chunk_start_s`, `chunk_duration_s`, and `encode_duration_ms` for triage (Seq query: `@MessageTemplate = 'transcode_silent_failure'`). The Rust port must reproduce this contract — a clean-exit-but-zero-output cannot be allowed to mark the job complete. See [`02-Observability-Layer.md`](02-Observability-Layer.md) for the observability framing and [`../../server/Hardware-Acceleration/01-HDR-Pad-Artifact.md`](../../server/Hardware-Acceleration/01-HDR-Pad-Artifact.md) for the failure class.
 
-- `ORPHAN_TIMEOUT_MS = 30_000` — ffmpeg killed if `connections === 0` after 30 s of running (prefetched chunk that the client never connected to).
-- `MAX_ENCODE_MS = chunk_seconds × 3` (or 1 h fallback for full-video transcodes) — wall-clock cap on a single encode that's making slow progress with a connected client.
+**Wall-clock budgets — now config-driven:**
+
+- `config.transcode.orphanTimeoutMs` (default 30 s, read at `chunker.ts:460`) — ffmpeg killed if `connections === 0` after this long (prefetched chunk that the client never connected to).
+- `config.transcode.maxEncodeRateMultiplier` (default 3, read at `chunker.ts:478`) — actual budget is `chunkWindowSeconds × multiplier × 1000 ms` (or a 1 h fallback for full-video transcodes). Wall-clock cap on a single encode that's making slow progress with a connected client; expiry emits the `max_encode_timeout` kill_reason.
 
 ### 1.3 Job store — `server/src/services/jobStore.ts`
 
-89 lines. A plain `Map<string, ActiveJob>` plus `subscribeToJob` async iterable for GraphQL subscriptions. **No persistence** — jobStore is the source of truth for live ffmpeg jobs; SQLite mirrors it for audit + restart recovery.
+88 lines. A plain `Map<string, ActiveJob>` plus `subscribeToJob` async iterable for GraphQL subscriptions. **No persistence** — jobStore is the source of truth for live ffmpeg jobs; SQLite mirrors it for audit + restart recovery.
 
 `addConnection` / `removeConnection` are increment/decrement on `job.connections`. The **count is the gating signal** for orphan kills and idle-timeout kills.
 
@@ -136,6 +149,16 @@ If the SQLite `transcode_jobs` row says `status = "complete"` AND `init.mp4` exi
 
 The resolver verifies the installed ffmpeg's version line against `scripts/ffmpeg-manifest.json`'s `versionString` field; mismatch is fatal with a pointer to `bun run setup-ffmpeg --force`.
 
+### 1.5 Span surface — what the Rust tracing layer must reproduce
+
+<!-- Span surface synced from docs/architecture/Observability/server/00-Spans.md — verify against main before porting. -->
+
+Two server-side spans are part of the stable contract; the Rust tracing layer must emit identical names, attributes, and events so existing Seq queries and Grafana panels keep working. Cross-reference [`02-Observability-Layer.md`](02-Observability-Layer.md) for the SDK shape and [`../../architecture/Observability/server/00-Spans.md`](../../architecture/Observability/server/00-Spans.md) for the canonical reference.
+
+**`stream.request`** — opened in `stream.ts:63-67` (child of the client's `chunk.stream` span via `traceparent`). Attributes: `job.id`. Events: `stream_started`, `init_wait_complete` (`init_wait_ms`, `attempts`, `has_init`), `init_sent` (`bytes`), `init_timeout`, `stream_complete` (`segments_sent`, `total_bytes_sent`, `duration_ms`, `transfer_rate_kbps`), `client_disconnected` (`segments_sent`), `idle_timeout` (`segments_sent`), `job_not_found`, `job_errored`.
+
+**`transcode.job`** — opened at `chunker.ts:346` (child of `job.resolve`). Attributes: `job.id`, `job.video_id`, `job.resolution`, `job.chunk_start_s`, `job.chunk_duration_s`, `hwaccel` (`software` | `vaapi` | `videotoolbox` | `qsv` | `nvenc` | `amf`), `hwaccel.forced_software` (true on a HW→software fallback retry), `hwaccel.vaapi_sw_pad` (true on the tier-2 retry), `hwaccel.hdr_tonemap` (true when `tonemap_vaapi` was in the filter chain; if false on a known HDR source, `FFmpegFile.isHdr` source-detection regressed). Events: `probe_complete`, `probe_error`, `transcode_started`, `transcode_progress` (periodic, ~10 s; `frames`, `fps`, `kbps`, `timemark`, `percent`), `transcode_fallback_to_vaapi_sw_pad` (carries `ffmpeg_exit_code` + 4 KB `ffmpeg_stderr` tail), `transcode_fallback_to_software` (same diagnostic payload), `transcode_silent_failure` (ffmpeg exited cleanly but `segmentCount === 0`; carries `ffmpeg_stderr` 4 KB tail, `chunk_start_s`, `chunk_duration_s`, `encode_duration_ms`; span status set to ERROR — Seq query `@MessageTemplate = 'transcode_silent_failure'`), `vaapi_marked_needs_sw_pad` / `vaapi_marked_unsafe`, `transcode_error`, `transcode_killed` (carries `kill_reason` ∈ `client_request` | `client_disconnected` | `stream_idle_timeout` | `orphan_no_connection` | `max_encode_timeout` | `cascade_retry` | `server_shutdown`), `transcode_complete`. The original span ends at the failure event; a fresh `transcode.job` span covers the retry. Span duration is the full ffmpeg lifetime (probe + encode).
+
 ---
 
 ## 2. Stable contracts (must not change)
@@ -144,14 +167,15 @@ These are the surfaces the React client and the OTel pipeline see. Breaking any 
 
 | Contract | Where it lives today | Rust port must |
 |---|---|---|
-| 4-byte BE uint32 length prefix + raw fMP4 bytes | `stream.ts:28-34` | Emit byte-identical framing |
-| Init segment is the first frame on every new stream | `stream.ts:211-274` | Same — preserve invariant #2 |
-| `?from=K` skips to `segment_${K}.m4s`, init still sent first | `stream.ts:58-59` | Honour the query param identically |
-| 180 s idle kill | `CONNECTION_TIMEOUT_MS` | Not shorter; not removed |
-| `MAX_CONCURRENT_JOBS = 3`, returns `CAPACITY_EXHAUSTED` typed error | `chunker.ts:57, 225-262` | Return the same union-error shape with `retryAfterMs = 1000` |
-| Job ID = `sha1(contentKey \| resolution \| start \| end)` | `chunker.ts:134-138` | Compute byte-identically (Rust `sha1` crate) |
-| `kill_reason` enum: `client_disconnected`, `stream_idle_timeout`, `orphan_no_connection`, `server_shutdown`, `client_request`, `max_encode_timeout` | scattered, all in `chunker.ts` + `stream.ts` | Emit the same string values in OTel attributes |
-| `transcode.job` + `stream.request` span names + attributes | `chunker.ts:420-435`, `stream.ts:72-76` | Emit the same span surface so existing Seq queries keep working |
+| 4-byte BE uint32 length prefix + raw fMP4 bytes | `stream.ts:21-27` | Emit byte-identical framing |
+| Init segment is the first frame on every new stream | `stream.ts:202-265` | Same — preserve invariant #2 |
+| `?from=K` query parameter | **REMOVED in commit `cbfdd56`** — `-ss seekTime` anchors the user's first segment directly | Must NOT reintroduce a server-side skip mechanism |
+| 180 s idle kill | `config.stream.connectionIdleTimeoutMs` (in `server/src/config.ts`) | Not shorter; not removed |
+| `maxConcurrentJobs = 3` (config-driven), returns `CAPACITY_EXHAUSTED` typed error | `config.transcode.maxConcurrentJobs`; cap enforced at `ffmpegPool.ts:73` (`tryReserveSlot`); rejection at `chunker.ts:185` | Return the same union-error shape with `retryAfterMs = config.transcode.capacityRetryHintMs` |
+| Job ID = `sha1(contentKey \| resolution \| start \| end)` | `chunker.ts:81` | Compute byte-identically (Rust `sha1` crate) |
+| `kill_reason` enum: `client_request`, `client_disconnected`, `stream_idle_timeout`, `orphan_no_connection`, `max_encode_timeout`, `cascade_retry`, `server_shutdown` | Defined in `ffmpegPool.ts:8-15`; emitted on `transcode_killed` event | Emit the same string values in OTel attributes |
+| `transcode.job` + `stream.request` span names + attributes | `chunker.ts:346`, `stream.ts:63-67` (see §1.5 for the verbatim surface) | Emit the same span surface so existing Seq queries keep working |
+| `transcode_silent_failure` event on clean-exit-zero-output | `chunker.ts:586` | Reproduce — silent success cannot mark the job complete |
 | Stale `transcode_jobs` with `status = running` are forced to `error` on boot | `jobRestore.ts` | Same (cf. §5 — cache vs identity DB split) |
 
 ---
@@ -207,15 +231,15 @@ The `stream_pump` task owns the per-connection state (`index`, `init_sent`, `las
 
 ### 3.3 Differences vs. Bun that affect the translation
 
-- **`req.signal.aborted` defensive blocks disappear.** Bun can mark `req.signal` aborted before the first `await`; in axum the consumer dropping causes `tx.send` to fail with a closed-channel error which terminates the pump. The `try { await Bun.sleep() } catch { ... }` patterns at `stream.ts:219-227, 302-308, 339-345` have no Rust equivalent — they're dead code in the port.
-- **`fs.watch` Bun-specificity goes away.** `chunker.ts:840-843` notes that `fs/promises.watch` doesn't work in Bun; in Rust, `notify::RecommendedWatcher` is the cross-platform default and works correctly on all three OSes.
-- **`fluent-ffmpeg` module-global state becomes `AppState`.** No more `setFfmpegPath` discipline — `AppState.ffmpeg_paths: FfmpegPaths` is threaded into every spawn site. The "stale per-module write clobbers startup" footgun (cf. comments at `chunker.ts:18-21`) is structurally impossible in the Rust port.
-- **Counter cap → `Arc<Semaphore>`.** `MAX_CONCURRENT_JOBS = 3` becomes `Arc<Semaphore::new(3)>`; `startTranscodeJob` does `let _permit = state.job_semaphore.try_acquire().map_err(|_| Capacity)?;` and stores the `OwnedSemaphorePermit` on the `ActiveJob` so it releases when the job drops. This handles both inflight and active in one primitive — the two-map workaround at `chunker.ts:225` becomes one line.
-- **Two-phase init segment.** ffmpeg writes `init.mp4` and `segment_NNNN.m4s` files into the segment directory; the Rust port preserves this layout (see [`06-File-Handling-Layer.md`](06-File-Handling-Layer.md) for the directory lifecycle). The init-segment poll at `stream.ts:211-274` becomes a `tokio::time::timeout(60s, init_ready.notified()).await?` against a `tokio::sync::Notify` set by the watcher when `init.mp4` reaches non-zero size.
+- **`req.signal.aborted` defensive blocks disappear.** Bun can mark `req.signal` aborted before the first `await`; in axum the consumer dropping causes `tx.send` to fail with a closed-channel error which terminates the pump. The `try { await Bun.sleep() } catch { ... }` patterns at `stream.ts:192-196, 205-216, 295-299, 332-336` have no Rust equivalent — they're dead code in the port.
+- **`fs.watch` Bun-specificity goes away.** `chunker.ts:780` notes that `fs/promises.watch` doesn't work in Bun; in Rust, `notify::RecommendedWatcher` is the cross-platform default and works correctly on all three OSes.
+- **`fluent-ffmpeg` module-global state becomes `AppState`.** No more `setFfmpegPath` discipline — `AppState.ffmpeg_paths: FfmpegPaths` is threaded into every spawn site. The "stale per-module write clobbers startup" footgun (cf. comments at `chunker.ts:18-21`) is structurally impossible in the Rust port. Note: `c8cb229` already extracted the cap + lifecycle bookkeeping into `ffmpegPool.ts` — that's half of this refactor done on the Bun side. The remaining global is fluent-ffmpeg's path cache, which the Rust port retires by construction.
+- **Counter cap → `Arc<Semaphore>`.** The reservation pattern at `ffmpegPool.ts:72-84` becomes `Arc<Semaphore::new(config.transcode.max_concurrent_jobs)>`; `startTranscodeJob` does `let permit = state.job_semaphore.try_acquire().map_err(|_| Capacity)?;` and the `OwnedSemaphorePermit` lives on the `ActiveJob` so the slot frees on drop. The `dyingJobIds` set is preserved as a sibling on `AppState`: jobs we've SIGTERMed don't count toward the cap, so a slow-to-exit ffmpeg can't starve the next request.
+- **Two-phase init segment.** ffmpeg writes `init.mp4` and `segment_NNNN.m4s` files into the segment directory; the Rust port preserves this layout (see [`06-File-Handling-Layer.md`](06-File-Handling-Layer.md) for the directory lifecycle). The init-segment poll at `stream.ts:202-265` becomes a `tokio::time::timeout(60s, init_ready.notified()).await?` against a `tokio::sync::Notify` set by the watcher when `init.mp4` reaches non-zero size.
 
 ### 3.4 Three-tier VAAPI cascade
 
-The cascade structure in `chunker.ts:613-759` is recursive — on `ffmpeg error`, `runFfmpeg` is re-invoked with mutated tier flags. In Rust, the cleanest translation is a loop with explicit tier state:
+The cascade structure inside `runFfmpeg` (`chunker.ts:316-755`) is recursive — on `ffmpeg error`, `runFfmpeg` is re-invoked with mutated tier flags. In Rust, the cleanest translation is a loop with explicit tier state:
 
 ```rust
 enum Tier { FastVaapi, SwPadVaapi, Software }
@@ -235,7 +259,7 @@ loop {
 }
 ```
 
-Eliminates the recursive call + duplicated event emission at `chunker.ts:660-723, 712-723, 747-758`.
+Eliminates the recursive call + duplicated event emission inside `runFfmpeg`'s cascade.
 
 ---
 
@@ -268,7 +292,7 @@ The `mpsc::channel(16)` size is per-consumer, not shared. For 4K segments at ~6 
 
 ### 4.4 traceparent already works cross-peer
 
-`stream.ts:67-76` extracts `traceparent` from the inbound request's headers regardless of origin. When peer B's client opens `GET /stream/:jobId` against peer A, peer A's `stream.request` span correctly nests under peer B's `chunk.stream` span — same trace ID, no protocol change. The Rust port preserves this with `opentelemetry::propagation::TextMapPropagator::extract` over `axum::http::HeaderMap`. **Constraint:** the inbound `traceparent` header must pass through any future auth middleware unchanged. Cross-reference [`02-Observability-Layer.md`](02-Observability-Layer.md) and [`Sharing/00-Peer-Streaming.md`](../../architecture/Sharing/00-Peer-Streaming.md) once authored.
+`stream.ts:56-67` extracts `traceparent` from the inbound request's headers regardless of origin. When peer B's client opens `GET /stream/:jobId` against peer A, peer A's `stream.request` span correctly nests under peer B's `chunk.stream` span — same trace ID, no protocol change. The Rust port preserves this with `opentelemetry::propagation::TextMapPropagator::extract` over `axum::http::HeaderMap`. **Constraint:** the inbound `traceparent` header must pass through any future auth middleware unchanged. Cross-reference [`02-Observability-Layer.md`](02-Observability-Layer.md) and [`../../architecture/Sharing/00-Peer-Streaming.md`](../../architecture/Sharing/00-Peer-Streaming.md).
 
 ---
 
@@ -276,9 +300,9 @@ The `mpsc::channel(16)` size is per-consumer, not shared. For 4K segments at ~6 
 
 1. **`broadcast` vs. per-consumer `notify`.** The §4.2 design uses `broadcast::Sender<SegmentReady>` so the watcher fans to all consumers. Alternative: each consumer holds its own `Arc<Notify>` and the watcher loops `for n in subscribers { n.notify_one() }`. `broadcast` is simpler but loses events on `RecvError::Lagged`; `Notify` is wakeup-only and forces a directory re-scan on each wake regardless. Decide during implementation; both satisfy the per-consumer-isolation invariant.
 
-2. **`ORPHAN_TIMEOUT_MS` and sharing.** Today, 30 s is the budget for the local user to connect after `startTranscodeJob` returns. Under sharing, peer B might call `startTranscode` from across the network and incur RTT before opening the stream — 30 s should still be sufficient (transit + handshake << 30 s on any reasonable link), but worth re-validating with a real cross-peer test.
+2. **`config.transcode.orphanTimeoutMs` and sharing.** Today, 30 s is the budget for the local user to connect after `startTranscodeJob` returns (`chunker.ts:460`). Under sharing, peer B might call `startTranscode` from across the network and incur RTT before opening the stream — 30 s should still be sufficient (transit + handshake << 30 s on any reasonable link), but worth re-validating with a real cross-peer test.
 
-3. **fluent-ffmpeg's `-loglevel error` discipline.** `chunker.ts:493` suppresses ffmpeg's frame-progress chatter. The Rust port uses `tokio::process::Command` directly and reads `stderr` line by line into the `tracing::debug!` stream. The doc on `02-Observability-Layer.md` should specify whether the per-line debug events are kept under a feature flag or always-on. (Current Bun behaviour: stderr captured to a 200-line ring at `chunker.ts:502-514` and surfaced only on encode failure.)
+3. **fluent-ffmpeg's `-loglevel error` discipline.** `chunker.ts:418` suppresses ffmpeg's frame-progress chatter. The Rust port uses `tokio::process::Command` directly and reads `stderr` line by line into the `tracing::debug!` stream. The doc on `02-Observability-Layer.md` should specify whether the per-line debug events are kept under a feature flag or always-on. (Current Bun behaviour: stderr captured to a ring buffer in the chunker and surfaced only on encode failure.)
 
 4. **`segment_pattern` portability.** ffmpeg's `-f hls -hls_segment_filename "segment_%04d.m4s"` works on all three OSes; the absolute path passed in is the OS-native form (forward slashes on Linux/macOS, backslashes on Windows). `PathBuf` + `to_string_lossy()` handles this; verify `%04d` survives quoting on Windows.
 
@@ -290,11 +314,13 @@ The `mpsc::channel(16)` size is per-consumer, not shared. For 4K segments at ~6 
 
 | File | Lines | Role in the port |
 |---|---|---|
-| `server/src/routes/stream.ts` | 377 | Stream endpoint — full rewrite to `axum::Body::from_stream` |
-| `server/src/services/chunker.ts` | 927 | Chunker — full rewrite; preserve cascade + cap + dedup semantics |
-| `server/src/services/ffmpegFile.ts` | (~250) | ffprobe wrapper — port struct-for-struct |
-| `server/src/services/ffmpegPath.ts` | 153 | Manifest-pinned path resolution — replace module-global with `AppState` |
-| `server/src/services/jobStore.ts` | 89 | In-memory map — replace with `Arc<DashMap>` + content-key index |
+| `server/src/routes/stream.ts` | 368 | Stream endpoint — full rewrite to `axum::Body::from_stream` |
+| `server/src/services/chunker.ts` | 866 | Chunker — full rewrite; preserve cascade + dedup semantics |
+| `server/src/services/ffmpegPool.ts` | 232 | Cap + lifecycle (extracted in `c8cb229`) — collapses into `Arc<Semaphore>` + dying-set on `AppState` |
+| `server/src/services/ffmpegFile.ts` | 426 | ffprobe wrapper — port struct-for-struct |
+| `server/src/services/ffmpegPath.ts` | 152 | Manifest-pinned path resolution — replace module-global with `AppState` |
+| `server/src/services/jobStore.ts` | 88 | In-memory map — replace with `Arc<DashMap>` + content-key index |
 | `server/src/services/jobRestore.ts` | 25 | Boot-time stale-job sweep — port verbatim |
-| `server/src/types.ts` | 141 | Type shapes (`ActiveJob`, `PlaybackErrorCode`, …) — Rust struct equivalents |
+| `server/src/types.ts` | 140 | Type shapes (`ActiveJob`, `PlaybackErrorCode`, …) — Rust struct equivalents |
+| `server/src/config.ts` | 159 | `AppConfig` (`transcode`/`stream` namespaces) — Rust port mirrors the structure on `AppState` |
 | `scripts/ffmpeg-manifest.json` | — | Per-platform pin — bundled into Tauri resource dir (cf. [`08-Tauri-Packaging.md`](08-Tauri-Packaging.md)) |

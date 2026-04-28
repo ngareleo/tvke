@@ -14,7 +14,7 @@ How xstream handles the filesystem: library walk + ffprobe pipeline, segment-dir
 4. `scanLibraryEntry(entry)` — collects all paths first, then dispatches the bounded-concurrency batch (`server/src/services/libraryScanner.ts:157-196`).
 5. `scanLibraries()` — top-level entry; `markScanStarted()` is called synchronously before any `await` so concurrent callers race-safely (`server/src/services/libraryScanner.ts:295-348`).
 
-The **content fingerprint** is the load-bearing identity for a video — every job ID downstream is keyed off it (`server/src/services/chunker.ts:134-138`). Formula:
+The **content fingerprint** is the load-bearing identity for a video — every job ID downstream is keyed off it (`server/src/services/chunker.ts:81`). Formula:
 
 ```ts
 // server/src/services/libraryScanner.ts:69-77
@@ -33,21 +33,23 @@ Output is `<sizeBytes>:<sha1hex>` — stable across renames and moves, changes o
 
 ### Segment directory lifecycle
 
-`server/src/services/chunker.ts` owns segment-directory creation, watching, and teardown:
+`server/src/services/chunker.ts` owns segment-directory creation, watching, and teardown; `server/src/services/ffmpegPool.ts` (extracted in commit `c8cb229`, 232 lines) owns the live-process map, kill dispatch, and SIGTERM→SIGKILL escalation.
 
-- **Path layout** (`server/src/services/chunker.ts:321,438-439`):
+In `c8cb229`, cap-management and process-lifecycle were extracted from `ffmpegFile.ts` into `server/src/services/ffmpegPool.ts` — module-level singletons (`reservations`, `liveCommands`, `dyingJobIds`, `killReasons`, `escalationTimers`, `hooksByJobId` at `ffmpegPool.ts:56-61`) replace the previous implicit state. The Rust port's `FfmpegPool` struct completes this: it internalizes those maps into a single `Arc<Mutex<PoolState>>` on `AppState`, and process-lifecycle hooks (`onStart`/`onStderr`/`onProgress`/`onComplete`/`onKilled`/`onError` at `ffmpegPool.ts:25-35`) become a `ProcessHooks` trait. Path resolution still uses fluent-ffmpeg's module-global `setFfmpegPath` on the Bun side (see "ffmpeg path resolution" below); the Rust port threads the binary path through `AppState` instead, with no global setter and no module-initialization-order dependency.
+
+- **Path layout** (`server/src/services/chunker.ts:262, 363-364`):
   ```
   tmp/segments/<jobId>/init.mp4
   tmp/segments/<jobId>/segment_0000.m4s
   tmp/segments/<jobId>/segment_0001.m4s
   …
   ```
-- **Stale-dir wipe before encode** (`server/src/services/chunker.ts:323-330`): if the previous run errored or the prior "complete" job's `init.mp4` is missing, `rm(segmentDir, { recursive: true, force: true })` followed by `mkdir(segmentDir, { recursive: true })`. Truncated content must never reach the wire.
+- **Stale-dir wipe before encode** (`server/src/services/chunker.ts:250-254`): if the previous run errored or the prior "complete" job's `init.mp4` is missing, `rm(segmentDir, { recursive: true, force: true })` followed by `mkdir(segmentDir, { recursive: true })`. Truncated content must never reach the wire.
 - **Two-phase init segment**: ffmpeg's HLS fMP4 muxer writes `init.mp4` *before* any `segment_NNNN.m4s` file. The watcher (see below) treats the first `init.mp4` event specially and only marks the segment directory "ready" once `init.mp4` has non-zero size.
-- **Watcher** (`server/src/services/chunker.ts:838-917`): `fs.watch(segmentDir, { persistent: false })` (Node EventEmitter API — `fs/promises.watch()` async iterable is unreliable in Bun). On every `change` event:
+- **Watcher** (`server/src/services/chunker.ts:777-855`): `fs.watch(segmentDir, { persistent: false })` (Node EventEmitter API — `fs/promises.watch()` async iterable is unreliable in Bun, see comment at `chunker.ts:780`). On every `change` event:
   - If filename is `init.mp4` and `job.initSegmentPath` is null: stat-poll up to 40 × 50 ms until the file has bytes, then set `job.initSegmentPath` and notify subscribers.
   - If filename matches `^segment_\d{4}\.m4s$` and not yet seen: stat the file, parse the index, store the path in `job.segments[index]`, insert a row in the `segments` table, notify subscribers.
-- **Cleanup on kill** (`server/src/services/chunker.ts:144-159`): `killJob(id, reason)` SIGTERMs the ffmpeg child but does NOT immediately remove the segment directory — that is left to `pruneLruJobs` (see "Disk quota eviction" below). Killed jobs stay on disk so a new connection can reuse the partial encode.
+- **Cleanup on kill** (`server/src/services/ffmpegPool.ts:160-204`, function `killJob(id, reason)`): SIGTERMs the ffmpeg child, marks the id in `dyingJobIds` so the cap frees immediately, schedules a SIGKILL escalation after `config.transcode.forceKillTimeoutMs`. Does NOT remove the segment directory — that is left to `pruneLruJobs` (see "Disk quota eviction" below). Killed jobs stay on disk so a new connection can reuse the partial encode.
 
 ### ffmpeg path resolution
 
@@ -100,10 +102,10 @@ These survive verbatim across the rewrite — the React client and the on-disk c
 
 | Contract | Where | Why it must not change |
 |---|---|---|
-| Tmp segment layout `tmp/segments/<jobId>/init.mp4` + `segment_NNNN.m4s` | `server/src/services/chunker.ts:321,438-439` | The stream handler reads files at these exact paths (`stream.ts` `serveSegment`); a layout change would force a coordinated client refresh. |
+| Tmp segment layout `tmp/segments/<jobId>/init.mp4` + `segment_NNNN.m4s` | `server/src/services/chunker.ts:262, 363-364` | The stream handler reads files at these exact paths; a layout change would force a coordinated client refresh. |
 | Content fingerprint formula `<sizeBytes>:<sha1(first 64 KB)>` | `server/src/services/libraryScanner.ts:69-77` | Persists in the DB column `videos.content_fingerprint`; a re-scan with a different formula re-keys every job and invalidates the cache. |
-| Job ID = `sha1(contentKey | resolution | startS | endS)` | `server/src/services/chunker.ts:134-138` | Two encodes of the same `(video, ladder rung, range)` MUST collapse to one segment directory. The deterministic ID is what makes the cache content-addressed today. |
-| Ladder filename pattern `segment_%04d.m4s` | `server/src/services/chunker.ts:439` | Matches the watcher regex (`server/src/services/chunker.ts:884`); changing the pattern silently breaks segment indexing. |
+| Job ID = `sha1(contentKey | resolution | startS | endS)` | `server/src/services/chunker.ts:81` | Two encodes of the same `(video, ladder rung, range)` MUST collapse to one segment directory. The deterministic ID is what makes the cache content-addressed today. |
+| Ladder filename pattern `segment_%04d.m4s` | `server/src/services/chunker.ts:364` | Matches the watcher regex at `chunker.ts:823`; changing the pattern silently breaks segment indexing. |
 | ffmpeg manifest-pinned version per platform | `scripts/ffmpeg-manifest.json` | Whole HW-accel pipeline is validated against jellyfin-ffmpeg 7.1.3-Jellyfin specifically (see `docs/server/Hardware-Acceleration/00-Overview.md`). The Tauri bundle ships these exact assets. |
 | Default cache quota = 20 GB; override via `SEGMENT_CACHE_GB` | `server/src/services/diskCache.ts:12-18` | Documented for ops; downstream tests assume the same env name. |
 | Library walk concurrency = 4 (configurable knob, but the default is part of the contract) | `server/src/services/libraryScanner.ts:33` | At higher concurrency, `ffprobe` saturates I/O on spinning disks; at lower, scans of large libraries take noticeably longer. |
@@ -362,7 +364,7 @@ These are load-bearing for the Rust port even though sharing ships later. Each m
 
 ### Content-addressed segment cache index
 
-Today the segment cache is **already content-addressed** — the job ID is a deterministic SHA-1 over `(content_fingerprint, resolution, startS, endS)` (`server/src/services/chunker.ts:134-138`). What's missing is an **explicit lookup index** from `(videoId, resolution, startS, endS)` → segment-directory path.
+Today the segment cache is **already content-addressed** — the job ID is a deterministic SHA-1 over `(content_fingerprint, resolution, startS, endS)` (`server/src/services/chunker.ts:81`). What's missing is an **explicit lookup index** from `(videoId, resolution, startS, endS)` → segment-directory path.
 
 The Rust port must add this index in the chunker module:
 

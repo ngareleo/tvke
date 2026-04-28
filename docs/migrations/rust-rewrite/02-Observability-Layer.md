@@ -83,7 +83,7 @@ Dev mode mirrors every record to the terminal via the in-tree `PrettyConsoleExpo
 
 ### 1.2 Client telemetry — `client/src/telemetry.ts`
 
-162 lines — single file. Same OTLP-export model, plus instrumentations.
+161 lines — single file. Same OTLP-export model, plus instrumentations.
 
 **Init invariant** (`main.tsx:1-4`):
 
@@ -125,22 +125,35 @@ export function getSessionContext(): Context { return _sessionCtx; }
 
 Module-level singleton because the browser has no `AsyncLocalStorage`. Each `getClientLogger(...).info(...)` call attaches `getSessionContext()` to the log record (`telemetry.ts:139, 148, 157`), and every fetch on the playback path is wrapped: `await context.with(getSessionContext(), () => fetch(url, opts))`. Without the wrap, the SDK assigns a new random traceId per fetch and the trace tree fragments. Cross-reference [`Observability/01-Logging-Policy.md`](../../architecture/Observability/01-Logging-Policy.md) §"Threading trace context into streaming fetches".
 
-**Long-span gotcha** (memory feedback): `playback.session` lives for the entire player-page session. `span.addEvent()` calls on it buffer in memory until the span ends — they don't appear in Seq mid-session. Use `log.info(...)` for mid-session signals; reserve `addEvent` on the long-lived span for events that only matter post-mortem. This invariant is implementation-agnostic and survives the rewrite unchanged — but the Rust port's `tracing-opentelemetry` bridge has the same property, so the rule still applies for any long-lived server span (e.g. a future `peer.session`).
+**Long-span gotcha** (memory feedback): `playback.session` lives for the entire player-page session. `span.addEvent()` calls on it buffer in memory until the span ends — they don't appear in Seq mid-session. Use `log.info(...)` for mid-session signals; reserve `addEvent` on the long-lived span for events that only matter post-mortem. See §1.4 for the full one-shot vs snapshot pattern that's now codified for this span. This invariant is implementation-agnostic and survives the rewrite unchanged — but the Rust port's `tracing-opentelemetry` bridge has the same property, so the rule still applies for any long-lived server span (e.g. a future `peer.session`).
 
 ### 1.3 Span surface today (the OTel API contract)
 
-The Rust port must emit these span names with the same attribute keys; Seq queries and dashboards filter on them.
+<!-- Span surface synced from docs/architecture/Observability/server/00-Spans.md — verify against main before porting. -->
+
+The Rust port must emit these span names with the same attribute keys; Seq queries and dashboards filter on them. See [`01-Streaming-Layer.md`](01-Streaming-Layer.md) §1.5 for the verbatim attribute and event lists for the streaming-pipeline spans (`stream.request`, `transcode.job`); the table here is the cross-layer index.
 
 | Span | Origin | Key attributes |
 |---|---|---|
-| `playback.session` | client | session-level — long-lived for the player page |
-| `chunk.stream` | client | `chunk.job_id`, `chunk.resolution`, `chunk.is_first` |
-| `buffer.backpressure` | client | per-event short span |
-| `stream.request` | server | `job.id`, `stream.from_index` (`stream.ts:72-76`) |
-| `job.resolve` | server | `job.id`, `job.video_id`, `job.resolution`, `job.chunk_start_s` (`chunker.ts:180-191`) |
-| `transcode.job` | server | `job.id`, `hwaccel`, `hwaccel.forced_software`, `hwaccel.vaapi_sw_pad`, `hwaccel.hdr_tonemap` (`chunker.ts:420-435`) |
+| `playback.session` | client | session-level — long-lived for the player page (see §1.4 below for the long-span attribute pattern) |
+| `chunk.stream` | client | `chunk.job_id`, `chunk.resolution`, `chunk.is_first` (`client/src/services/chunkPipeline.ts:254`) |
+| `buffer.backpressure` | client | per-event short span (`client/src/services/bufferManager.ts:643`) |
+| `stream.request` | server | `job.id` (`stream.ts:63-67`) — see [`01-Streaming-Layer.md`](01-Streaming-Layer.md) §1.5 for events |
+| `job.resolve` | server | `job.id`, `job.video_id`, `job.resolution`, `job.chunk_start_s` (`chunker.ts:107`) |
+| `transcode.job` | server | `job.id`, `job.video_id`, `job.resolution`, `job.chunk_start_s`, `job.chunk_duration_s`, `hwaccel`, `hwaccel.forced_software`, `hwaccel.vaapi_sw_pad`, `hwaccel.hdr_tonemap` (`chunker.ts:346`) — see [`01-Streaming-Layer.md`](01-Streaming-Layer.md) §1.5 for the full event list including `transcode_silent_failure` |
 
-Standard `kill_reason` values used in span events and log attributes: `client_disconnected`, `stream_idle_timeout`, `orphan_no_connection`, `server_shutdown`, `client_request`, `max_encode_timeout`. The Rust port emits the same string values verbatim — Seq filters keyed on these stay valid through the migration.
+Standard `kill_reason` values used in span events and log attributes: `client_request`, `client_disconnected`, `stream_idle_timeout`, `orphan_no_connection`, `max_encode_timeout`, `cascade_retry`, `server_shutdown`. The Rust port emits the same string values verbatim — Seq filters keyed on these stay valid through the migration.
+
+### 1.4 One-shot vs snapshot span-attribute pattern (commits `419861a`, `b6db738`)
+
+Two distinct attribute shapes are now codified for long-lived spans (`playback.session`):
+
+- **One-shot session metrics** — set once via `span.setAttribute(...)` after the value crystallizes. Cold-start metrics (`time_to_first_frame_ms`, `cold_start_init_wait_ms`, etc., `client/src/services/playbackController.ts`) are written in this style: gated by a `firstFrameRecorded` flag so they only land once per session. They appear on the span as ordinary attributes when the span ends.
+- **Periodic snapshots** — emitted as `span.addEvent(...)` calls during the session lifetime. Each event carries the snapshot's attribute bag and a timestamp. Used for buffered-ahead, transfer-rate, and other time-series-like values.
+
+**The Rust port's `tracing` layer must support both shapes.** `tracing-opentelemetry` exposes `span.set_attribute(...)` for the one-shot case and `span.add_event(name, attrs)` for the periodic case — both round-trip cleanly through `BatchSpanProcessor` to OTLP. The architectural rule (full text in [`Observability/01-Logging-Policy.md`](../../architecture/Observability/01-Logging-Policy.md)): one-shot for "decided values", events for "things happening over time"; never set the same key twice as a one-shot attribute on a long-lived span (the Seq view of the span shows only the last write, which masks bugs).
+
+Note also the long-span gotcha (memory feedback): on `playback.session`, `addEvent` calls buffer in memory until the span ends — they do not appear in Seq mid-session. For mid-session debugging signals, use `log.info(...)` instead. The Rust `tracing-opentelemetry` bridge has the same property and the rule still applies.
 
 ---
 
@@ -235,7 +248,7 @@ async fn extract_traceparent(
 }
 ```
 
-Mounted as the outermost tower layer on the axum router so every handler runs inside an extracted-parent span. Handlers that need to start their own named span (`stream.request`, `transcode.job`, `job.resolve`) do so as children of the active span — same shape as `stream.ts:72-76` does today. See [`04-Web-Server-Layer.md`](04-Web-Server-Layer.md) for the full middleware stack and how this combines with the `RequestContext` extension.
+Mounted as the outermost tower layer on the axum router so every handler runs inside an extracted-parent span. Handlers that need to start their own named span (`stream.request`, `transcode.job`, `job.resolve`) do so as children of the active span — same shape as `stream.ts:63-67` does today. See [`04-Web-Server-Layer.md`](04-Web-Server-Layer.md) for the full middleware stack and how this combines with the `RequestContext` extension.
 
 ### 3.4 GraphQL subscription trace propagation
 
@@ -304,9 +317,9 @@ When sharing ships, new kill reasons appear (`peer_token_expired`, `peer_unautho
 | `server/src/telemetry/logger.ts` | 64 | Logger provider + `getOtelLogger` API |
 | `server/src/telemetry/console-exporter.ts` | — | Dev pretty printer — Rust uses `tracing_subscriber::fmt::pretty` |
 | `server/src/index.ts` | 136 | Bootstrap order — telemetry import is the FIRST import |
-| `server/src/routes/stream.ts` | 377 | `stream.request` span + traceparent extract pattern |
-| `server/src/services/chunker.ts` | 927 | `transcode.job` + `job.resolve` spans |
-| `client/src/telemetry.ts` | 162 | Client SDK init — UNCHANGED across the rewrite |
+| `server/src/routes/stream.ts` | 368 | `stream.request` span + traceparent extract pattern |
+| `server/src/services/chunker.ts` | 866 | `transcode.job` + `job.resolve` spans |
+| `client/src/telemetry.ts` | 161 | Client SDK init — UNCHANGED across the rewrite |
 | `client/src/services/playbackSession.ts` | (~25) | Browser session-context bridge — UNCHANGED |
 | `client/src/main.tsx` | 56 | Init ordering — `initTelemetry()` first |
 | `client/rsbuild.config.*` | — | Dev proxy `/ingest/otlp` → Seq — replaced by direct routing under Tauri |
