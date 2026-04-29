@@ -44,6 +44,17 @@ These principles were codified during Step 1 (PR #39) and apply to every subsequ
 
 Documentation set complete (with `09-Tauri-Packaging-Internals.md` added 2026-04-29).
 
-**Step 1 — GraphQL + Observability** is in review as **PR #39** (`feat/rust-step1-graphql`, commits a422976…ec6c90e). Not yet merged into `main`. The PR scope grew well beyond the original Step 1 spec during a review-and-iterate session; see `Plan/01-GraphQL-And-Observability.md` §"What shipped beyond the spec" for the full inventory.
+**Step 1 — GraphQL + Observability** merged on `main` as **PR #39** (2026-04-30).
 
-Steps 2–4 have not started. The plan file at `~/.claude/plans/talk-to-the-architect-squishy-cray.md` captures the original scoping conversation; the docs above supersede it as the working spec.
+**Step 2 — Streaming** in flight on `feat/rust-step2-streaming` (worktree at `xstream-rust-step2/`). All four commit groups landed:
+
+- DB writes + content-addressed cache index + `job_restore` (Group 1).
+- `ffmpeg_path` manifest resolver (Group 2a).
+- `config` + `ffmpeg_file` (probe + argv builders, software + VAAPI HDR/sw-pad cascades) (Group 2b).
+- `hw_accel` probe + selection (Group 2c).
+- `chunker` + `ffmpeg_pool` + `routes/stream.rs` + `start_transcode` resolver wired (Group 2/3).
+- `useRustStreaming` flag + `streamUrl(jobId)` helper on the client.
+
+Skipped, surfaced for follow-up: `transcode_progress` periodic span events (no fluent-ffmpeg stderr parser yet), the `orphan_no_connection` and `max_encode_timeout` watchdog timers (the route's `client_disconnected` kill covers the most common abandonment).
+
+Steps 3 (Tauri packaging) and 4 (release) have not started.
