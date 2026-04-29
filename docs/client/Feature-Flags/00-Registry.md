@@ -12,6 +12,9 @@ Compile-time defaults (the fallback layer under feature flags) live in `client/s
 
 ## How flags work today
 
+> **Status: trust model changed — see PR #39 (`feat/rust-step1-graphql`), not yet merged to main.**
+> The description below reflects the **pre-PR-#39 behaviour** currently on `main`. PR #39 inverts the trust hierarchy: `localStorage` is now the higher-trust source, populated synchronously at module load; the server `user_settings` hydration query only fills cache entries that do not already have a `localStorage` override. Two new bulk-action controls (`useFeatureFlagControls()` → "Clear local overrides" / "Reset all to defaults" buttons in FlagsTab) were also added in the same PR. A new flag `flag.useRustGraphQL` landed in the same commit. **This section will be rewritten to reflect the new model once PR #39 is merged and user-approved.**
+
 Per-user persistence. Each flag maps to a row in the server's `user_settings` key/value table (one row per `(userId, key)` pair — today there is effectively one user, but the shape is already per-user). On app boot, `FeatureFlagsProvider` issues a single bulk `settings(keys)` GraphQL query for every key in `FLAG_REGISTRY` and hydrates the module-level cache in `featureFlags.ts`. From that point on:
 
 - React code reads/writes through `useFeatureFlag(FLAG_KEYS.myFlag, fallback)` — the setter optimistically updates the cache and fires the `setSetting` mutation.
@@ -40,7 +43,6 @@ For the full tradeoff explainer (mental model, memory table per resolution, chun
 | Key | Type | Default | Category | Purpose |
 |---|---|---|---|---|
 | `flag.devForceShortChunkAtZero` | boolean | `false` | `experimental` | Dev-only escape hatch. When on, bypasses the three `startS === 0` guards in `PlaybackController` (`startPlayback`, `startChunkSeries`, `handleSeeking`) so a cold-start or seek-to-0 issues a short (30 s) first chunk even at position 0. Used to reproduce the VAAPI HDR silent-zero-output bug (`-ss 0 -t 30` exits cleanly with `segmentCount: 0`) and capture its stderr. Ships off by default; remove when the root-cause fix lands. |
-| `flag.useRustGraphQL` | boolean | `false` | `experimental` | Step 1 of the Rust + Tauri migration. When on, the Relay client connects to the Rust GraphQL server at `localhost:3002` instead of Bun (which stays on its `config.port`, 3001 in dev). Library / Watchlist / Settings work; **the player page is knowingly broken** — `/stream/:jobId` and the chunker land in Step 2. Toggle requires page reload because the Relay environment initialises before flag hydration: the value is mirrored to `localStorage` (key `flag.useRustGraphQL`, value `"1"` / `"0"`) so the next load picks the right origin synchronously. See `docs/migrations/rust-rewrite/Plan/01-GraphQL-And-Observability.md`. |
 
 **Convention — `experimental` category:** flags in this category are dev-only escape hatches that ship off by default. They exist to reproduce or diagnose specific bugs and are expected to be removed once the root-cause fix lands. Do not surface them in release builds; they bypass production safety guards.
 
