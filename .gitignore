@@ -37,3 +37,4 @@ docs/.obsidian/
 target/
 **/target/
 Cargo.lock.bak
+mprocs.log
