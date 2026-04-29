@@ -86,7 +86,7 @@ impl Library {
             Some(c) => (decode_cursor(c)? as i64) + 1,
             None => 0,
         };
-        let limit = first.min(MAX_PAGE_SIZE).max(0) as i64;
+        let limit = first.clamp(0, MAX_PAGE_SIZE) as i64;
         let filter = db::VideoFilter {
             search: search.clone(),
             media_type: media_type.map(|m| m.to_internal().to_string()),
