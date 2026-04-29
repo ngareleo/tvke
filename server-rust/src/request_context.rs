@@ -4,6 +4,7 @@ use axum::{
     middleware::Next,
     response::Response,
 };
+use opentelemetry::trace::TraceContextExt;
 use opentelemetry::Context as OtelContext;
 use opentelemetry_http::HeaderExtractor;
 use tracing::Instrument;
@@ -39,18 +40,64 @@ pub async fn extract_request_context(mut req: Request, next: Next) -> Result<Res
     };
     req.extensions_mut().insert(ctx);
 
+    // Pull the trace_id out of the inbound OtelContext so the access log
+    // line carries it explicitly. tracing-opentelemetry already attaches
+    // the trace_id to every event emitted inside `span` for the OTLP
+    // export — but local stdout doesn't render it. The structured field
+    // makes it visible in BOTH (`info!(trace_id = …)` lands in stdout AND
+    // the OTel attribute pile). Empty hex string when no inbound trace
+    // (the propagator returned an invalid SpanContext).
+    let trace_id = {
+        let span_ctx = otel_ctx.span().span_context().clone();
+        if span_ctx.is_valid() {
+            span_ctx.trace_id().to_string()
+        } else {
+            String::new()
+        }
+    };
+
     let method = req.method().to_string();
     let target = req.uri().path().to_string();
     let span = tracing::info_span!(
         "http.request",
         http.method = %method,
         http.target = %target,
+        http.status = tracing::field::Empty,
+        duration_ms = tracing::field::Empty,
+        trace_id = %trace_id,
     );
     // Inbound `traceparent` becomes the parent of this span — so the OTel
     // export carries the same trace_id the client started.
     span.set_parent(otel_ctx);
 
-    Ok(next.run(req).instrument(span).await)
+    let started = std::time::Instant::now();
+    let response = next.run(req).instrument(span.clone()).await;
+    let duration_ms = started.elapsed().as_millis() as u64;
+    let status = response.status().as_u16();
+
+    // Record the late-binding fields on the span so OTel exports them, then
+    // emit a structured info event inside the span scope so a one-line
+    // access log lands in Seq alongside the trace. Same shape as the Bun
+    // side: method, path, status, duration_ms, trace_id.
+    span.record("http.status", status);
+    span.record("duration_ms", duration_ms);
+    span.in_scope(|| {
+        tracing::info!(
+            http.method = %method,
+            http.target = %target,
+            http.status = status,
+            duration_ms = duration_ms,
+            trace_id = %trace_id,
+            "{} {} {} — {}ms (trace={})",
+            method,
+            target,
+            status,
+            duration_ms,
+            if trace_id.is_empty() { "-" } else { trace_id.as_str() },
+        );
+    });
+
+    Ok(response)
 }
 
 pub(crate) fn otel_context_from_headers(headers: &HeaderMap) -> OtelContext {
