@@ -123,3 +123,159 @@ pub fn delete_video_metadata(db: &Db, video_id: &str) -> DbResult<()> {
         Ok(())
     })
 }
+
+// ── Tests ────────────────────────────────────────────────────────────────────
+//
+// No Bun counterpart (`videoMetadata.test.ts` doesn't exist on the source
+// side). Added here for pattern consistency — every `db/queries/*.rs` has
+// a tests block — and because the ON-CONFLICT upsert and the
+// matched/unmatched aggregation are subtle enough to deserve assertions.
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::Path;
+
+    fn fresh_db() -> Db {
+        Db::open(Path::new(":memory:")).expect("open in-memory db")
+    }
+
+    fn seed_library_and_videos(db: &Db, library_id: &str, video_ids: &[&str]) {
+        db.with(|c| {
+            c.execute(
+                "INSERT INTO libraries (id, name, path, media_type, env, video_extensions)
+                 VALUES (?1, 'Test Lib', ?2, 'movies', 'dev', '[]')",
+                params![library_id, format!("/{library_id}")],
+            )?;
+            for vid in video_ids {
+                c.execute(
+                    "INSERT INTO videos
+                     (id, library_id, path, filename, title, duration_seconds,
+                      file_size_bytes, bitrate, scanned_at, content_fingerprint)
+                     VALUES (?1, ?2, ?3, ?4, NULL, 100.0, 1024, 5000,
+                             '2026-01-01T00:00:00.000Z', '1024:abc')",
+                    params![
+                        vid,
+                        library_id,
+                        format!("/v/{vid}.mkv"),
+                        format!("{vid}.mkv"),
+                    ],
+                )?;
+            }
+            Ok(())
+        })
+        .expect("seed library + videos");
+    }
+
+    fn metadata(video_id: &str, imdb_id: &str, title: &str) -> VideoMetadataRow {
+        VideoMetadataRow {
+            video_id: video_id.to_string(),
+            imdb_id: imdb_id.to_string(),
+            title: title.to_string(),
+            year: Some(2024),
+            genre: Some("Action".to_string()),
+            director: Some("Someone".to_string()),
+            cast_list: Some(r#"["A","B"]"#.to_string()),
+            rating: Some(7.5),
+            plot: Some("A plot.".to_string()),
+            poster_url: Some("https://example.com/p.jpg".to_string()),
+            matched_at: "2026-01-01T00:00:00.000Z".to_string(),
+        }
+    }
+
+    #[test]
+    fn get_metadata_by_video_id_returns_none_when_unmatched() {
+        let db = fresh_db();
+        seed_library_and_videos(&db, "lib1", &["v1"]);
+        assert!(get_metadata_by_video_id(&db, "v1")
+            .expect("query")
+            .is_none());
+    }
+
+    #[test]
+    fn upsert_video_metadata_round_trips_all_fields() {
+        let db = fresh_db();
+        seed_library_and_videos(&db, "lib1", &["v1"]);
+        upsert_video_metadata(&db, &metadata("v1", "tt0001", "Movie One")).expect("upsert");
+
+        let row = get_metadata_by_video_id(&db, "v1")
+            .expect("query")
+            .expect("metadata exists");
+        assert_eq!(row.imdb_id, "tt0001");
+        assert_eq!(row.title, "Movie One");
+        assert_eq!(row.year, Some(2024));
+        assert_eq!(row.rating, Some(7.5));
+        assert_eq!(row.cast_list.as_deref(), Some(r#"["A","B"]"#));
+    }
+
+    #[test]
+    fn upsert_video_metadata_on_conflict_replaces_fields() {
+        let db = fresh_db();
+        seed_library_and_videos(&db, "lib1", &["v1"]);
+        upsert_video_metadata(&db, &metadata("v1", "tt0001", "Original")).expect("first");
+        let mut updated = metadata("v1", "tt0002", "Updated");
+        updated.year = Some(2025);
+        upsert_video_metadata(&db, &updated).expect("second");
+
+        let row = get_metadata_by_video_id(&db, "v1")
+            .expect("query")
+            .expect("exists");
+        assert_eq!(row.imdb_id, "tt0002");
+        assert_eq!(row.title, "Updated");
+        assert_eq!(row.year, Some(2025));
+    }
+
+    #[test]
+    fn has_video_metadata_reflects_presence() {
+        let db = fresh_db();
+        seed_library_and_videos(&db, "lib1", &["v1"]);
+        assert!(!has_video_metadata(&db, "v1").expect("absent"));
+        upsert_video_metadata(&db, &metadata("v1", "tt0001", "M")).expect("upsert");
+        assert!(has_video_metadata(&db, "v1").expect("present"));
+    }
+
+    #[test]
+    fn delete_video_metadata_removes_the_row() {
+        let db = fresh_db();
+        seed_library_and_videos(&db, "lib1", &["v1"]);
+        upsert_video_metadata(&db, &metadata("v1", "tt0001", "M")).expect("upsert");
+        delete_video_metadata(&db, "v1").expect("delete");
+        assert!(!has_video_metadata(&db, "v1").expect("absent"));
+    }
+
+    #[test]
+    fn count_matched_by_library_partitions_videos() {
+        let db = fresh_db();
+        seed_library_and_videos(&db, "lib1", &["v1", "v2", "v3"]);
+        upsert_video_metadata(&db, &metadata("v1", "tt0001", "M1")).expect("m1");
+        upsert_video_metadata(&db, &metadata("v2", "tt0002", "M2")).expect("m2");
+        // v3 stays unmatched
+        let (matched, unmatched) = count_matched_by_library(&db, "lib1").expect("count");
+        assert_eq!(matched, 2);
+        assert_eq!(unmatched, 1);
+    }
+
+    #[test]
+    fn count_matched_by_library_returns_zero_for_empty_library() {
+        let db = fresh_db();
+        seed_library_and_videos(&db, "lib1", &[]);
+        let (matched, unmatched) = count_matched_by_library(&db, "lib1").expect("count");
+        assert_eq!(matched, 0);
+        assert_eq!(unmatched, 0);
+    }
+
+    #[test]
+    fn count_matched_by_library_only_sees_videos_in_that_library() {
+        let db = fresh_db();
+        seed_library_and_videos(&db, "lib1", &["v1"]);
+        seed_library_and_videos(&db, "lib2", &["v2"]);
+        upsert_video_metadata(&db, &metadata("v1", "tt0001", "M1")).expect("m1");
+        upsert_video_metadata(&db, &metadata("v2", "tt0002", "M2")).expect("m2");
+        let (m1_matched, m1_unmatched) = count_matched_by_library(&db, "lib1").expect("c1");
+        assert_eq!(m1_matched, 1);
+        assert_eq!(m1_unmatched, 0);
+        let (m2_matched, m2_unmatched) = count_matched_by_library(&db, "lib2").expect("c2");
+        assert_eq!(m2_matched, 1);
+        assert_eq!(m2_unmatched, 0);
+    }
+}
