@@ -13,7 +13,12 @@ High-resolution web streaming with a full resolution ladder (240p → 4K). The s
 ## Prerequisites
 
 - [Bun](https://bun.sh) v1.1+
-- [Rust](https://www.rust-lang.org/tools/install) stable (1.75+) via `rustup` — required for the Rust GraphQL server. `bun run dev` invokes `cargo run` and prepends `~/.cargo/bin` to PATH automatically.
+- [Rust](https://www.rust-lang.org/tools/install) stable (1.75+) via `rustup` — required for the Rust GraphQL server. The `server-rust` workspace's dev script prepends `~/.cargo/bin` to PATH automatically, so once rustup is installed `bun run dev` finds `cargo` even in non-interactive shells.
+- [`mprocs`](https://github.com/pvolok/mprocs) — TUI dev orchestrator. One-time install (~2 min, cached after):
+  ```bash
+  cargo install --locked mprocs
+  ```
+  `bun run dev` exits 127 with the install hint above if `mprocs` isn't on PATH. A fallback `bun run dev:plain` exists for headless contexts where you don't want the TUI.
 - `ffmpeg` accessible via `@ffmpeg-installer/ffmpeg` (installed automatically as a dependency — no system ffmpeg required)
 - [Docker](https://docs.docker.com/get-docker/) (required for Seq log management — optional for basic development)
 
@@ -63,13 +68,13 @@ cd ..
 
 ## Running in Development
 
-Start the Bun server, the Rust server, and the client in parallel:
+Start the Bun server, the Rust server, and the client in parallel via the `mprocs` TUI:
 
 ```bash
 bun run dev
 ```
 
-This launches three workspace processes:
+This opens a terminal UI with one pane per workspace:
 
 | Workspace | Port | Purpose |
 |---|---|---|
@@ -77,7 +82,28 @@ This launches three workspace processes:
 | `server-rust` (Rust) | `3002` | Step 1 cutover GraphQL — opt-in via `useRustGraphQL` flag |
 | `client` (Rsbuild) | `5173` | Webview; proxies `/graphql` and `/stream` to Bun |
 
-Or start them individually:
+Each pane has independent scrollback so you can debug one process without losing another's output. Keybindings:
+
+| Key | Action |
+|---|---|
+| `↑` / `↓` | Switch between panes |
+| `r` | Restart the focused process |
+| `x` | Stop the focused process |
+| `s` | Start the focused process (if stopped) |
+| `q` | Quit — gracefully stops everything |
+| `?` | In-app help |
+
+Open [http://localhost:5173](http://localhost:5173). The Bun server scans your configured media libraries on startup; you should see your videos within a few seconds. Large libraries with many files take longer to ffprobe.
+
+### Fallback / individual processes
+
+If you don't want the TUI (headless terminal, log capture, CI-style runs), use the plain interleaved variant:
+
+```bash
+bun run dev:plain   # bun run --filter '*' dev — colored prefixes, no TUI
+```
+
+Or start workspaces individually in separate terminals:
 
 ```bash
 # Terminal 1 — Bun server on :3001
@@ -89,10 +115,6 @@ cd server-rust && cargo run
 # Terminal 3 — client on :5173
 cd client && bun run dev
 ```
-
-Open [http://localhost:5173](http://localhost:5173).
-
-The Bun server scans your configured media libraries on startup. You should see your videos in the library view within a few seconds. Large libraries with many files will take longer to ffprobe.
 
 ### Toggling the Rust GraphQL server
 
@@ -132,6 +154,7 @@ xstream/
 ├── docs/                  # architecture documentation
 │   └── migrations/rust-rewrite/  # the Rust port playbook + layer references
 ├── Cargo.toml             # Rust workspace root
+├── mprocs.yaml            # dev orchestrator config — one process per workspace
 └── tmp/                   # generated at runtime (gitignored)
     ├── xstream.db            # SQLite database (shared between Bun and Rust)
     └── segments/          # ffmpeg segment cache
