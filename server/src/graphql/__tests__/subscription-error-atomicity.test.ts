@@ -17,7 +17,9 @@
  * subscribeToJob → presentJob) so the test catches both an out-of-order
  * notify AND a presenter that drops `errorCode` from the wire shape.
  */
-import { resolve } from "node:path";
+import { mkdirSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 
@@ -30,14 +32,23 @@ const { killAllJobs } = await import("../../services/ffmpegPool.js");
 const { subscribeToJob } = await import("../../services/jobStore.js");
 const { presentJob } = await import("../presenters.js");
 
-const FIXTURES_DIR = resolve(import.meta.dir, "../../test/fixtures");
-const GARBAGE_PATH = resolve(FIXTURES_DIR, "garbage.bin");
+// Per-test fixture path so we don't collide on `videos.path UNIQUE` with any
+// other test that points at server/src/test/fixtures/garbage.bin. We write
+// 16 bytes of non-video data — same flavor of input that makes ffprobe error.
+const PER_TEST_GARBAGE_DIR = join(tmpdir(), `xstream-atomicity-${process.pid}`);
+const PER_TEST_GARBAGE_PATH = join(PER_TEST_GARBAGE_DIR, "garbage.bin");
 
 const LIBRARY_ID = "atomicity-lib";
 const VIDEO_ID = "atomicity-video";
 const FINGERPRINT = "16:atomicity-fixture";
 
 beforeAll(async () => {
+  mkdirSync(PER_TEST_GARBAGE_DIR, { recursive: true });
+  writeFileSync(
+    PER_TEST_GARBAGE_PATH,
+    new Uint8Array([0, 0, 0, 0, 110, 111, 116, 32, 118, 105, 100, 101, 111, 0, 0, 255])
+  );
+
   upsertLibrary({
     id: LIBRARY_ID,
     name: "Atomicity Lib",
@@ -49,7 +60,7 @@ beforeAll(async () => {
   upsertVideo({
     id: VIDEO_ID,
     library_id: LIBRARY_ID,
-    path: GARBAGE_PATH,
+    path: PER_TEST_GARBAGE_PATH,
     filename: "garbage.bin",
     title: "Atomicity Test",
     duration_seconds: 0,
