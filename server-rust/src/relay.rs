@@ -67,17 +67,97 @@ pub enum CursorError {
     BadOffset(String),
 }
 
+// ── Tests ────────────────────────────────────────────────────────────────────
+//
+// Mirrors `server/src/graphql/__tests__/relay.test.ts`. Every assertion in the
+// Bun test file has a Rust counterpart below — the two implementations must
+// agree byte-for-byte on encode/decode or the Relay client fragments break
+// across the cutover. New behaviour added here must keep that parity.
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
+    // toGlobalId — encodes type and id as base64
+
     #[test]
-    fn global_id_roundtrip() {
-        let g = to_global_id("Library", "abc123");
-        let (t, id) = from_global_id(&g).expect("roundtripped global id parses");
-        assert_eq!(t, "Library");
+    fn encodes_type_and_id_as_base64() {
+        let id = to_global_id("Video", "abc123");
+        assert_eq!(id, STANDARD.encode("Video:abc123"));
+    }
+
+    #[test]
+    fn works_with_numeric_string_ids() {
+        // Bun's signature accepts `string | number`; in Rust we always take
+        // a string slice. The test checks the same wire format for digit
+        // sequences ("42" → encoded "Library:42").
+        let id = to_global_id("Library", "42");
+        assert_eq!(id, STANDARD.encode("Library:42"));
+    }
+
+    // fromGlobalId — decodes type and id
+
+    #[test]
+    fn decodes_type_and_id() {
+        let encoded = STANDARD.encode("Video:abc123");
+        let (t, id) = from_global_id(&encoded).expect("decodes Video:abc123");
+        assert_eq!(t, "Video");
         assert_eq!(id, "abc123");
     }
+
+    #[test]
+    fn handles_ids_that_contain_colons() {
+        // The id itself has colons — only the FIRST colon is the separator.
+        let encoded = STANDARD.encode("TranscodeJob:a:b:c");
+        let (t, id) = from_global_id(&encoded).expect("decodes despite embedded colons");
+        assert_eq!(t, "TranscodeJob");
+        assert_eq!(id, "a:b:c");
+    }
+
+    #[test]
+    fn round_trips_to_global_id_then_from_global_id() {
+        let g = to_global_id("Video", "deadbeef");
+        let (t, id) = from_global_id(&g).expect("roundtripped global id parses");
+        assert_eq!(t, "Video");
+        assert_eq!(id, "deadbeef");
+    }
+
+    // Negative paths — these were not in the Bun test, but they verify the
+    // unhappy paths the Bun version's TS types described implicitly.
+
+    #[test]
+    fn from_global_id_rejects_non_base64() {
+        assert!(matches!(
+            from_global_id("not base64!"),
+            Err(GlobalIdError::NotBase64(_))
+        ));
+    }
+
+    #[test]
+    fn from_global_id_rejects_missing_separator() {
+        let no_colon = STANDARD.encode("noseparator");
+        assert!(matches!(
+            from_global_id(&no_colon),
+            Err(GlobalIdError::NoSeparator(_))
+        ));
+    }
+
+    #[test]
+    fn from_global_id_rejects_empty_type_or_id() {
+        let empty_type = STANDARD.encode(":id");
+        assert!(matches!(
+            from_global_id(&empty_type),
+            Err(GlobalIdError::EmptyPart(_))
+        ));
+        let empty_id = STANDARD.encode("Type:");
+        assert!(matches!(
+            from_global_id(&empty_id),
+            Err(GlobalIdError::EmptyPart(_))
+        ));
+    }
+
+    // Cursor — no Bun counterpart (pagination cursors live in presenters.ts
+    // and aren't covered there); add the symmetric tests anyway.
 
     #[test]
     fn cursor_roundtrip() {
@@ -92,24 +172,18 @@ mod tests {
     }
 
     #[test]
-    fn from_global_id_rejects_garbage() {
-        // Non-base64 input
-        assert!(from_global_id("not base64!").is_err());
-        // Base64 of a string with no separator
-        let no_colon = STANDARD.encode("noseparator");
-        assert!(from_global_id(&no_colon).is_err());
-        // Empty type
-        let empty_type = STANDARD.encode(":id");
-        assert!(from_global_id(&empty_type).is_err());
-        // Empty id
-        let empty_id = STANDARD.encode("Type:");
-        assert!(from_global_id(&empty_id).is_err());
-    }
-
-    #[test]
     fn decode_cursor_rejects_garbage() {
-        assert!(decode_cursor("not base64!").is_err());
-        assert!(decode_cursor(&STANDARD.encode("no-prefix")).is_err());
-        assert!(decode_cursor(&STANDARD.encode("offset:not-a-number")).is_err());
+        assert!(matches!(
+            decode_cursor("not base64!"),
+            Err(CursorError::NotBase64(_))
+        ));
+        assert!(matches!(
+            decode_cursor(&STANDARD.encode("no-prefix")),
+            Err(CursorError::BadPrefix(_))
+        ));
+        assert!(matches!(
+            decode_cursor(&STANDARD.encode("offset:not-a-number")),
+            Err(CursorError::BadOffset(_))
+        ));
     }
 }

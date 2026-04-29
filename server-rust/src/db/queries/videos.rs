@@ -206,3 +206,224 @@ pub fn get_streams_by_video_id(db: &Db, video_id: &str) -> DbResult<Vec<VideoStr
         Ok(collected?)
     })
 }
+
+// ── Tests ────────────────────────────────────────────────────────────────────
+//
+// Mirrors the read-only subset of `server/src/db/queries/__tests__/videos.test.ts`.
+// Bun's tests cover writers (`upsertVideo`, `replaceVideoStreams`); the Rust
+// port for Step 1 only needs reads (writes land with the scanner in Step 2),
+// so write tests are intentionally skipped — reinstate them when the
+// matching write functions are added.
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::Path;
+
+    fn fresh_db() -> Db {
+        Db::open(Path::new(":memory:")).expect("open in-memory db")
+    }
+
+    fn seed_library(db: &Db, library_id: &str) {
+        db.with(|c| {
+            c.execute(
+                "INSERT INTO libraries (id, name, path, media_type, env, video_extensions)
+                 VALUES (?1, ?2, ?3, ?4, ?5, '[]')",
+                params![
+                    library_id,
+                    "Test Lib",
+                    format!("/{library_id}"),
+                    "movies",
+                    "dev"
+                ],
+            )?;
+            Ok(())
+        })
+        .expect("seed library");
+    }
+
+    fn seed_video(db: &Db, library_id: &str, video_id: &str, title: Option<&str>) {
+        db.with(|c| {
+            c.execute(
+                "INSERT INTO videos
+                 (id, library_id, path, filename, title, duration_seconds,
+                  file_size_bytes, bitrate, scanned_at, content_fingerprint)
+                 VALUES (?1, ?2, ?3, ?4, ?5, 7200, 4000000000, 4000000,
+                         '2026-01-01T00:00:00.000Z', '4000000000:abc')",
+                params![
+                    video_id,
+                    library_id,
+                    format!("/v/{video_id}.mkv"),
+                    format!("{video_id}.mkv"),
+                    title,
+                ],
+            )?;
+            Ok(())
+        })
+        .expect("seed video");
+    }
+
+    fn seed_streams(db: &Db, video_id: &str) {
+        db.with(|c| {
+            c.execute(
+                "INSERT INTO video_streams
+                 (video_id, stream_type, codec, width, height, fps, channels, sample_rate)
+                 VALUES (?1, 'video', 'hevc', 3840, 2160, 24.0, NULL, NULL),
+                        (?1, 'audio', 'aac',  NULL, NULL, NULL, 2,    48000)",
+                params![video_id],
+            )?;
+            Ok(())
+        })
+        .expect("seed streams");
+    }
+
+    #[test]
+    fn get_video_by_id_returns_none_for_missing_video() {
+        let db = fresh_db();
+        assert!(get_video_by_id(&db, "no-such-video")
+            .expect("query")
+            .is_none());
+    }
+
+    #[test]
+    fn get_video_by_id_round_trips_all_fields() {
+        let db = fresh_db();
+        seed_library(&db, "lib1");
+        seed_video(&db, "lib1", "vid-full", Some("Full Test"));
+        let row = get_video_by_id(&db, "vid-full")
+            .expect("query")
+            .expect("video exists");
+        assert_eq!(row.title.as_deref(), Some("Full Test"));
+        assert_eq!(row.duration_seconds, 7200.0);
+        assert_eq!(row.file_size_bytes, 4_000_000_000);
+        assert_eq!(row.bitrate, 4_000_000);
+        assert_eq!(row.library_id, "lib1");
+    }
+
+    #[test]
+    fn get_video_by_id_handles_null_title() {
+        let db = fresh_db();
+        seed_library(&db, "lib1");
+        seed_video(&db, "lib1", "vid-null", None);
+        let row = get_video_by_id(&db, "vid-null")
+            .expect("query")
+            .expect("video exists");
+        assert!(row.title.is_none());
+    }
+
+    #[test]
+    fn count_videos_by_library_returns_total() {
+        let db = fresh_db();
+        seed_library(&db, "libtest");
+        for i in 1..=6 {
+            seed_video(
+                &db,
+                "libtest",
+                &format!("vid{i}"),
+                Some(&format!("Movie {i}")),
+            );
+        }
+        let n = count_videos_by_library(&db, "libtest", VideoFilter::default()).expect("count");
+        assert_eq!(n, 6);
+    }
+
+    #[test]
+    fn get_videos_by_library_returns_at_most_limit_rows() {
+        let db = fresh_db();
+        seed_library(&db, "libtest");
+        for i in 1..=6 {
+            seed_video(
+                &db,
+                "libtest",
+                &format!("vid{i}"),
+                Some(&format!("Movie {i}")),
+            );
+        }
+        let rows =
+            get_videos_by_library(&db, "libtest", 3, 0, VideoFilter::default()).expect("query");
+        assert_eq!(rows.len(), 3);
+    }
+
+    #[test]
+    fn get_videos_by_library_offset_skips_first_n_rows() {
+        let db = fresh_db();
+        seed_library(&db, "libtest");
+        for i in 1..=6 {
+            seed_video(
+                &db,
+                "libtest",
+                &format!("vid{i}"),
+                Some(&format!("Movie {i}")),
+            );
+        }
+        let page1 =
+            get_videos_by_library(&db, "libtest", 3, 0, VideoFilter::default()).expect("page1");
+        let page2 =
+            get_videos_by_library(&db, "libtest", 3, 3, VideoFilter::default()).expect("page2");
+        let ids1: Vec<&str> = page1.iter().map(|r| r.id.as_str()).collect();
+        let ids2: Vec<&str> = page2.iter().map(|r| r.id.as_str()).collect();
+        for id in &ids2 {
+            assert!(
+                !ids1.contains(id),
+                "page2 id {id} leaked into page1 — offset broken"
+            );
+        }
+    }
+
+    #[test]
+    fn get_videos_by_library_returns_empty_for_unknown_library() {
+        let db = fresh_db();
+        let rows = get_videos_by_library(&db, "nonexistent", 10, 0, VideoFilter::default())
+            .expect("query");
+        assert!(rows.is_empty());
+    }
+
+    #[test]
+    fn count_videos_by_library_returns_zero_for_unknown_library() {
+        let db = fresh_db();
+        let n = count_videos_by_library(&db, "nonexistent", VideoFilter::default()).expect("count");
+        assert_eq!(n, 0);
+    }
+
+    #[test]
+    fn sum_file_size_by_library_aggregates_across_videos() {
+        let db = fresh_db();
+        seed_library(&db, "libtest");
+        seed_video(&db, "libtest", "v1", Some("One"));
+        seed_video(&db, "libtest", "v2", Some("Two"));
+        // Each seeded video has file_size_bytes = 4_000_000_000
+        let total = sum_file_size_by_library(&db, "libtest").expect("sum");
+        assert_eq!(total, 8_000_000_000);
+    }
+
+    #[test]
+    fn get_streams_by_video_id_returns_video_and_audio_rows() {
+        let db = fresh_db();
+        seed_library(&db, "lib1");
+        seed_video(&db, "lib1", "vid1", Some("Test"));
+        seed_streams(&db, "vid1");
+        let streams = get_streams_by_video_id(&db, "vid1").expect("query");
+        assert_eq!(streams.len(), 2);
+        let video = streams
+            .iter()
+            .find(|s| s.stream_type == "video")
+            .expect("video stream");
+        let audio = streams
+            .iter()
+            .find(|s| s.stream_type == "audio")
+            .expect("audio stream");
+        assert_eq!(video.codec, "hevc");
+        assert_eq!(video.width, Some(3840));
+        assert_eq!(audio.codec, "aac");
+        assert_eq!(audio.channels, Some(2));
+    }
+
+    #[test]
+    fn get_streams_by_video_id_returns_empty_when_no_streams() {
+        let db = fresh_db();
+        seed_library(&db, "lib1");
+        seed_video(&db, "lib1", "vid-no-streams", Some("Streamless"));
+        let streams = get_streams_by_video_id(&db, "vid-no-streams").expect("query");
+        assert!(streams.is_empty());
+    }
+}
