@@ -11,4 +11,5 @@
 pub mod cache_index;
 pub mod ffmpeg_file;
 pub mod ffmpeg_path;
+pub mod hw_accel;
 pub mod job_restore;
