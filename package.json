@@ -5,7 +5,8 @@
   "workspaces": [
     "server",
     "client",
-    "server-rust"
+    "server-rust",
+    "scripts"
   ],
   "scripts": {
     "dev": "bun run --filter '*' dev",

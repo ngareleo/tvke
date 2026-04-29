@@ -60,6 +60,11 @@ jobs:
       - name: Install root bun deps (graphql for the SDL-parity script)
         run: bun install
 
+      - name: Lint scripts/ TS files
+        # `scripts/` is its own Bun workspace with `tsc --noEmit` as its lint.
+        # Type-checks check-sdl-parity.ts, setup-ffmpeg.ts, test-chunking.ts.
+        run: bun run --filter scripts lint
+
       - name: Format check
         run: cargo fmt --all -- --check
 
