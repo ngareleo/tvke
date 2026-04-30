@@ -1,8 +1,8 @@
-//! GraphQL object types — structural mirror of the Bun `schema.ts` typeDefs.
+//! GraphQL object types.
 //!
-//! Field nullability, arg defaults, and enum-variant names must match
-//! byte-equivalent or the SDL parity check fails and the Relay client's
-//! generated artifacts won't deserialise.
+//! Field nullability, arg defaults, and enum-variant names are part of the
+//! published wire contract — the SDL-parity check fails on any drift and
+//! the Relay client's generated artifacts won't deserialise.
 //!
 //! One file per domain to keep individual files small and the SDL-parity
 //! diff easy to read when something drifts.

@@ -126,10 +126,9 @@ pub fn delete_video_metadata(db: &Db, video_id: &str) -> DbResult<()> {
 
 // ── Tests ────────────────────────────────────────────────────────────────────
 //
-// No Bun counterpart (`videoMetadata.test.ts` doesn't exist on the source
-// side). Added here for pattern consistency — every `db/queries/*.rs` has
-// a tests block — and because the ON-CONFLICT upsert and the
-// matched/unmatched aggregation are subtle enough to deserve assertions.
+// The ON-CONFLICT upsert and the matched/unmatched aggregation are subtle
+// enough to deserve explicit assertions — a wrong-direction merge or a
+// regression in the GROUP BY would silently mis-count library-scan stats.
 
 #[cfg(test)]
 mod tests {

@@ -1,12 +1,12 @@
 //! Content-addressed segment cache lookup.
 //!
-//! In Bun, segment cache hits happen implicitly: the chunker computes a
-//! `jobId` as sha1 over `v3|contentKey|resolution|start|end`, and the same
-//! input yields the same id, so an existing `transcode_jobs` row with that
-//! id is a cache hit. The Rust port keeps the same primary-key shape on
-//! disk but exposes the lookup as a structural tuple — `SegmentCacheKey` —
-//! so that future sharing peers (which may compute a different internal
-//! id) can resolve the same cached encode.
+//! Cache hits are resolved structurally: a `SegmentCacheKey` tuple of
+//! `(video_id, resolution, start_s, end_s)` indexes the `transcode_jobs`
+//! table. The chunker also computes a sha1-derived `id` for the in-memory
+//! job store, but that hash is an implementation detail — the cache
+//! primitive is the structural tuple. This separation keeps a future
+//! sharing peer (which may compute a different internal id) able to
+//! resolve the same cached encode.
 //!
 //! Forward-constraint reference: `docs/architecture/Sharing/00-Peer-Streaming.md`.
 //! Cache-key tuple matches `Plan/02-Streaming.md` §"Sharing forward-constraints".
@@ -17,8 +17,8 @@ use crate::error::DbResult;
 use rusqlite::{params, OptionalExtension, Row};
 
 /// Structural cache key. `start_s` and `end_s` are `None` for full-video
-/// transcodes (matching the Bun convention of leaving the columns NULL when
-/// the range is unbounded).
+/// transcodes — the matching DB columns are stored NULL when the range is
+/// unbounded.
 #[derive(Clone, Debug, PartialEq)]
 pub struct SegmentCacheKey<'a> {
     pub video_id: &'a str,
@@ -75,11 +75,12 @@ fn from_job_row(r: &Row<'_>) -> rusqlite::Result<TranscodeJobRow> {
 
 // ── Tests ────────────────────────────────────────────────────────────────────
 //
-// These cover the structural lookup contract: the same content range produces
+// Cover the structural lookup contract: the same content range produces
 // the same hit, a different range or resolution misses, and `status` is
-// honored as a filter. They subsume the Bun chunker's `cache-stability` test —
-// "two video rows sharing one fingerprint resolve to the same jobId" — by
-// asserting the structural tuple is the cache primitive, not the hash.
+// honored as a filter. The "two video rows sharing one fingerprint resolve
+// to the same cache hit" assertion proves the structural tuple is the
+// cache primitive — a future sharing peer with a different sha1
+// implementation must still resolve the same cached encode.
 
 #[cfg(test)]
 mod tests {

@@ -8,10 +8,11 @@
 //! NOT the default: 4K libx264 stalls continuously on consumer CPUs and would
 //! mask real driver / permission regressions in production.
 //!
-//! Today only the VAAPI branch is fully implemented. macOS (VideoToolbox) and
-//! Windows (QSV / NVENC / AMF) variants are tracked as `Plan/Open-Questions.md
-//! §1` follow-ups; this module returns `HwAccelError::PlatformNotImplemented`
-//! for those hosts, matching Bun's TODO surface.
+//! Today only the VAAPI branch is fully implemented. macOS (VideoToolbox)
+//! and Windows (QSV / NVENC / AMF) variants are tracked as
+//! `Plan/Open-Questions.md §1` follow-ups; this module returns
+//! `HwAccelError::PlatformNotImplemented` for those hosts so the failure
+//! surface is explicit rather than silent.
 
 use std::path::Path;
 use std::time::Duration;
@@ -32,7 +33,8 @@ pub enum HwAccelMode {
 
 impl HwAccelMode {
     /// `HW_ACCEL=off` → `Off`; anything else (including unset, `auto`,
-    /// garbage) → `Auto`. Mirrors the Bun resolver.
+    /// or any other value) → `Auto`. The default is opt-in HW accel; only
+    /// the explicit `off` opt-out is honored.
     pub fn from_env() -> Self {
         match std::env::var("HW_ACCEL").as_deref() {
             Ok("off") => Self::Off,
@@ -237,8 +239,8 @@ mod tests {
         unsafe { std::env::set_var("HW_ACCEL", "auto") };
         assert_eq!(HwAccelMode::from_env(), HwAccelMode::Auto);
         unsafe { std::env::set_var("HW_ACCEL", "garbage") };
-        // Anything that isn't literally "off" falls back to Auto, mirroring
-        // Bun's `process.env.HW_ACCEL === "off" ? "off" : "auto"`.
+        // Anything that isn't literally "off" falls back to Auto — only
+        // the explicit opt-out is honored.
         assert_eq!(HwAccelMode::from_env(), HwAccelMode::Auto);
         match prior {
             Some(v) => unsafe { std::env::set_var("HW_ACCEL", v) },

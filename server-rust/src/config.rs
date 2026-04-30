@@ -15,9 +15,11 @@ use crate::services::ffmpeg_path::FfmpegPaths;
 use crate::services::ffmpeg_pool::FfmpegPool;
 use crate::services::job_store::JobStore;
 
-/// Per-source VAAPI capability state, learned from prior failures. Mirrors
-/// `vaapiVideoState` in Bun's `chunker.ts:43`. Lives on `AppContext` so the
-/// chunker can read/write across cascade tiers without a module global.
+/// Per-source VAAPI capability state, learned from prior failures. Lives on
+/// `AppContext` so the chunker can read/write across cascade tiers without
+/// a module global. Each entry pins one source's failure mode (the
+/// hwdownload/sw-pad fallback is required, or HW is unsafe and we go
+/// straight to libx264) so a re-encode doesn't repeat a known-failing path.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum VaapiVideoState {
     NeedsSwPad,
@@ -108,10 +110,10 @@ pub struct AppConfig {
 }
 
 impl AppConfig {
-    /// Default config for tests + dev — Bun's `dev` config writes to
-    /// `tmp/segments` / `tmp/xstream.db`. The Rust port writes to
-    /// `tmp/segments-rust/` / `tmp/xstream-rust.db` (Plan/02-Streaming.md
-    /// §"Decisions to lock" #2).
+    /// Default config for tests + dev. Per-process isolation during the
+    /// cutover (`Plan/02-Streaming.md` §"Decisions to lock" #2): segment
+    /// cache at `tmp/segments-rust/`, SQLite DB at `tmp/xstream-rust.db`.
+    /// Both paths collapse onto the production app-data dir at Step 3.
     pub fn dev_defaults(project_root: &std::path::Path) -> Self {
         Self {
             segment_dir: project_root.join("tmp").join("segments-rust"),
@@ -172,8 +174,10 @@ impl AppContext {
     }
 }
 
-/// Encode parameters for a single resolution tier. Mirrors
-/// `ResolutionProfile` in Bun.
+/// Encode parameters for a single resolution tier — width/height for the
+/// scaled-down output, target + max bitrates for the encoder, audio bitrate,
+/// segment duration, and the H.264 level the encoder advertises. The full
+/// table (`RESOLUTION_PROFILES`) lives in `profiles.rs`-equivalent below.
 #[derive(Clone, Debug)]
 pub struct ResolutionProfile {
     pub label: Resolution,
@@ -295,7 +299,7 @@ mod tests {
     }
 
     #[test]
-    fn transcode_config_defaults_match_bun() {
+    fn transcode_config_uses_documented_defaults() {
         let t = TranscodeConfig::default();
         assert_eq!(t.max_concurrent_jobs, 3);
         assert_eq!(t.force_kill_timeout_ms, 2_000);
@@ -307,7 +311,7 @@ mod tests {
     }
 
     #[test]
-    fn stream_config_idle_timeout_default_matches_bun() {
+    fn stream_config_uses_documented_idle_timeout() {
         let s = StreamConfig::default();
         assert_eq!(s.connection_idle_timeout_ms, 180_000);
     }

@@ -1,6 +1,6 @@
-//! GraphQL schema — async-graphql replacement for the Bun `graphql-yoga`
-//! surface in `server/src/graphql/`. SDL parity with `schema.ts` is the
-//! Step 1 acceptance gate (see `scripts/check-sdl-parity.ts`).
+//! GraphQL schema — async-graphql. The SDL is the wire contract: every type,
+//! field name, enum value, and nullability is locked. `scripts/check-sdl-parity.ts`
+//! enforces this against the published schema.
 
 pub mod error_logger;
 pub mod mutation;

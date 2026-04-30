@@ -1,21 +1,23 @@
 //! Transcode chunker — job registration, inflight dedup, three-tier VAAPI
-//! cascade as a loop, segment watcher, silent-failure event. Mirrors
-//! `server/src/services/chunker.ts`.
+//! cascade as a loop, segment watcher, silent-failure event.
 //!
 //! The chunker is the only module that owns the lifecycle of a transcode
 //! job. The stream route reads the resulting `ActiveJob` (and its segments
 //! on disk) but never spawns ffmpeg directly; the GraphQL `start_transcode`
 //! resolver calls into this module.
 //!
-//! Differences from Bun:
-//! - The cascade is a plain loop, not a recursive `runFfmpeg` call (per
-//!   `01-Streaming-Layer.md §3.4`). Tier transitions happen inside one
-//!   function; the surrounding scope owns the per-source state cache.
-//! - Per-progress span events are not emitted in v1 — fluent-ffmpeg's
-//!   stderr-line parser doesn't carry over to a direct `tokio::process`
-//!   spawn. Added in a follow-up; the silent-failure event still fires.
-//! - The segment watcher uses `notify::RecommendedWatcher`; per-job
-//!   isolation is preserved (one watcher per `segment_dir`).
+//! Design notes:
+//! - The cascade is a plain loop (per `01-Streaming-Layer.md §3.4`). Tier
+//!   transitions happen inside one function; the surrounding scope owns
+//!   the per-source `VaapiVideoState` cache so a re-encode can skip a
+//!   known-failing tier without going through ffmpeg again.
+//! - Per-progress span events (`transcode_progress` periodic ticks) are
+//!   not emitted today — they require an ffmpeg-stderr line parser that
+//!   isn't yet wired. The terminal events (`transcode_started`,
+//!   `transcode_complete`, `transcode_killed`, `transcode_silent_failure`)
+//!   all fire.
+//! - Segment watcher uses `notify::RecommendedWatcher` with per-job
+//!   isolation (one watcher per `segment_dir`).
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -53,10 +55,16 @@ pub enum StartJobResult {
     },
 }
 
-/// Compute the deterministic job ID. Matches Bun's `chunker.ts:81-85`
-/// byte-for-byte (including the `v3|` prefix that invalidates pre-bsf
-/// segments). Two callers asking for byte-identical
-/// `(content_fingerprint, resolution, start, end)` get the same id.
+/// Compute the deterministic job ID. The `v3|` prefix is part of the hash
+/// input — it invalidates segments encoded before `-bsf:v dump_extra=keyframe`
+/// became required (Chromium's chunk demuxer needs in-band SPS/PPS to
+/// reset across fragment seams). Bumping the prefix is the documented
+/// way to force a re-encode after an incompatible pipeline change.
+///
+/// Two callers asking for byte-identical
+/// `(content_fingerprint, resolution, start, end)` get the same id; the
+/// `format_seconds` helper guarantees integer-valued floats serialize
+/// without a trailing `.0` so the hash stays stable.
 pub fn job_id(
     content_fingerprint: &str,
     resolution: Resolution,
@@ -85,10 +93,11 @@ pub fn job_id(
     hex
 }
 
-/// Format a seconds value the same way `String(num)` does in JS for
-/// integer-valued floats — `30` not `30.0`. ffmpeg `-ss` and `-t` round-trip
-/// through Bun's `Number.toString`; preserving that means the v3 hash stays
-/// stable across the port.
+/// Format a seconds value as a stable string — integer-valued floats
+/// emit without the trailing `.0` (`30`, not `30.0`). The output is
+/// part of the deterministic `job_id` hash input AND of the ffmpeg
+/// `-ss` / `-t` argv, so any drift here moves the job id and may also
+/// change ffmpeg's seek behavior.
 fn format_seconds(s: f64) -> String {
     if s.fract() == 0.0 && s.is_finite() {
         format!("{}", s as i64)

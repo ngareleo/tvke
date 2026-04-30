@@ -1,9 +1,10 @@
 //! Relay-style global IDs and pagination cursors.
 //!
-//! Mirrors `server/src/graphql/relay.ts` and `server/src/graphql/presenters.ts`
-//! cursor helpers. Both encodings are base64 — keep byte-identical with the
-//! Bun side or the client's Relay store will treat the same node as a
-//! different record after the cutover and reset its in-memory state.
+//! Both encodings are base64 of a structured payload (`Type:localId` for
+//! global IDs, `offset:N` for cursors). The encoding is part of the wire
+//! contract — every node identity in the client's Relay store is keyed by
+//! this exact byte sequence; any drift makes the client treat the same
+//! record as a new one and resets in-memory state.
 
 use base64::{engine::general_purpose::STANDARD, Engine};
 
@@ -69,10 +70,10 @@ pub enum CursorError {
 
 // ── Tests ────────────────────────────────────────────────────────────────────
 //
-// Mirrors `server/src/graphql/__tests__/relay.test.ts`. Every assertion in the
-// Bun test file has a Rust counterpart below — the two implementations must
-// agree byte-for-byte on encode/decode or the Relay client fragments break
-// across the cutover. New behaviour added here must keep that parity.
+// Encode/decode is part of the wire contract — the client's Relay store
+// keys every record by this exact byte sequence. Tests pin the format
+// against the documented shape (`Type:localId` for global IDs, `offset:N`
+// for cursors) so a regression here surfaces before it reaches the client.
 
 #[cfg(test)]
 mod tests {
@@ -88,9 +89,9 @@ mod tests {
 
     #[test]
     fn works_with_numeric_string_ids() {
-        // Bun's signature accepts `string | number`; in Rust we always take
-        // a string slice. The test checks the same wire format for digit
-        // sequences ("42" → encoded "Library:42").
+        // Numeric local-ids are still strings on the wire — the encoded
+        // form is `Type:digit-sequence`, with no special-cased numeric
+        // path on either the encoder or decoder.
         let id = to_global_id("Library", "42");
         assert_eq!(id, STANDARD.encode("Library:42"));
     }
@@ -122,8 +123,9 @@ mod tests {
         assert_eq!(id, "deadbeef");
     }
 
-    // Negative paths — these were not in the Bun test, but they verify the
-    // unhappy paths the Bun version's TS types described implicitly.
+    // Negative paths — every error variant on `GlobalIdError` is reachable
+    // from a malformed input. Without these, a future refactor could fold
+    // an error variant and the test suite would not notice.
 
     #[test]
     fn from_global_id_rejects_non_base64() {
@@ -156,8 +158,7 @@ mod tests {
         ));
     }
 
-    // Cursor — no Bun counterpart (pagination cursors live in presenters.ts
-    // and aren't covered there); add the symmetric tests anyway.
+    // Cursor — symmetric coverage of encode/decode + every error variant.
 
     #[test]
     fn cursor_roundtrip() {

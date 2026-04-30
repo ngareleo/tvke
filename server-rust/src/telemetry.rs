@@ -1,9 +1,8 @@
 //! Tracing + OpenTelemetry initialisation.
 //!
-//! Mirrors the Bun setup (`server/src/telemetry/`):
-//! - OTLP/HTTP protobuf exporter
+//! - OTLP/HTTP protobuf exporter.
 //! - Endpoint from `OTEL_EXPORTER_OTLP_ENDPOINT`, defaulting to
-//!   `http://localhost:5341/ingest/otlp` (Seq in dev)
+//!   `http://localhost:5341/ingest/otlp` (Seq in dev).
 //! - W3C TraceContext propagator registered globally so the
 //!   `RequestContext` middleware can extract `traceparent` from any peer.
 //!

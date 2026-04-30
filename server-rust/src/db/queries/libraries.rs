@@ -147,12 +147,10 @@ pub fn update_library(
 
 // ── Tests ────────────────────────────────────────────────────────────────────
 //
-// Mirrors `server/src/db/queries/__tests__/libraries.test.ts`. Bun's tests
-// hit `upsertLibrary` (a lower-level helper that takes a pre-built row);
-// the Rust port exposes the higher-level `create_library` instead, so the
-// assertions below target that surface plus the round-trip through
-// `get_library_by_id`. ON-CONFLICT semantics, multi-row coexistence, and
-// missing-row behaviour are all preserved.
+// Cover the `create_library` write surface plus the round-trip through
+// `get_library_by_id`. The assertions exercise ON-CONFLICT (insert-or-update)
+// semantics, multi-row coexistence, and missing-row behaviour — every
+// branch the production callers can hit.
 
 #[cfg(test)]
 mod tests {
@@ -242,7 +240,9 @@ mod tests {
         let db = fresh_db();
         let row = create_library(&db, "Defaults", "/defaults", "movies", &[]).expect("create");
         let exts: Vec<String> = serde_json::from_str(&row.video_extensions).expect("valid json");
-        // Mirrors DEFAULT_VIDEO_EXTENSIONS in the Bun side
+        // Default video extensions cover the common containers the scanner
+        // recognises today — `.mp4` is the canary; the full set is in
+        // `services/library_scanner.rs::DEFAULT_VIDEO_EXTENSIONS`.
         assert!(exts.contains(&".mp4".to_string()));
         assert!(exts.contains(&".mkv".to_string()));
     }

@@ -1,6 +1,7 @@
-//! `KillReason` enum + Option-shape mapper. Matches the Bun string union at
-//! `server/src/services/ffmpegPool.ts:8-15`. Emitted on the `transcode.job`
-//! span as the `kill_reason` attribute and in `transcode_killed` events.
+//! `KillReason` enum + Option-shape mapper. The wire-format strings are
+//! emitted on the `transcode.job` span as the `kill_reason` attribute and
+//! in `transcode_killed` events — every variant must serialize to the
+//! exact string the observability dashboards filter on.
 
 use tracing::warn;
 

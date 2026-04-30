@@ -62,9 +62,9 @@ pub fn get_playback_history(db: &Db, limit: i64) -> DbResult<Vec<PlaybackHistory
 
 // ── Tests ────────────────────────────────────────────────────────────────────
 //
-// No Bun counterpart. Added here for pattern consistency. The DESC-by-started_at
-// ordering and the limit semantic are the load-bearing assertions for the
-// client's "trace history" Settings tab.
+// DESC-by-started_at ordering and the limit semantic are the load-bearing
+// assertions for the client's "trace history" Settings tab. Both are
+// pinned here.
 
 #[cfg(test)]
 mod tests {

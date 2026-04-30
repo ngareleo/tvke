@@ -33,8 +33,8 @@ pub struct LruJobRow {
 }
 
 /// Optional fields supplied alongside a status transition. `None` keeps the
-/// existing column value (mirrors Bun's `COALESCE($field, field)` on
-/// `total_segments` / `completed_segments`).
+/// existing column value via `COALESCE($field, field)` on `total_segments`
+/// / `completed_segments`.
 #[derive(Default)]
 pub struct JobStatusUpdate<'a> {
     pub total_segments: Option<i64>,
@@ -75,7 +75,8 @@ pub fn get_job_by_id(db: &Db, id: &str) -> DbResult<Option<TranscodeJobRow>> {
 }
 
 /// Upsert (`INSERT OR REPLACE`) — overwrites an existing row with the same id.
-/// Matches Bun's `insertJob` which is a true upsert, not a strict insert.
+/// The deterministic content-addressed `id` makes a strict insert hostile:
+/// re-encoding a previously-errored job would conflict.
 pub fn insert_job(db: &Db, row: &TranscodeJobRow) -> DbResult<()> {
     db.with(|c| {
         c.execute(
@@ -195,9 +196,10 @@ pub fn mark_job_evicted(db: &Db, id: &str) -> DbResult<()> {
 
 // ── Tests ────────────────────────────────────────────────────────────────────
 //
-// Mirrors `server/src/db/queries/__tests__/jobs.test.ts`. The Bun tests rely on
-// FK-parent rows pre-seeded by the test harness; the Rust port seeds them
-// inline so each `:memory:` db starts from a known state.
+// Each test seeds the FK-parent rows (libraries → videos) inline so a
+// fresh `:memory:` db starts from a known state. Tests cover writes
+// (insert / upsert / status transitions) AND read-after-write so a
+// constraint regression surfaces immediately.
 
 #[cfg(test)]
 mod tests {
@@ -446,9 +448,9 @@ mod tests {
     fn get_lru_jobs_returns_only_complete_jobs_oldest_first() {
         let db = fresh_db();
         seed_video_with_library(&db);
-        // Three completed jobs in a known temporal order — Bun's test suite
-        // relies on `updated_at` monotonicity, which we control by stepping it
-        // explicitly here.
+        // Three completed jobs in a known temporal order — `updated_at`
+        // monotonicity is the load-bearing assertion (LRU eviction depends
+        // on it), so we step it explicitly here.
         let mut a = job("a-old", "complete");
         a.updated_at = "2026-01-01T00:00:00.000Z".to_string();
         let mut b = job("b-mid", "complete");

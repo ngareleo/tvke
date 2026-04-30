@@ -70,9 +70,9 @@ fn make_cors() -> AppResult<tower_http::cors::CorsLayer> {
     use http::{HeaderName, Method};
     use tower_http::cors::{AllowOrigin, CorsLayer};
 
-    // Dev-mode CORS — mirrors the Bun config (`server/src/routes/graphql.ts`).
-    // Allowing both the Rsbuild dev server origin and the Tauri webview origin
-    // (forward constraint, see `04-Web-Server-Layer.md` §4.1).
+    // Dev-mode CORS — allows both the Rsbuild dev server origin and the
+    // Tauri webview origin (forward constraint for Step 3, see
+    // `04-Web-Server-Layer.md` §4.1).
     let origins = AllowOrigin::list([
         "http://localhost:5173"
             .parse()

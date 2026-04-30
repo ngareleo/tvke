@@ -12,13 +12,11 @@ use tracing_opentelemetry::OpenTelemetrySpanExt;
 
 /// Per-request context threaded through every handler from day one.
 ///
-/// The Bun server's GraphQL context is a single field (`otelCtx`). The Rust
-/// port replaces it with a richer struct so that when peer-sharing ships
-/// (`docs/migrations/rust-rewrite/04-Web-Server-Layer.md` §3.3 / §4.3),
-/// `peer_node_id` and `share_grant` can be populated by an auth middleware
-/// without rewriting every handler signature.
-///
-/// Today both forward fields are always `None` — the *shape* exists.
+/// The struct shape is forward-constrained for peer-sharing
+/// (`docs/migrations/rust-rewrite/04-Web-Server-Layer.md` §3.3 / §4.3):
+/// `peer_node_id` and `share_grant` will be populated by an auth middleware
+/// when sharing ships, without rewriting every handler signature. Today
+/// both forward fields are always `None` — the *shape* exists.
 #[derive(Clone, Debug, Default)]
 pub struct RequestContext {
     pub otel_ctx: OtelContext,
@@ -77,8 +75,8 @@ pub async fn extract_request_context(mut req: Request, next: Next) -> Result<Res
 
     // Record the late-binding fields on the span so OTel exports them, then
     // emit a structured info event inside the span scope so a one-line
-    // access log lands in Seq alongside the trace. Same shape as the Bun
-    // side: method, path, status, duration_ms, trace_id.
+    // access log lands in Seq alongside the trace. Standard shape:
+    // method, path, status, duration_ms, trace_id.
     span.record("http.status", status);
     span.record("duration_ms", duration_ms);
     span.in_scope(|| {
@@ -108,15 +106,12 @@ pub(crate) fn otel_context_from_headers(headers: &HeaderMap) -> OtelContext {
 
 // ── Tests ────────────────────────────────────────────────────────────────────
 //
-// Mirrors `server/src/graphql/__tests__/traceparent.test.ts` at the
-// extraction layer. Bun's version drives yoga's full request path and
-// captures spans through an in-memory exporter; here we verify the
-// load-bearing primitive — `otel_context_from_headers` — directly,
-// because the Rust pipeline that consumes the OtelContext (the
-// `set_parent` call in `extract_request_context`) is a one-line bridge
-// that the Bun test was indirectly verifying. End-to-end TraceId
-// inheritance was independently confirmed by the live Seq query in
-// commit b40b989's e2e session.
+// Verifies the load-bearing primitive `otel_context_from_headers` — the
+// W3C `traceparent` header is parsed into an `OtelContext` whose SpanContext
+// carries the inbound trace_id. The middleware's `span.set_parent(otel_ctx)`
+// call is then a one-line bridge from the parsed context to the request's
+// tracing span. End-to-end TraceId inheritance was independently confirmed
+// by a live Seq query in commit b40b989.
 
 #[cfg(test)]
 mod tests {

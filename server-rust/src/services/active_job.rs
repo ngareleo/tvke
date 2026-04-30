@@ -77,9 +77,10 @@ impl ActiveJob {
         }
     }
 
-    /// Apply a mutation and wake every subscriber. The Bun side calls
-    /// `controller.enqueue(null)` per subscriber; in Rust the
-    /// `Notify::notify_waiters` does the same fan-out.
+    /// Apply a mutation and wake every subscriber. `Notify::notify_waiters`
+    /// fans out a single signal to all `notify.notified()` futures so the
+    /// stream pump tasks can each re-check whether the next segment is
+    /// available — no per-subscriber bookkeeping.
     pub fn with_inner_mut<R>(&self, f: impl FnOnce(&mut ActiveJobInner) -> R) -> R {
         let mut guard = self
             .inner

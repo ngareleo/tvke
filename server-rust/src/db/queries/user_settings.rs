@@ -32,10 +32,9 @@ pub fn set_setting(db: &Db, key: &str, value: &str) -> DbResult<()> {
 
 // ── Tests ────────────────────────────────────────────────────────────────────
 //
-// No Bun counterpart — `userSettings.test.ts` doesn't exist on the source
-// side. Added here for pattern consistency. Critical given that this table
-// backs the client's localStorage-mirrored flag registry: silent ON-CONFLICT
-// breakage would corrupt every flag write.
+// This table backs the client's localStorage-mirrored flag registry, so
+// silent ON-CONFLICT breakage would corrupt every flag write — the tests
+// pin both the round-trip and the upsert-on-conflict semantic explicitly.
 
 #[cfg(test)]
 mod tests {

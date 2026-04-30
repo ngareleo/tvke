@@ -1,12 +1,11 @@
-//! ffprobe wrapper + encode-argv builders. Mirrors
-//! `server/src/services/ffmpegFile.ts`.
+//! ffprobe wrapper + encode-argv builders.
 //!
 //! `FfmpegFile::probe` runs `ffprobe -of json` and caches the parsed
-//! metadata. The argv-builder methods turn that metadata + a
+//! metadata. The argv-builder functions turn that metadata + a
 //! `ResolutionProfile` + a `HwAccelConfig` into the exact `Vec<String>` the
-//! chunker passes to `tokio::process::Command`. The Rust port replaces
-//! Bun's `fluent-ffmpeg` chain (which mutated a command builder) with pure
-//! value-producing functions — easier to test, no module-global state.
+//! chunker passes to `tokio::process::Command`. Pure value-producing
+//! functions — no module-global state, every input is explicit, every
+//! branch is tested.
 
 use std::path::{Path, PathBuf};
 
@@ -18,9 +17,8 @@ use crate::config::{bitrate_kbps, ResolutionProfile};
 
 // ── HwAccel config ──────────────────────────────────────────────────────────
 
-/// Tagged-union mirroring `HwAccelConfig` in
-/// `server/src/services/hwAccel.ts`. Only `Software` and `Vaapi` carry
-/// real argv branches today; the others are placeholders for the
+/// Tagged-union HW-accel config. Only `Software` and `Vaapi` carry real
+/// argv branches today; the other variants are placeholders for the
 /// per-platform ports listed in `Plan/Open-Questions.md §1`.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum HwAccelConfig {
@@ -378,8 +376,7 @@ impl EncodeArgv {
 ///
 /// `vaapi_sw_pad` engages the cascade's middle tier — software pad with
 /// hwdownload/hwupload around it — when `pad_vaapi` rejects a SDR source's
-/// surface format. Mirrors the Bun `applyOutputOptions` `opts.vaapiSwPad`
-/// flag.
+/// surface format. The chunker sets it on retry after a tier-1 failure.
 pub fn build_encode_argv(
     metadata: &FileMetadata,
     hw_accel: &HwAccelConfig,
@@ -420,9 +417,11 @@ pub fn build_encode_argv(
             argv.extend_post(hls_muxer_options(profile, segment_pattern));
         }
         HwAccelConfig::VideoToolbox | HwAccelConfig::Qsv | HwAccelConfig::Nvenc | HwAccelConfig::Amf => {
-            // Mirrors the Bun branch — guarded so the per-platform port is
-            // an obvious TODO. The chunker's hw_accel detector never returns
-            // these today.
+            // Per-platform ports tracked in `Plan/Open-Questions.md §1`.
+            // The hw_accel detector never returns these today, so this
+            // branch is unreachable at runtime — the panic surfaces a
+            // future regression where someone wires a detector path
+            // without also wiring the argv path.
             panic!(
                 "HW accel '{}' not yet implemented in build_encode_argv. \
                  Add the branch when porting the per-platform encode path.",
@@ -491,8 +490,9 @@ fn hls_muxer_options(profile: &ResolutionProfile, segment_pattern: &str) -> Vec<
 }
 
 /// Build the VAAPI input + output options for the given profile + device.
-/// Returns (pre-input args, post-input args). HDR / sw-pad branches mirror
-/// Bun's `vaapiVideoOptions` exactly — both produce the same ffmpeg argv.
+/// Returns (pre-input args, post-input args). The HDR branch adds a
+/// tonemap_vaapi filter and tags the output surface as bt709; the sw-pad
+/// branch round-trips through CPU memory for the pad step only.
 pub(crate) fn vaapi_video_options(
     profile: &ResolutionProfile,
     device: &str,
@@ -602,7 +602,8 @@ mod tests {
 
     #[test]
     fn bit_depth_falls_back_to_8_on_unknown() {
-        // Bit-depth strings outside [8, 16] degrade to 8, matching Bun.
+        // Bit-depth strings outside [8, 16] degrade to 8 — the encoder
+        // path treats unknown pixel formats as 8-bit by default.
         assert_eq!(bit_depth_from_pix_fmt("rgb24"), 8);
     }
 
@@ -624,8 +625,9 @@ mod tests {
 
     fn fixture_h264_sdr() -> &'static str {
         // Hand-written ffprobe -of json output for a typical SDR H.264 +
-        // AAC + one subtitle source. Mirrors the shape Bun's tests rely on
-        // implicitly via fluent-ffmpeg.
+        // AAC + one subtitle source. The shape matches what jellyfin-ffmpeg
+        // emits — keep this fixture in sync if the probe parser learns a
+        // new field.
         r#"{
           "streams": [
             {

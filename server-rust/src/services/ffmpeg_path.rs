@@ -1,14 +1,15 @@
-//! ffmpeg + ffprobe binary resolution. Mirrors `server/src/services/ffmpegPath.ts`.
+//! ffmpeg + ffprobe binary resolution.
 //!
 //! The manifest at `scripts/ffmpeg-manifest.json` pins one exact
 //! jellyfin-ffmpeg version per platform. This resolver finds the binary
-//! installed by `bun run setup-ffmpeg` at the platform-specific location the
-//! manifest commits us to, and verifies its version string matches. Drift is
-//! a fatal error with a clear pointer back to setup.
+//! installed by `bun run setup-ffmpeg` at the platform-specific location
+//! the manifest commits us to, and verifies its version string matches.
+//! Drift is a fatal error with a clear pointer back to setup.
 //!
-//! Resolution priority (matches Bun):
-//!   1. `FFMPEG_PATH` / `FFPROBE_PATH` env vars (explicit override — bypasses
-//!      the version check; intended for dev experimentation, not production).
+//! Resolution priority:
+//!   1. `FFMPEG_PATH` / `FFPROBE_PATH` env vars (explicit override —
+//!      bypasses the version check; intended for dev experimentation,
+//!      not production).
 //!   2. Platform-prescribed install location:
 //!      - `linux-x64` / `linux-arm64` → `/usr/lib/jellyfin-ffmpeg/{ffmpeg,ffprobe}`
 //!      - `darwin-*` / `win32-x64`    → `vendor/ffmpeg/<platform>/{ffmpeg,ffprobe}[.exe]`
@@ -16,10 +17,10 @@
 //!      `bun run setup-ffmpeg`. No system $PATH lookup — we are opinionated
 //!      about the exact version we run against.
 //!
-//! The Bun side memoises the result in module-local state and writes the
-//! paths into `fluent-ffmpeg`'s global cache. The Rust port has no
-//! module-globals: the caller resolves once at startup and threads the
+//! No module-globals: the caller resolves once at startup and threads the
 //! resulting `Arc<FfmpegPaths>` through `AppState` to every spawn site.
+//! That keeps the resolver pure (no IO at use sites) and the path
+//! configuration explicit at every boundary.
 
 use serde::Deserialize;
 use std::collections::BTreeMap;
@@ -173,9 +174,9 @@ pub fn resolve_ffmpeg_paths(
 
     let expected_version = manifest.ffmpeg.version_string.clone();
 
-    // Priority 1 — env-var override. Skips the version check by design;
-    // matches the Bun semantic that callers explicitly opt out by setting
-    // both env vars to known-good paths.
+    // Priority 1 — env-var override. Skips the version check by design:
+    // callers explicitly opt out by setting both env vars to known-good
+    // paths, taking responsibility for the binary's compatibility.
     if let (Ok(env_ffmpeg), Ok(env_ffprobe)) =
         (env::var("FFMPEG_PATH"), env::var("FFPROBE_PATH"))
     {
@@ -233,9 +234,10 @@ fn load_manifest(path: &Path) -> FfmpegPathResult<FfmpegManifest> {
     })
 }
 
-/// `<os>-<arch>` mirroring Bun's `${process.platform}-${process.arch}`.
-/// Mapping diverges only on the cosmetic side (Rust's `OS` is `linux` /
-/// `macos` / `windows`; Bun's is `linux` / `darwin` / `win32`).
+/// `<os>-<arch>` — the manifest's per-platform key. Uses Node-shaped
+/// strings (`linux` / `darwin` / `win32`, `x64` / `arm64`) because the
+/// manifest is shared with the install scripts; Rust's `consts::OS` and
+/// `consts::ARCH` get translated below.
 fn platform_key() -> String {
     let os = match std::env::consts::OS {
         "macos" => "darwin",
@@ -299,8 +301,9 @@ fn read_version(bin: &Path) -> FfmpegPathResult<String> {
 }
 
 /// Both `ffmpeg -version` and `ffprobe -version` start with
-/// `"ffmpeg version <X> ..."` / `"ffprobe version <X> ..."`. Mirrors the Bun
-/// regex.
+/// `"ffmpeg version <X> ..."` / `"ffprobe version <X> ..."`. Take the
+/// first whitespace-delimited token after the prefix — that's the
+/// version string the manifest pins.
 fn parse_version_line(line: &str) -> Option<String> {
     for prefix in ["ffmpeg version ", "ffprobe version "] {
         if let Some(rest) = line.strip_prefix(prefix) {

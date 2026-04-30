@@ -209,11 +209,9 @@ pub fn get_streams_by_video_id(db: &Db, video_id: &str) -> DbResult<Vec<VideoStr
 
 // ── Tests ────────────────────────────────────────────────────────────────────
 //
-// Mirrors the read-only subset of `server/src/db/queries/__tests__/videos.test.ts`.
-// Bun's tests cover writers (`upsertVideo`, `replaceVideoStreams`); the Rust
-// port for Step 1 only needs reads (writes land with the scanner in Step 2),
-// so write tests are intentionally skipped — reinstate them when the
-// matching write functions are added.
+// Read-only coverage — the Rust port doesn't yet write videos (the library
+// scanner lands in a later step). Add write tests alongside the matching
+// upsert / replace-streams functions when those land.
 
 #[cfg(test)]
 mod tests {

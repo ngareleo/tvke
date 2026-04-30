@@ -100,9 +100,9 @@ pub fn delete_segments_by_job(db: &Db, job_id: &str) -> DbResult<usize> {
 
 // ── Tests ────────────────────────────────────────────────────────────────────
 //
-// Mirrors `server/src/db/queries/__tests__/segments.test.ts`. Bun's harness
-// preseeds parent FK rows in `beforeAll`; the Rust port seeds them inline so
-// each `:memory:` db starts from a known state.
+// Each test seeds the FK-parent chain (libraries → videos → transcode_jobs)
+// inline so a fresh `:memory:` db starts from a known state. Coverage spans
+// insert / read / count by job_id and the FK-violation path.
 
 #[cfg(test)]
 mod tests {

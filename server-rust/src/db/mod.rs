@@ -1,23 +1,21 @@
 //! SQLite layer — connection, migrations, and per-table query modules.
 //!
-//! Mirrors `server/src/db/index.ts` + `server/src/db/queries/*.ts`.
-//!
-//! **Per-process DB isolation during cutover.** Bun opens `tmp/xstream.db`,
-//! Rust opens `tmp/xstream-rust.db`. The two backends are runtime-independent
-//! (no shared in-memory state, no shared segment cache, no shared DB rows) —
-//! sharing the DB produced cross-contamination where Bun would resolve a
-//! transcode_jobs row written by Rust whose `segment_dir` pointed at Rust's
-//! filesystem, then serve 0 segments on a 200 OK. Each process now writes
-//! and reads only its own DB. The seam dies at Step 3 (Tauri) when Bun is
-//! removed and the Rust DB becomes THE DB. `DB_PATH` env var overrides the
-//! default for testing.
+//! **Per-process DB isolation during the cutover.** This server opens
+//! `tmp/xstream-rust.db`. The legacy server (deleted at Step 3) opens its
+//! own DB. The two backends are fully independent — no shared in-memory
+//! state, no shared segment cache, no shared DB rows. Sharing the DB
+//! produced cross-contamination: deterministic content-addressed job_ids
+//! collide across backends, but each writes its own `segment_dir` value
+//! into the row, so whichever backend reads it back tries to serve from
+//! the wrong filesystem. The seam dies when this server becomes THE
+//! server at Step 3; `DB_PATH` env var overrides the default for testing.
 //!
 //! Notes / invariants:
-//! - WAL + foreign_keys=ON pragmas applied BEFORE any query (matches Bun).
+//! - WAL + foreign_keys=ON pragmas applied BEFORE any query.
 //! - Migrations are idempotent (`CREATE TABLE IF NOT EXISTS`).
-//! - Single connection wrapped in `Mutex` — sufficient for Step 1's read-heavy
-//!   profile. A pool (r2d2-sqlite) is the natural next step if contention
-//!   shows up under load.
+//! - Single connection wrapped in `Mutex` — sufficient for the current
+//!   read-heavy profile. A pool (r2d2-sqlite) is the natural next step if
+//!   contention shows up under load.
 //! - **Every query returns [`DbResult`].** Mutex poisoning is encoded as a
 //!   typed error, never a panic. Callers `?`-propagate; resolvers surface
 //!   it as a GraphQL error via `From<DbError>`.
@@ -84,16 +82,17 @@ pub fn default_db_path() -> PathBuf {
     if let Ok(p) = std::env::var("DB_PATH") {
         return PathBuf::from(p);
     }
-    // Per-process isolation: Rust gets its own DB so Bun-written
-    // transcode_jobs rows can't contaminate Rust's stream lookups (and
-    // vice versa). Resolved relative to the working directory; the dev
-    // script overrides via DB_PATH so it lands at `<repo>/tmp/xstream-rust.db`.
+    // Per-process isolation: this server has its own DB so cross-server
+    // transcode_jobs rows can't contaminate stream lookups during the
+    // cutover. Resolved relative to the working directory; the dev script
+    // overrides via DB_PATH so it lands at `<repo>/tmp/xstream-rust.db`.
     PathBuf::from("tmp/xstream-rust.db")
 }
 
 /// SHA-1 of a UTF-8 string, hex-encoded. Used for content-addressed IDs
-/// (library/video/watchlist) — must produce byte-identical output to the
-/// Bun side (`createHash('sha1').update(s).digest('hex')`).
+/// (library/video/watchlist). The output is part of the wire contract —
+/// any change to the hash function or its hex encoding makes existing
+/// IDs unreachable.
 ///
 /// Pure value-in / value-out — no IO, no error path. The implementation
 /// uses `format!`-collect rather than `write!` to avoid an awkward
@@ -186,9 +185,8 @@ mod pragma_tests {
 
     #[test]
     fn fk_violation_on_video_insert_without_library_returns_error() {
-        // Bun side throws; Rust side surfaces the FK violation as a
-        // DbError::Sqlite. Either way the unhappy path is visible — never
-        // a silent insert that leaves an orphan.
+        // FK violations surface as `DbError::Sqlite` — never a silent
+        // insert that leaves an orphan row.
         let db = fresh_db();
         let result: DbResult<()> = db.with(|c| {
             c.execute(
