@@ -147,9 +147,19 @@ pub struct FfmpegPaths {
     pub version_string: String,
 }
 
-/// Resolve once at startup. Returns the validated paths plus the version
-/// the resolver actually saw, or a typed `FfmpegPathError` describing the
-/// exact failure (missing binary, version drift, etc).
+/// Resolve the manifest-pinned ffmpeg + ffprobe binaries.
+///
+/// **Boot-time only.** Called exactly once from `main()`; the result is
+/// wrapped in `Arc<FfmpegPaths>` and stored on `AppContext` so every
+/// downstream caller (chunker, ffmpeg_pool, hw_accel probe) reads the
+/// cached struct instead of re-parsing the manifest. The manifest file
+/// itself never changes during a process lifetime — pinning is at build
+/// time. Re-entering this function would re-do disk IO and the version
+/// check for no benefit.
+///
+/// Returns the validated paths plus the version the resolver actually
+/// saw, or a typed `FfmpegPathError` describing the exact failure
+/// (missing binary, version drift, etc).
 pub fn resolve_ffmpeg_paths(
     project_root: &Path,
     manifest_path: &Path,

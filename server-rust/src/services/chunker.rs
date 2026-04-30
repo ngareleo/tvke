@@ -334,6 +334,14 @@ pub async fn start_transcode_job(
 
 const INFLIGHT_DEDUP_POLL_MS: u64 = 100;
 
+/// Stat-poll cadence + budget for `init.mp4` to land with non-zero size
+/// after `notify` fires its CREATE event. ffmpeg writes the box header
+/// then flushes; the OS's CREATE event arrives before the flush, so we
+/// can't trust the file's contents on the first sighting. Budget =
+/// `INIT_FLUSH_POLL_ATTEMPTS × INIT_FLUSH_POLL_INTERVAL_MS` (2 s).
+const INIT_FLUSH_POLL_ATTEMPTS: u32 = 40;
+const INIT_FLUSH_POLL_INTERVAL_MS: u64 = 50;
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum CascadeTier {
     FastVaapi,
@@ -564,7 +572,15 @@ async fn run_cascade(
         }
     };
 
-    drop(watcher_handle);
+    // Cancel the segment watcher task. `drop` on a JoinHandle only detaches
+    // it — the task keeps running. Inside the watcher, `rx.recv().await`
+    // blocks until the inotify channel closes, but the channel's `tx` is
+    // owned by the watcher itself (held inside the task's locals), so the
+    // task would never exit on its own once the cascade is done. `abort()`
+    // wakes the task with a cancellation, dropping its locals — including
+    // the `notify::Watcher` that spawned an OS thread — so resources are
+    // actually freed instead of leaked per transcode.
+    watcher_handle.abort();
 
     match final_outcome {
         Some(ExitOutcome::Complete { .. }) => {
@@ -712,9 +728,13 @@ async fn handle_watcher_path(
             return;
         }
         let init_path = segment_dir.join("init.mp4");
-        // Stat-poll until the file has content — `notify` fires on creation
-        // before ffmpeg finishes writing.
-        for _ in 0..40 {
+        // Stat-poll until the file has content — `notify` fires on
+        // file CREATE before ffmpeg has flushed any bytes, so reading the
+        // path immediately would hand a zero-byte file to the stream
+        // pump. Budget = INIT_FLUSH_POLL_ATTEMPTS × INIT_FLUSH_POLL_INTERVAL_MS
+        // (2 s today). Generous for the typical sub-100 ms flush; if it
+        // ever runs out, the warn below makes the cause obvious.
+        for _ in 0..INIT_FLUSH_POLL_ATTEMPTS {
             match tokio::fs::metadata(&init_path).await {
                 Ok(meta) if meta.len() > 0 => {
                     let path_str = init_path.to_string_lossy().to_string();
@@ -725,7 +745,7 @@ async fn handle_watcher_path(
                     return;
                 }
                 _ => {
-                    tokio::time::sleep(Duration::from_millis(50)).await;
+                    tokio::time::sleep(Duration::from_millis(INIT_FLUSH_POLL_INTERVAL_MS)).await;
                 }
             }
         }

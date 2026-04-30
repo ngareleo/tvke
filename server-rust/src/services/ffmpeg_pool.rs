@@ -1,6 +1,5 @@
 //! ffmpeg subprocess pool — `Arc<Semaphore>` cap, dying-set bookkeeping,
-//! SIGTERM-then-SIGKILL escalation, server-shutdown sweep. Mirrors
-//! `server/src/services/ffmpegPool.ts`.
+//! SIGTERM-then-SIGKILL escalation, server-shutdown sweep.
 //!
 //! The pool's job is one and only one thing: enforce the concurrent-encode
 //! cap and own subprocess lifecycle. The chunker decides what to encode and
@@ -19,7 +18,6 @@
 //!   waits on so it can short-circuit if the process exits cleanly within
 //!   the SIGTERM grace).
 
-use std::collections::HashMap;
 use std::ffi::OsString;
 use std::path::Path;
 use std::process::ExitStatus;
@@ -124,11 +122,18 @@ struct PoolInner {
     /// Jobs we've issued SIGTERM against. Their permits are already
     /// dropped from the cap accounting (we count `live - dying`).
     dying: DashSet<String>,
-    kill_reasons: Mutex<HashMap<String, KillReason>>,
+    /// Why each currently-dying job was killed. Read by the exit-handler
+    /// to populate `KillReason` on `ExitOutcome::Killed`. Insert / remove
+    /// only — no compound atomic operations, so a per-shard `DashMap`
+    /// matches the access pattern (and the sibling fields' lock
+    /// granularity).
+    kill_reasons: DashMap<String, KillReason>,
     /// Per-job notify the escalation task awaits — fires either by
     /// `force_kill_timeout_ms` elapsing (escalate to SIGKILL) or by the
-    /// process exiting on its own (cancel escalation).
-    escalation_cancel: Mutex<HashMap<String, Arc<Notify>>>,
+    /// process exiting on its own (cancel escalation). Insert when the
+    /// kill is scheduled, remove + `notify_waiters` when the wait task
+    /// finishes — independent point ops.
+    escalation_cancel: DashMap<String, Arc<Notify>>,
 }
 
 impl FfmpegPool {
@@ -141,8 +146,8 @@ impl FfmpegPool {
                 live: DashMap::new(),
                 inflight: DashSet::new(),
                 dying: DashSet::new(),
-                kill_reasons: Mutex::new(HashMap::new()),
-                escalation_cancel: Mutex::new(HashMap::new()),
+                kill_reasons: DashMap::new(),
+                escalation_cancel: DashMap::new(),
             }),
         }
     }
@@ -243,18 +248,11 @@ impl FfmpegPool {
         }
 
         // Cancel escalation timer (if any), then clean up bookkeeping.
-        if let Ok(mut m) = self.inner.escalation_cancel.lock() {
-            if let Some(n) = m.remove(&job_id) {
-                n.notify_waiters();
-            }
+        if let Some((_, n)) = self.inner.escalation_cancel.remove(&job_id) {
+            n.notify_waiters();
         }
         let was_dying = self.inner.dying.remove(&job_id).is_some();
-        let kill_reason = self
-            .inner
-            .kill_reasons
-            .lock()
-            .ok()
-            .and_then(|mut m| m.remove(&job_id));
+        let kill_reason = self.inner.kill_reasons.remove(&job_id).map(|(_, v)| v);
         self.inner.live.remove(&job_id);
         drop(permit);
 
@@ -289,9 +287,7 @@ impl FfmpegPool {
             return;
         }
         self.inner.dying.insert(id.to_string());
-        if let Ok(mut m) = self.inner.kill_reasons.lock() {
-            m.insert(id.to_string(), reason);
-        }
+        self.inner.kill_reasons.insert(id.to_string(), reason);
         info!(job_id = %id, kill_reason = reason.as_wire_str(),
               "Killing ffmpeg — {}", reason.as_wire_str());
 
@@ -303,9 +299,7 @@ impl FfmpegPool {
         // Schedule SIGKILL escalation; the wait task cancels it via the
         // shared notify.
         let cancel = Arc::new(Notify::new());
-        if let Ok(mut m) = self.inner.escalation_cancel.lock() {
-            m.insert(id.to_string(), cancel.clone());
-        }
+        self.inner.escalation_cancel.insert(id.to_string(), cancel.clone());
         let force_kill_ms = self.inner.config.force_kill_timeout_ms;
         let id_owned = id.to_string();
         let live = self.inner.live.clone();
