@@ -74,11 +74,7 @@ async fn run() -> AppResult<()> {
             std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."))
         });
     let manifest_path = project_root.join("scripts").join("ffmpeg-manifest.json");
-    let ffmpeg_paths = resolve_ffmpeg_paths(&project_root, &manifest_path).map_err(|err| {
-        AppError::Telemetry(Box::new(std::io::Error::other(format!(
-            "ffmpeg path resolution failed: {err}"
-        ))))
-    })?;
+    let ffmpeg_paths = resolve_ffmpeg_paths(&project_root, &manifest_path)?;
     tracing::info!(
         ffmpeg = %ffmpeg_paths.ffmpeg.display(),
         ffprobe = %ffmpeg_paths.ffprobe.display(),
@@ -87,11 +83,7 @@ async fn run() -> AppResult<()> {
     );
 
     let hw_mode = HwAccelMode::from_env();
-    let hw_accel = resolve_hw_accel(&ffmpeg_paths.ffmpeg, hw_mode).await.map_err(|err| {
-        AppError::Telemetry(Box::new(std::io::Error::other(format!(
-            "HW accel resolution failed: {err}"
-        ))))
-    })?;
+    let hw_accel = resolve_hw_accel(&ffmpeg_paths.ffmpeg, hw_mode).await?;
     tracing::info!(kind = hw_accel.kind_str(), "Hardware acceleration selected");
 
     let app_config = AppConfig::dev_defaults(&project_root);

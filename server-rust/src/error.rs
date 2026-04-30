@@ -93,6 +93,12 @@ pub enum AppError {
     #[error("initialising tracing / OTLP exporter")]
     Telemetry(#[source] Box<dyn std::error::Error + Send + Sync + 'static>),
 
+    #[error("resolving pinned ffmpeg binaries")]
+    FfmpegPath(#[from] crate::services::ffmpeg_path::FfmpegPathError),
+
+    #[error("selecting hardware acceleration mode")]
+    HwAccel(#[from] crate::services::hw_accel::HwAccelError),
+
     #[error("installing {signal} handler")]
     SignalHandler {
         signal: &'static str,
