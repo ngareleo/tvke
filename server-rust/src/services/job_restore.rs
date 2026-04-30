@@ -12,8 +12,8 @@
 
 use tracing::info;
 
-use crate::db::Db;
 use crate::db::queries::jobs::{get_interrupted_jobs, update_job_status, JobStatusUpdate};
+use crate::db::Db;
 use crate::error::DbResult;
 
 const RESTORE_ERROR_MESSAGE: &str =
@@ -105,9 +105,7 @@ mod tests {
         assert_eq!(n, 2);
 
         for id in ["r1", "r2"] {
-            let row = get_job_by_id(&db, id)
-                .expect("query")
-                .expect("row exists");
+            let row = get_job_by_id(&db, id).expect("query").expect("row exists");
             assert_eq!(row.status, "error");
             assert_eq!(row.error.as_deref(), Some(RESTORE_ERROR_MESSAGE));
         }
@@ -124,7 +122,10 @@ mod tests {
         let n = sweep_interrupted(&db).expect("sweep");
         assert_eq!(n, 0);
 
-        assert_eq!(get_job_by_id(&db, "c1").unwrap().unwrap().status, "complete");
+        assert_eq!(
+            get_job_by_id(&db, "c1").unwrap().unwrap().status,
+            "complete"
+        );
         assert_eq!(get_job_by_id(&db, "p1").unwrap().unwrap().status, "pending");
         assert_eq!(get_job_by_id(&db, "e1").unwrap().unwrap().status, "error");
     }

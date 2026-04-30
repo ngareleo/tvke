@@ -44,11 +44,10 @@ pub enum FfmpegPathError {
         source: serde_json::Error,
     },
 
-    #[error("platform '{platform}' is not supported by the ffmpeg manifest. Supported: {supported}")]
-    UnsupportedPlatform {
-        platform: String,
-        supported: String,
-    },
+    #[error(
+        "platform '{platform}' is not supported by the ffmpeg manifest. Supported: {supported}"
+    )]
+    UnsupportedPlatform { platform: String, supported: String },
 
     #[error(
         "ffmpeg binaries are not installed at the expected location for {platform}.\n\
@@ -166,30 +165,25 @@ pub fn resolve_ffmpeg_paths(
 ) -> FfmpegPathResult<FfmpegPaths> {
     let manifest = load_manifest(manifest_path)?;
     let platform = platform_key();
-    let entry =
-        manifest
-            .ffmpeg
-            .platforms
-            .get(&platform)
-            .ok_or_else(|| FfmpegPathError::UnsupportedPlatform {
-                platform: platform.clone(),
-                supported: manifest
-                    .ffmpeg
-                    .platforms
-                    .keys()
-                    .cloned()
-                    .collect::<Vec<_>>()
-                    .join(", "),
-            })?;
+    let entry = manifest.ffmpeg.platforms.get(&platform).ok_or_else(|| {
+        FfmpegPathError::UnsupportedPlatform {
+            platform: platform.clone(),
+            supported: manifest
+                .ffmpeg
+                .platforms
+                .keys()
+                .cloned()
+                .collect::<Vec<_>>()
+                .join(", "),
+        }
+    })?;
 
     let expected_version = manifest.ffmpeg.version_string.clone();
 
     // Priority 1 — env-var override. Skips the version check by design:
     // callers explicitly opt out by setting both env vars to known-good
     // paths, taking responsibility for the binary's compatibility.
-    if let (Ok(env_ffmpeg), Ok(env_ffprobe)) =
-        (env::var("FFMPEG_PATH"), env::var("FFPROBE_PATH"))
-    {
+    if let (Ok(env_ffmpeg), Ok(env_ffprobe)) = (env::var("FFMPEG_PATH"), env::var("FFPROBE_PATH")) {
         let ffmpeg = PathBuf::from(env_ffmpeg);
         let ffprobe = PathBuf::from(env_ffprobe);
         if ffmpeg.exists() && ffprobe.exists() {
@@ -282,20 +276,23 @@ fn installed_path(
             } else {
                 base.to_string()
             };
-            project_root.join("vendor").join("ffmpeg").join(platform).join(bin)
+            project_root
+                .join("vendor")
+                .join("ffmpeg")
+                .join(platform)
+                .join(bin)
         }
     }
 }
 
 fn read_version(bin: &Path) -> FfmpegPathResult<String> {
-    let output =
-        Command::new(bin)
-            .arg("-version")
-            .output()
-            .map_err(|source| FfmpegPathError::VersionCheckSpawn {
-                path: bin.to_path_buf(),
-                source,
-            })?;
+    let output = Command::new(bin)
+        .arg("-version")
+        .output()
+        .map_err(|source| FfmpegPathError::VersionCheckSpawn {
+            path: bin.to_path_buf(),
+            source,
+        })?;
     if !output.status.success() {
         return Err(FfmpegPathError::VersionCheckFailed {
             path: bin.to_path_buf(),
@@ -363,9 +360,7 @@ mod tests {
         // Whatever the test host is, the key has the `<os>-<arch>` shape and
         // uses the Node-style aliases.
         assert!(
-            key.starts_with("linux-")
-                || key.starts_with("darwin-")
-                || key.starts_with("win32-"),
+            key.starts_with("linux-") || key.starts_with("darwin-") || key.starts_with("win32-"),
             "unexpected platform key: {key}"
         );
     }
@@ -528,8 +523,8 @@ mod tests {
         );
         std::fs::write(&manifest_path, manifest).expect("write");
         let project_root = dir.path(); // no vendor/ tree exists here
-        let err =
-            resolve_ffmpeg_paths(project_root, &manifest_path).expect_err("must fail not-installed");
+        let err = resolve_ffmpeg_paths(project_root, &manifest_path)
+            .expect_err("must fail not-installed");
         assert!(matches!(err, FfmpegPathError::NotInstalled { .. }));
     }
 }

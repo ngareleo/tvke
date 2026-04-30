@@ -44,15 +44,22 @@ impl Mutation {
         start_time_seconds: Option<f64>,
         end_time_seconds: Option<f64>,
     ) -> async_graphql::Result<StartTranscodeResult> {
-        use crate::services::chunker::{start_transcode_job, StartJobResult};
         use crate::graphql::types::TranscodeJob;
+        use crate::services::chunker::{start_transcode_job, StartJobResult};
         let app_ctx = ctx.data_unchecked::<crate::config::AppContext>();
         let (_, local_id) = from_global_id(&video_id)?;
-        let result =
-            start_transcode_job(app_ctx, &local_id, resolution, start_time_seconds, end_time_seconds)
-                .await;
+        let result = start_transcode_job(
+            app_ctx,
+            &local_id,
+            resolution,
+            start_time_seconds,
+            end_time_seconds,
+        )
+        .await;
         Ok(match result {
-            StartJobResult::Ok(job) => StartTranscodeResult::TranscodeJob(TranscodeJob::from_active(&job)),
+            StartJobResult::Ok(job) => {
+                StartTranscodeResult::TranscodeJob(TranscodeJob::from_active(&job))
+            }
             StartJobResult::Error {
                 code,
                 message,

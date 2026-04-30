@@ -47,10 +47,7 @@ pub fn build_router(state: AppState) -> AppResult<Router> {
     Ok(Router::new()
         .route("/healthz", get(healthz))
         .route("/graphql", graphql_method)
-        .route(
-            "/stream/:job_id",
-            get(routes::stream::stream_handler),
-        )
+        .route("/stream/:job_id", get(routes::stream::stream_handler))
         // Pass AppContext via Extension rather than State so we don't have
         // to thread an `S` type parameter through every router builder.
         .layer(axum::Extension(ctx))

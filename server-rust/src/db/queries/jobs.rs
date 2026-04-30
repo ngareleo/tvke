@@ -340,7 +340,10 @@ mod tests {
         let db = fresh_db();
         seed_video_with_library(&db);
         insert_job(&db, &job("eeee", "running")).expect("insert");
-        let before = get_job_by_id(&db, "eeee").expect("q").expect("e").updated_at;
+        let before = get_job_by_id(&db, "eeee")
+            .expect("q")
+            .expect("e")
+            .updated_at;
         // Sleep just enough for the millisecond resolution to tick.
         std::thread::sleep(std::time::Duration::from_millis(10));
         update_job_status(
@@ -354,7 +357,10 @@ mod tests {
             },
         )
         .expect("update");
-        let after = get_job_by_id(&db, "eeee").expect("q").expect("e").updated_at;
+        let after = get_job_by_id(&db, "eeee")
+            .expect("q")
+            .expect("e")
+            .updated_at;
         assert!(
             after > before,
             "updated_at must monotonically advance on each write — before={before}, after={after}"

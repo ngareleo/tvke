@@ -66,9 +66,8 @@ pub fn insert_segment(db: &Db, seg: &NewSegment<'_>) -> DbResult<()> {
 
 pub fn get_segments_by_job(db: &Db, job_id: &str) -> DbResult<Vec<SegmentRow>> {
     db.with(|c| {
-        let mut stmt = c.prepare(
-            "SELECT * FROM segments WHERE job_id = ?1 ORDER BY segment_index",
-        )?;
+        let mut stmt =
+            c.prepare("SELECT * FROM segments WHERE job_id = ?1 ORDER BY segment_index")?;
         let rows = stmt.query_map(params![job_id], SegmentRow::from_row)?;
         let collected: rusqlite::Result<Vec<_>> = rows.collect();
         Ok(collected?)
@@ -90,10 +89,7 @@ pub fn get_segment(db: &Db, job_id: &str, segment_index: i64) -> DbResult<Option
 
 pub fn delete_segments_by_job(db: &Db, job_id: &str) -> DbResult<usize> {
     db.with(|c| {
-        let n = c.execute(
-            "DELETE FROM segments WHERE job_id = ?1",
-            params![job_id],
-        )?;
+        let n = c.execute("DELETE FROM segments WHERE job_id = ?1", params![job_id])?;
         Ok(n)
     })
 }
@@ -250,21 +246,13 @@ mod tests {
     fn get_segment_returns_none_for_missing_index() {
         let db = fresh_db();
         seed_parents(&db);
-        assert!(
-            get_segment(&db, "job1", 999)
-                .expect("query")
-                .is_none()
-        );
+        assert!(get_segment(&db, "job1", 999).expect("query").is_none());
     }
 
     #[test]
     fn get_segment_returns_none_for_unknown_job() {
         let db = fresh_db();
-        assert!(
-            get_segment(&db, "no-such-job", 0)
-                .expect("query")
-                .is_none()
-        );
+        assert!(get_segment(&db, "no-such-job", 0).expect("query").is_none());
     }
 
     #[test]

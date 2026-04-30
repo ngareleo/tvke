@@ -81,9 +81,9 @@ pub struct FileMetadata {
 }
 
 const HDR_TRANSFERS: &[&str] = &[
-    "smpte2084",      // HDR10 / PQ
-    "arib-std-b67",   // HLG
-    "smpte428",       // DCI-P3
+    "smpte2084",    // HDR10 / PQ
+    "arib-std-b67", // HLG
+    "smpte428",     // DCI-P3
 ];
 
 // ── Probe errors ────────────────────────────────────────────────────────────
@@ -98,9 +98,7 @@ pub enum ProbeError {
         source: std::io::Error,
     },
 
-    #[error(
-        "ffprobe exited with status {status} for {input}; stderr={stderr:?}"
-    )]
+    #[error("ffprobe exited with status {status} for {input}; stderr={stderr:?}")]
     ExitNonZero {
         input: PathBuf,
         status: i32,
@@ -191,8 +189,10 @@ impl FfmpegFile {
     async fn run_probe(&self, ffprobe: &Path) -> Result<FileMetadata, ProbeError> {
         let output = Command::new(ffprobe)
             .args([
-                "-v", "error",
-                "-print_format", "json",
+                "-v",
+                "error",
+                "-print_format",
+                "json",
                 "-show_streams",
                 "-show_format",
             ])
@@ -237,7 +237,10 @@ fn parse_probe_json(stdout: &[u8], input: &Path) -> Result<FileMetadata, ProbeEr
             let bit_depth = bit_depth_from_pix_fmt(&pix_fmt);
             VideoStreamInfo {
                 index: s.index,
-                codec: s.codec_name.clone().unwrap_or_else(|| "unknown".to_string()),
+                codec: s
+                    .codec_name
+                    .clone()
+                    .unwrap_or_else(|| "unknown".to_string()),
                 width: s.width.unwrap_or(0),
                 height: s.height.unwrap_or(0),
                 fps: s.r_frame_rate.as_deref().map(eval_fraction).unwrap_or(24.0),
@@ -247,10 +250,7 @@ fn parse_probe_json(stdout: &[u8], input: &Path) -> Result<FileMetadata, ProbeEr
                     .color_transfer
                     .clone()
                     .unwrap_or_else(|| "bt709".to_string()),
-                color_space: s
-                    .color_space
-                    .clone()
-                    .unwrap_or_else(|| "bt709".to_string()),
+                color_space: s.color_space.clone().unwrap_or_else(|| "bt709".to_string()),
             }
         })
         .collect();
@@ -261,7 +261,10 @@ fn parse_probe_json(stdout: &[u8], input: &Path) -> Result<FileMetadata, ProbeEr
         .filter(|s| s.codec_type == "audio")
         .map(|s| AudioStreamInfo {
             index: s.index,
-            codec: s.codec_name.clone().unwrap_or_else(|| "unknown".to_string()),
+            codec: s
+                .codec_name
+                .clone()
+                .unwrap_or_else(|| "unknown".to_string()),
             channels: s.channels.unwrap_or(2),
             sample_rate: s
                 .sample_rate
@@ -283,8 +286,18 @@ fn parse_probe_json(stdout: &[u8], input: &Path) -> Result<FileMetadata, ProbeEr
         .map(|v| HDR_TRANSFERS.contains(&v.color_transfer.as_str()))
         .unwrap_or(false);
 
-    let duration_seconds = probe.format.duration.as_deref().and_then(|s| s.parse().ok()).unwrap_or(0.0);
-    let file_size_bytes = probe.format.size.as_deref().and_then(|s| s.parse().ok()).unwrap_or(0);
+    let duration_seconds = probe
+        .format
+        .duration
+        .as_deref()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(0.0);
+    let file_size_bytes = probe
+        .format
+        .size
+        .as_deref()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(0);
     let bitrate_kbps_raw: u64 = probe
         .format
         .bit_rate
@@ -404,7 +417,8 @@ pub fn build_encode_argv(
             argv.extend_post(hls_muxer_options(profile, segment_pattern));
         }
         HwAccelConfig::Vaapi { device } => {
-            let (input, output) = vaapi_video_options(profile, device, vaapi_sw_pad, metadata.is_hdr);
+            let (input, output) =
+                vaapi_video_options(profile, device, vaapi_sw_pad, metadata.is_hdr);
             argv.pre_input.extend(input);
             argv.extend_post(stream_mapping_options());
             argv.post_input.push("-c:v".into());
@@ -416,7 +430,10 @@ pub fn build_encode_argv(
             argv.extend_post(in_band_sps_pps());
             argv.extend_post(hls_muxer_options(profile, segment_pattern));
         }
-        HwAccelConfig::VideoToolbox | HwAccelConfig::Qsv | HwAccelConfig::Nvenc | HwAccelConfig::Amf => {
+        HwAccelConfig::VideoToolbox
+        | HwAccelConfig::Qsv
+        | HwAccelConfig::Nvenc
+        | HwAccelConfig::Amf => {
             // Per-platform ports tracked in `Plan/Open-Questions.md §1`.
             // The hw_accel detector never returns these today, so this
             // branch is unreachable at runtime — the panic surfaces a
@@ -444,16 +461,25 @@ fn video_codec_options(profile: &ResolutionProfile) -> Vec<String> {
     let max_bitrate = format!("{}k", (bitrate_n as f64 * 1.2).round() as u64);
     let buf_size = format!("{}k", bitrate_n * 2);
     vec![
-        "-preset".into(), "veryfast".into(),
-        "-profile:v".into(), "high".into(),
-        "-level:v".into(), profile.h264_level.to_string(),
-        "-b:v".into(), profile.video_bitrate.to_string(),
-        "-maxrate".into(), max_bitrate,
-        "-bufsize".into(), buf_size,
+        "-preset".into(),
+        "veryfast".into(),
+        "-profile:v".into(),
+        "high".into(),
+        "-level:v".into(),
+        profile.h264_level.to_string(),
+        "-b:v".into(),
+        profile.video_bitrate.to_string(),
+        "-maxrate".into(),
+        max_bitrate,
+        "-bufsize".into(),
+        buf_size,
         // GOP aligned to 48 frames — clean segment boundaries at 24 fps.
-        "-g".into(), "48".into(),
-        "-keyint_min".into(), "48".into(),
-        "-sc_threshold".into(), "0".into(),
+        "-g".into(),
+        "48".into(),
+        "-keyint_min".into(),
+        "48".into(),
+        "-sc_threshold".into(),
+        "0".into(),
     ]
 }
 
@@ -479,13 +505,20 @@ fn in_band_sps_pps() -> Vec<String> {
 
 fn hls_muxer_options(profile: &ResolutionProfile, segment_pattern: &str) -> Vec<String> {
     vec![
-        "-f".into(), "hls".into(),
-        "-hls_time".into(), profile.segment_duration.to_string(),
-        "-hls_segment_type".into(), "fmp4".into(),
-        "-hls_fmp4_init_filename".into(), "init.mp4".into(),
-        "-hls_segment_filename".into(), segment_pattern.to_string(),
-        "-hls_list_size".into(), "0".into(),
-        "-hls_flags".into(), "omit_endlist".into(),
+        "-f".into(),
+        "hls".into(),
+        "-hls_time".into(),
+        profile.segment_duration.to_string(),
+        "-hls_segment_type".into(),
+        "fmp4".into(),
+        "-hls_fmp4_init_filename".into(),
+        "init.mp4".into(),
+        "-hls_segment_filename".into(),
+        segment_pattern.to_string(),
+        "-hls_list_size".into(),
+        "0".into(),
+        "-hls_flags".into(),
+        "omit_endlist".into(),
     ]
 }
 
@@ -554,19 +587,27 @@ pub(crate) fn vaapi_video_options(
     let buf_size = format!("{}k", bitrate_n * 2);
 
     let output = vec![
-        "-vf".into(), filter_chain,
+        "-vf".into(),
+        filter_chain,
         // NOTE: do NOT set `-colorspace`/`-color_primaries`/`-color_trc` here.
         // On HDR sources tagging the output triggers an auto-scaler that fails
         // with libva -38. Surface tagging happens via scale_vaapi's
         // `out_color_*` params; SDR sources keep their bt709 metadata
         // pass-through.
-        "-profile:v".into(), "high".into(),
-        "-level:v".into(), profile.h264_level.to_string(),
-        "-b:v".into(), profile.video_bitrate.to_string(),
-        "-maxrate".into(), max_bitrate,
-        "-bufsize".into(), buf_size,
-        "-g".into(), "48".into(),
-        "-keyint_min".into(), "48".into(),
+        "-profile:v".into(),
+        "high".into(),
+        "-level:v".into(),
+        profile.h264_level.to_string(),
+        "-b:v".into(),
+        profile.video_bitrate.to_string(),
+        "-maxrate".into(),
+        max_bitrate,
+        "-bufsize".into(),
+        buf_size,
+        "-g".into(),
+        "48".into(),
+        "-keyint_min".into(),
+        "48".into(),
     ];
 
     (input, output)
@@ -695,7 +736,8 @@ mod tests {
 
     #[test]
     fn parse_probe_json_extracts_sdr_metadata() {
-        let m = parse_probe_json(fixture_h264_sdr().as_bytes(), Path::new("/x.mkv")).expect("parse");
+        let m =
+            parse_probe_json(fixture_h264_sdr().as_bytes(), Path::new("/x.mkv")).expect("parse");
         assert_eq!(m.video_streams.len(), 1);
         let v = &m.video_streams[0];
         assert_eq!(v.codec, "h264");
@@ -716,7 +758,8 @@ mod tests {
 
     #[test]
     fn parse_probe_json_marks_hevc_hdr_correctly() {
-        let m = parse_probe_json(fixture_hevc_hdr().as_bytes(), Path::new("/x.mkv")).expect("parse");
+        let m =
+            parse_probe_json(fixture_hevc_hdr().as_bytes(), Path::new("/x.mkv")).expect("parse");
         assert!(m.is_high_bit_depth);
         assert!(m.is_hdr);
         assert_eq!(m.video_streams[0].bit_depth, 10);
@@ -744,7 +787,9 @@ mod tests {
     fn assert_window_eq(haystack: &[String], needle: &[&str]) {
         let needle_owned: Vec<String> = needle.iter().map(|s| s.to_string()).collect();
         assert!(
-            haystack.windows(needle.len()).any(|w| w == needle_owned.as_slice()),
+            haystack
+                .windows(needle.len())
+                .any(|w| w == needle_owned.as_slice()),
             "expected window {needle:?} in {haystack:?}",
         );
     }
@@ -770,7 +815,11 @@ mod tests {
         assert_window_eq(&argv.post_input, &["-bufsize", "8000k"]);
         assert_window_eq(&argv.post_input, &["-level:v", "4.0"]);
         // Scale filter for software path includes the pad expression.
-        let vf_idx = argv.post_input.iter().position(|s| s == "-vf").expect("-vf present");
+        let vf_idx = argv
+            .post_input
+            .iter()
+            .position(|s| s == "-vf")
+            .expect("-vf present");
         let vf = &argv.post_input[vf_idx + 1];
         assert!(vf.starts_with("scale=1920:1080:force_original_aspect_ratio=decrease,pad="));
         // In-band SPS/PPS bsf is applied.
@@ -779,7 +828,10 @@ mod tests {
         assert_window_eq(&argv.post_input, &["-f", "hls"]);
         assert_window_eq(
             &argv.post_input,
-            &["-hls_segment_filename", "/tmp/segments-rust/jjj/segment_%04d.m4s"],
+            &[
+                "-hls_segment_filename",
+                "/tmp/segments-rust/jjj/segment_%04d.m4s",
+            ],
         );
         assert_window_eq(&argv.post_input, &["-hls_segment_type", "fmp4"]);
     }
@@ -823,18 +875,28 @@ mod tests {
             false,
         );
         // Pre-input has the device-init flags.
-        assert_window_eq(&argv.pre_input, &["-init_hw_device", "vaapi=va:/dev/dri/renderD128"]);
+        assert_window_eq(
+            &argv.pre_input,
+            &["-init_hw_device", "vaapi=va:/dev/dri/renderD128"],
+        );
         assert_window_eq(&argv.pre_input, &["-hwaccel", "vaapi"]);
         assert_window_eq(&argv.pre_input, &["-hwaccel_output_format", "vaapi"]);
         // h264_vaapi codec is selected.
         assert_window_eq(&argv.post_input, &["-c:v", "h264_vaapi"]);
         // Filter chain has scale_vaapi + pad_vaapi for SDR (no tonemap, no sw-pad).
-        let vf_idx = argv.post_input.iter().position(|s| s == "-vf").expect("-vf present");
+        let vf_idx = argv
+            .post_input
+            .iter()
+            .position(|s| s == "-vf")
+            .expect("-vf present");
         let vf = &argv.post_input[vf_idx + 1];
         assert!(vf.contains("scale_vaapi"));
         assert!(vf.contains("pad_vaapi"));
         assert!(!vf.contains("tonemap_vaapi"), "SDR must not run tonemap");
-        assert!(!vf.contains("hwdownload"), "SDR fast path keeps frames on GPU");
+        assert!(
+            !vf.contains("hwdownload"),
+            "SDR fast path keeps frames on GPU"
+        );
     }
 
     #[test]
@@ -848,13 +910,26 @@ mod tests {
             "/tmp/x/segment_%04d.m4s",
             false,
         );
-        let vf_idx = argv.post_input.iter().position(|s| s == "-vf").expect("-vf present");
+        let vf_idx = argv
+            .post_input
+            .iter()
+            .position(|s| s == "-vf")
+            .expect("-vf present");
         let vf = &argv.post_input[vf_idx + 1];
-        assert!(vf.starts_with("tonemap_vaapi"), "HDR must lead with tonemap_vaapi");
+        assert!(
+            vf.starts_with("tonemap_vaapi"),
+            "HDR must lead with tonemap_vaapi"
+        );
         assert!(vf.contains("scale_vaapi"));
-        assert!(vf.contains("out_color_matrix=bt709"), "HDR scale tags surface as bt709");
+        assert!(
+            vf.contains("out_color_matrix=bt709"),
+            "HDR scale tags surface as bt709"
+        );
         assert!(!vf.contains("pad_vaapi"), "HDR must skip pad_vaapi");
-        assert!(!vf.contains("hwdownload"), "HDR must not round-trip through CPU");
+        assert!(
+            !vf.contains("hwdownload"),
+            "HDR must not round-trip through CPU"
+        );
     }
 
     #[test]
@@ -868,7 +943,11 @@ mod tests {
             "/tmp/x/segment_%04d.m4s",
             true,
         );
-        let vf_idx = argv.post_input.iter().position(|s| s == "-vf").expect("-vf present");
+        let vf_idx = argv
+            .post_input
+            .iter()
+            .position(|s| s == "-vf")
+            .expect("-vf present");
         let vf = &argv.post_input[vf_idx + 1];
         assert!(vf.contains("hwdownload"));
         assert!(vf.contains("hwupload"));
@@ -889,7 +968,11 @@ mod tests {
             "/tmp/x/segment_%04d.m4s",
             true, // sw_pad requested
         );
-        let vf_idx = argv.post_input.iter().position(|s| s == "-vf").expect("-vf present");
+        let vf_idx = argv
+            .post_input
+            .iter()
+            .position(|s| s == "-vf")
+            .expect("-vf present");
         let vf = &argv.post_input[vf_idx + 1];
         assert!(vf.starts_with("tonemap_vaapi"));
         assert!(!vf.contains("hwdownload"), "HDR cascade ignores sw_pad");
@@ -921,7 +1004,10 @@ mod tests {
         assert_window_eq(&opts, &["-hls_time", "2"]);
         assert_window_eq(&opts, &["-hls_segment_type", "fmp4"]);
         assert_window_eq(&opts, &["-hls_fmp4_init_filename", "init.mp4"]);
-        assert_window_eq(&opts, &["-hls_segment_filename", "/abs/path/segment_%04d.m4s"]);
+        assert_window_eq(
+            &opts,
+            &["-hls_segment_filename", "/abs/path/segment_%04d.m4s"],
+        );
         assert_window_eq(&opts, &["-hls_list_size", "0"]);
         assert_window_eq(&opts, &["-hls_flags", "omit_endlist"]);
     }

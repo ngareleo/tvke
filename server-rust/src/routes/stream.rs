@@ -229,10 +229,7 @@ async fn next_segment_path(job: &ActiveJob, index: i64) -> NextSegment {
     })
 }
 
-async fn send_length_prefixed(
-    tx: &mpsc::Sender<Result<Bytes, Infallible>>,
-    bytes: Bytes,
-) -> bool {
+async fn send_length_prefixed(tx: &mpsc::Sender<Result<Bytes, Infallible>>, bytes: Bytes) -> bool {
     let mut header = [0u8; 4];
     let len = bytes.len() as u32;
     header[0] = (len >> 24) as u8;
@@ -254,7 +251,9 @@ fn decrement_connection(ctx: &AppContext, job: &ActiveJob, job_id: &str) {
         i.connections == 0 && matches!(i.status, JobStatus::Running | JobStatus::Pending)
     });
     if still_running {
-        ctx.pool
-            .kill_job(job_id, crate::services::kill_reason::KillReason::ClientDisconnected);
+        ctx.pool.kill_job(
+            job_id,
+            crate::services::kill_reason::KillReason::ClientDisconnected,
+        );
     }
 }

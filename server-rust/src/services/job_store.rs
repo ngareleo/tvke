@@ -42,8 +42,8 @@ impl JobStore {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::graphql::scalars::Resolution;
     use crate::graphql::scalars::JobStatus;
+    use crate::graphql::scalars::Resolution;
     use crate::services::active_job::ActiveJobInner;
 
     fn job(id: &str) -> ActiveJob {

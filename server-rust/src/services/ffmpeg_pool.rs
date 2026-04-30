@@ -58,7 +58,9 @@ pub enum PoolError {
 /// Outcome of a single `run_to_completion` call.
 #[derive(Debug)]
 pub enum ExitOutcome {
-    Complete { stderr_tail: String },
+    Complete {
+        stderr_tail: String,
+    },
     Killed {
         reason: KillReason,
         stderr_tail: String,
@@ -181,8 +183,12 @@ impl FfmpegPool {
             .map(|r| r.key().clone())
             .filter(|id| !self.inner.dying.contains(id))
             .collect();
-        let inflight_job_ids: Vec<String> =
-            self.inner.inflight.iter().map(|r| r.key().clone()).collect();
+        let inflight_job_ids: Vec<String> = self
+            .inner
+            .inflight
+            .iter()
+            .map(|r| r.key().clone())
+            .collect();
         let dying_job_ids: Vec<String> = self.inner.dying.iter().map(|r| r.key().clone()).collect();
         CapSnapshot {
             limit: self.inner.config.max_concurrent_jobs,
@@ -299,7 +305,9 @@ impl FfmpegPool {
         // Schedule SIGKILL escalation; the wait task cancels it via the
         // shared notify.
         let cancel = Arc::new(Notify::new());
-        self.inner.escalation_cancel.insert(id.to_string(), cancel.clone());
+        self.inner
+            .escalation_cancel
+            .insert(id.to_string(), cancel.clone());
         let force_kill_ms = self.inner.config.force_kill_timeout_ms;
         let id_owned = id.to_string();
         let live = self.inner.live.clone();

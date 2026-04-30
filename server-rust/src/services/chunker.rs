@@ -370,7 +370,12 @@ async fn run_cascade(
 
     job.with_inner_mut(|i| i.status = JobStatus::Running);
     let job_id_owned = job.with_inner(|i| i.id.clone());
-    let _ = update_job_status(&ctx.db, &job_id_owned, "running", JobStatusUpdate::default());
+    let _ = update_job_status(
+        &ctx.db,
+        &job_id_owned,
+        "running",
+        JobStatusUpdate::default(),
+    );
 
     // Probe — cache the metadata once, reuse across cascade tiers.
     let mut file = FfmpegFile::new(&input_path);
@@ -406,11 +411,10 @@ async fn run_cascade(
     // Cascade tier sequencing. Per-source state cache promotes a known-bad
     // video straight to the right tier on subsequent chunks.
     let video_id = job.with_inner(|i| i.video_id.clone());
-    let mut tier = match (
-        ctx.vaapi_state.get(&video_id).map(|r| *r),
-        &ctx.hw_accel,
-    ) {
-        (Some(VaapiVideoState::HwUnsafe), _) | (_, HwAccelConfig::Software) => CascadeTier::Software,
+    let mut tier = match (ctx.vaapi_state.get(&video_id).map(|r| *r), &ctx.hw_accel) {
+        (Some(VaapiVideoState::HwUnsafe), _) | (_, HwAccelConfig::Software) => {
+            CascadeTier::Software
+        }
         (Some(VaapiVideoState::NeedsSwPad), HwAccelConfig::Vaapi { .. }) => CascadeTier::SwPadVaapi,
         (None, HwAccelConfig::Vaapi { .. }) => CascadeTier::FastVaapi,
         _ => CascadeTier::Software,
@@ -514,7 +518,10 @@ async fn run_cascade(
             ExitOutcome::Killed { .. } => {
                 break Some(outcome);
             }
-            ExitOutcome::Error { code, ref stderr_tail } => {
+            ExitOutcome::Error {
+                code,
+                ref stderr_tail,
+            } => {
                 let tail = stderr_tail.clone();
                 let code_for_log = code;
                 // Decide next tier.
@@ -673,17 +680,18 @@ fn spawn_segment_watcher(
     tokio::spawn(
         async move {
             let (tx, mut rx) = mpsc::unbounded_channel::<Event>();
-            let mut watcher = match notify::recommended_watcher(move |res: notify::Result<Event>| {
-                if let Ok(event) = res {
-                    let _ = tx.send(event);
-                }
-            }) {
-                Ok(w) => w,
-                Err(err) => {
-                    warn!(error = %err, "could not start segment watcher");
-                    return;
-                }
-            };
+            let mut watcher =
+                match notify::recommended_watcher(move |res: notify::Result<Event>| {
+                    if let Ok(event) = res {
+                        let _ = tx.send(event);
+                    }
+                }) {
+                    Ok(w) => w,
+                    Err(err) => {
+                        warn!(error = %err, "could not start segment watcher");
+                        return;
+                    }
+                };
             if let Err(err) = watcher.watch(&segment_dir, RecursiveMode::NonRecursive) {
                 warn!(error = %err, "could not watch segment dir");
                 return;
@@ -695,10 +703,7 @@ fn spawn_segment_watcher(
                 if matches!(job_status, JobStatus::Error | JobStatus::Complete) {
                     break;
                 }
-                if !matches!(
-                    event.kind,
-                    EventKind::Create(_) | EventKind::Modify(_)
-                ) {
+                if !matches!(event.kind, EventKind::Create(_) | EventKind::Modify(_)) {
                     continue;
                 }
                 for path in event.paths {

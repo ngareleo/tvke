@@ -11,8 +11,8 @@
 //! Forward-constraint reference: `docs/architecture/Sharing/00-Peer-Streaming.md`.
 //! Cache-key tuple matches `Plan/02-Streaming.md` §"Sharing forward-constraints".
 
-use crate::db::Db;
 use crate::db::queries::jobs::TranscodeJobRow;
+use crate::db::Db;
 use crate::error::DbResult;
 use rusqlite::{params, OptionalExtension, Row};
 

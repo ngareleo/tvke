@@ -77,7 +77,10 @@ pub enum HwAccelError {
          implementation in server-rust/src/services/hw_accel.rs and the matching \
          branch in services/ffmpeg_file.rs::build_encode_argv."
     )]
-    PlatformNotImplemented { os: &'static str, hint: &'static str },
+    PlatformNotImplemented {
+        os: &'static str,
+        hint: &'static str,
+    },
 }
 
 pub type HwAccelResult<T> = Result<T, HwAccelError>;
@@ -128,12 +131,7 @@ const PROBE_TIMEOUT_MS: u64 = 10_000;
 /// closed cleanly. Anything else surfaces as `VaapiProbeFailed` with the
 /// stderr tail for diagnosis.
 async fn probe_vaapi(ffmpeg: &Path, device: &str) -> HwAccelResult<()> {
-    let args = [
-        "-hide_banner",
-        "-v",
-        "error",
-        "-init_hw_device",
-    ];
+    let args = ["-hide_banner", "-v", "error", "-init_hw_device"];
     let device_arg = format!("vaapi=va:{device}");
     let probe_args: Vec<&str> = args
         .iter()
@@ -174,7 +172,10 @@ async fn probe_vaapi(ffmpeg: &Path, device: &str) -> HwAccelResult<()> {
     Err(HwAccelError::VaapiProbeFailed {
         device: device.to_string(),
         exit: output.status.code(),
-        stderr: String::from_utf8_lossy(&output.stderr).chars().take(800).collect(),
+        stderr: String::from_utf8_lossy(&output.stderr)
+            .chars()
+            .take(800)
+            .collect(),
     })
 }
 

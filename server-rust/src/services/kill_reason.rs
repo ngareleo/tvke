@@ -67,7 +67,11 @@ mod tests {
             KillReason::ServerShutdown,
         ] {
             let s = variant.as_wire_str();
-            assert_eq!(KillReason::from_wire_str(s), Some(variant), "wire string {s}");
+            assert_eq!(
+                KillReason::from_wire_str(s),
+                Some(variant),
+                "wire string {s}"
+            );
         }
     }
 
