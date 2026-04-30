@@ -373,13 +373,13 @@ These are the "Decisions to lock before starting" lines extracted from each step
 
 ### Step 2 — Streaming
 
-**10.4 Cache directory during cutover.** Recommend `tmp/segments-rust/` for Rust; Bun keeps `tmp/segments/`. Different content-addressed indexes; mixing risks corruption. Document the env var override path so testers can swap.
+**10.4 Cache directory during cutover.** ~~Recommend `tmp/segments-rust/` for Rust; Bun keeps `tmp/segments/`. Different content-addressed indexes; mixing risks corruption. Document the env var override path so testers can swap.~~ **→ Resolved. See Resolved section.**
 
-**10.5 Mid-session flag-flip behavior.** Recommend graceful next-segment switch — let the current segment finish on Bun, the next request lands on Rust. Fail-fast is uglier (spinner blip during the switch).
+**10.5 Mid-session flag-flip behavior.** ~~Recommend graceful next-segment switch — let the current segment finish on Bun, the next request lands on Rust. Fail-fast is uglier (spinner blip during the switch).~~ **→ Resolved. See Resolved section.**
 
-**10.6 Rust ffmpeg subprocess wrapper.** Recommend hand-rolled `tokio::process::Command` (per `07-Bun-To-Rust-Migration.md`). The wrapper crates add little when SIGTERM/SIGKILL escalation is the load-bearing part.
+**10.6 Rust ffmpeg subprocess wrapper.** ~~Recommend hand-rolled `tokio::process::Command` (per `07-Bun-To-Rust-Migration.md`). The wrapper crates add little when SIGTERM/SIGKILL escalation is the load-bearing part.~~ **→ Resolved. See Resolved section.**
 
-**10.7 Span-surface validation method.** Recommend Seq diff: same playback session against both origins, assert span name + key attribute set match. Document the diff command in the Step 2 PR.
+**10.7 Span-surface validation method.** ~~Recommend Seq diff: same playback session against both origins, assert span name + key attribute set match. Document the diff command in the Step 2 PR.~~ **→ Resolved. See Resolved section.**
 
 ### Step 3 — Tauri Packaging
 
@@ -412,3 +412,21 @@ These are the "Decisions to lock before starting" lines extracted from each step
 ## Resolved
 
 _Move resolved entries here with the date and chosen path._
+
+---
+
+### 10.4 Cache directory during cutover — Resolved 2026-04-30
+
+**Chosen path:** `tmp/segments-rust/` for Rust; Bun keeps `tmp/segments/`. Implemented in `AppConfig::dev_defaults` at `server-rust/src/config.rs`. Separate directories prevent index cross-contamination if one process evicts a segment the other still indexes. An env var override (`SEGMENT_DIR`) lets testers swap directories without recompiling.
+
+### 10.5 Mid-session flag-flip behaviour — Resolved 2026-04-30
+
+**Chosen path:** Graceful next-segment switch. `streamUrl(jobId)` reads the `useRustStreaming` flag at fetch-time (not at module-init), so in-flight Bun segments drain naturally and the next client `fetch` lands on the Rust endpoint. No spinner blip; no client retry needed.
+
+### 10.6 Rust ffmpeg subprocess wrapper — Resolved 2026-04-30
+
+**Chosen path:** Hand-rolled `tokio::process::Command` with `kill_on_drop(true)`. POSIX SIGTERM/SIGKILL escalation via the `nix` crate (Unix-only; stubs on Windows remain). Implementation lives in `server-rust/src/services/ffmpeg_pool.rs`. No wrapper crate adopted — the SIGTERM→SIGKILL escalation logic is the load-bearing part and is cleaner as first-class code.
+
+### 10.7 Span-surface validation — Resolved 2026-04-30 (partial)
+
+**Chosen path:** Seq diff plan documented in PR #41 test plan. The diff method is: run the same playback session against both origins (Bun on port 3001, Rust on port 3002 with `useRustStreaming` on), query Seq for `transcode.job` and `stream.request` spans on each trace ID, and assert span name + key attribute set match. `transcode_started`, `transcode_complete`, `transcode_killed`, and `transcode_silent_failure` all emit. **Not yet executed** — span parity is in the test plan, not yet asserted as of PR #41. Follow-up: user must run the Seq diff before Step 3 begins. The missing gap is `transcode_progress` periodic events (see `Plan/02-Streaming.md` — skipped piece #1).

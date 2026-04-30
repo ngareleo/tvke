@@ -188,11 +188,31 @@ These are the surfaces the React client and the OTel pipeline see. Breaking any 
 |---|---|---|
 | HTTP body | `axum` 0.7+ via `tokio::sync::mpsc` → `axum::body::Body::from_stream` | 1:1 translation of pull-based `ReadableStream` |
 | Process | `tokio::process::Command` with `Child::kill_on_drop(true)` | Built-in, integrates with the runtime |
+| POSIX signals | `nix` (Unix only) | SIGTERM/SIGKILL dispatch in `ffmpeg_pool.rs`; stubs on Windows |
 | File watch | `notify` | Cross-platform inotify / FSEvents / ReadDirectoryChangesW |
 | Hash | `sha1` | Byte-identical SHA-1 for job ID + content fingerprint |
 | Cancellation | `tokio_util::sync::CancellationToken` | Replaces `AbortController` / `req.signal` |
 | Concurrency | `Arc<Semaphore>` | Replaces the count-based cap (multi-peer + multi-window race-safe) |
-| Shared maps | `Arc<DashMap>` (or `Arc<RwLock<HashMap>>`) | Replaces module-global `Map<…>` in jobStore |
+| Shared maps | `dashmap` (`DashMap<String, ActiveJob>`) | Replaces module-global `Map<…>` in jobStore — concurrent read/write without a single global lock |
+| Byte buffers | `bytes` | `Bytes` type used in the `mpsc` channel in `routes/stream.rs` |
+| Async streaming | `tokio-stream` | `ReceiverStream` adapts the `mpsc::Receiver` to `Stream<Item=…>` for `Body::from_stream` |
+
+**Module surface landed in Step 2 (`server-rust/src/services/`):**
+
+| Module | Role |
+|---|---|
+| `chunker.rs` | Orchestrator + `run_cascade` loop |
+| `ffmpeg_pool.rs` | `Arc<Semaphore>` cap + dying-set + SIGTERM/SIGKILL escalation |
+| `ffmpeg_path.rs` | Manifest-pinned binary resolver; typed `FfmpegPathError` |
+| `ffmpeg_file.rs` | `FfmpegFile::probe` + pure `build_encode_argv` |
+| `hw_accel.rs` | VAAPI probe + `HwAccelMode::from_env` + typed `HwAccelError` |
+| `active_job.rs` | `Arc<Mutex<ActiveJobInner>>` + `Notify` for per-job wakeup |
+| `job_store.rs` | `DashMap<String, ActiveJob>` |
+| `kill_reason.rs` | Locked wire-format strings + `Option`-shape mapper |
+| `cache_index.rs` | Structural-tuple lookup against `transcode_jobs` (see §4.1) |
+| `job_restore.rs` | Boot-time stale-job sweep |
+
+Plus `routes/stream.rs` (the length-prefixed binary streamer) and `config::AppContext` (the DI bundle threaded through schema + router).
 
 ### 3.2 Stream endpoint sketch
 
@@ -269,7 +289,7 @@ These are the things that look fine for single-user but bite when sharing arrive
 
 ### 4.1 Job ID and segment cache key are decoupled
 
-The on-disk layout is `tmp/segments/<jobId>/`, named by the ephemeral job ID. **In the Rust port, the cache lookup is keyed by the canonical content tuple `(videoId, resolution, startS, endS)`, not by `jobId`.**
+The on-disk layout is `tmp/segments-rust/<jobId>/`, named by the ephemeral job ID. **In the Rust port, the cache lookup is keyed by the canonical content tuple `(videoId, resolution, startS, endS)`, not by `jobId`.**
 
 ```rust
 struct JobStore {
@@ -279,6 +299,8 @@ struct JobStore {
 ```
 
 Today's `jobId` formula already maps one tuple to one ID, so the index is initially redundant — but the seam exists. When sharing ships and a content-addressed cache layer is introduced, no chunker code rewrite is needed. Without the seam, two peers asking for byte-identical segments could spawn a second ffmpeg if the lookup was implemented naively against `by_id` only. **Out of scope explicitly:** fuzzy-range matching (peer B asks `[300s, 600s]`, peer C asks `[330s, 600s]` — both produce separate runs, do not splice).
+
+> **Step 2 status (2026-04-30):** The seam is in place. The Rust port keeps the byte-identical SHA-1 hash for the in-memory job store AND introduces a separate structural lookup at `services/cache_index.rs::lookup(SegmentCacheKey { video_id, resolution, start_s, end_s })`. The chunker tries `cache_index` before computing the hash, so a peer with a different hash function can still hit the cache. The hash is now an internal id, not the cache primitive.
 
 ### 4.2 Per-connection pull isolation
 

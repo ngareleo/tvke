@@ -107,8 +107,89 @@ Every Bun test that covers streaming behaviour must be ported before Step 2 ship
 
 ## Decisions to lock before starting
 
-1. **Origin discovery for `/stream`.** Reuse the Step 1 mechanism — do not invent a second one. The streaming service reads the same flag-driven origin selection as the Relay environment. Confirmed: hard-coded `localhost:3002` in `rustOrigin.ts` serves both `/graphql` and `/stream/*`.
-2. **Cache directory during cutover.** Bun and Rust must use **separate** `SEGMENT_DIR` directories. Different content-addressed indexes; mixing them risks index corruption when one process evicts a file the other still indexes. Pick a Rust-specific subdirectory under `tmp/` and document it.
-3. **Mid-session flag-flip behaviour.** Fail-fast vs. graceful next-segment switch (see Cutover above). Pick one and document the user-visible behaviour.
-4. **Rust ffmpeg subprocess wrapper.** Pick the wrapper crate (or hand-rolled `tokio::process` per [`../07-Bun-To-Rust-Migration.md`](../07-Bun-To-Rust-Migration.md)) and confirm SIGTERM grace + SIGKILL escalation work cross-platform. Linux gets primary attention; mac/win HW-accel paths can stay stubs in this step (they were stubs on Bun too — see [`../../../server/Hardware-Acceleration/00-Overview.md`](../../../server/Hardware-Acceleration/00-Overview.md)).
-5. **Span surface validation.** Decide how to verify span parity with Bun — diff Seq output for the same playback session against both origins, asserting span name + key attributes match. The Bun span surface is the authoritative reference: `docs/architecture/Observability/server/00-Spans.md`. The CI SDL-parity job pattern from Step 1 (boot Rust binary, run check script, kill) is a template for a streaming smoke test.
+These were open on day one of Step 2; all five are now locked by implementation (PR #41).
+
+1. **Origin discovery for `/stream`.** Locked: reuses the Step 1 mechanism. Hard-coded `localhost:3002` in `rustOrigin.ts` serves both `/graphql` and `/stream/*`. No second discovery mechanism introduced.
+2. **Cache directory during cutover.** Locked: `tmp/segments-rust/` for Rust; Bun keeps `tmp/segments/`. Implemented in `AppConfig::dev_defaults` at `server-rust/src/config.rs`. See `Plan/Open-Questions.md §10.4`.
+3. **Mid-session flag-flip behaviour.** Locked: graceful next-segment switch. `streamUrl(jobId)` reads the flag at fetch-time. See `Plan/Open-Questions.md §10.5`.
+4. **Rust ffmpeg subprocess wrapper.** Locked: hand-rolled `tokio::process::Command` with `kill_on_drop(true)`; POSIX SIGTERM/SIGKILL via `nix` crate in `services/ffmpeg_pool.rs`. See `Plan/Open-Questions.md §10.6`.
+5. **Span surface validation.** Locked (plan only — not yet executed): Seq diff approach documented in PR #41 test plan. `transcode_progress` periodic events are the known gap. See `Plan/Open-Questions.md §10.7` and "Skipped" section below.
+
+## What shipped beyond the spec (PR #41)
+
+### Cache-key seam landed (§4.1 in `01-Streaming-Layer.md`)
+
+The Rust port keeps the byte-identical SHA-1 hash for the in-memory job store but introduces a separate structural lookup at `services/cache_index.rs::lookup(SegmentCacheKey { video_id, resolution, start_s, end_s })`. The chunker tries the `cache_index` lookup BEFORE computing the hash, so a future peer with a different hash function can still hit the cache. The hash is now an internal id, not the cache primitive — the seam `01-Streaming-Layer.md §4.1` foreshadowed is now in place.
+
+### New module surface in `server-rust/src/services/`
+
+The chunker port introduced these modules:
+
+| Module | Role |
+|---|---|
+| `chunker.rs` | Orchestrator + cascade-as-loop (`run_cascade`) |
+| `ffmpeg_pool.rs` | `Arc<Semaphore>` cap + dying-set + SIGTERM/SIGKILL escalation |
+| `ffmpeg_path.rs` | Manifest-pinned binary resolver (typed `FfmpegPathError`) |
+| `ffmpeg_file.rs` | `FfmpegFile::probe` + pure `build_encode_argv` |
+| `hw_accel.rs` | VAAPI probe + `HwAccelMode::from_env` + typed `HwAccelError` |
+| `active_job.rs` | `Arc<Mutex<ActiveJobInner>>` + `Notify` for in-memory job state |
+| `job_store.rs` | `DashMap<String, ActiveJob>` |
+| `kill_reason.rs` | Locked wire-format strings + Option-shape mapper |
+| `cache_index.rs` | Structural-tuple lookup against `transcode_jobs` |
+| `job_restore.rs` | Boot-time stale-job sweep |
+
+Plus `routes/stream.rs` (length-prefixed binary streamer) and `config::AppContext` (bundle threaded through schema + router).
+
+New crates landed: `dashmap`, `notify`, `bytes`, `tokio-stream`, `nix` (Unix only).
+
+### `AppContext` as the DI bundle
+
+`config::AppContext` (a `Clone` struct) carries long-lived state: `db`, `pool`, `ffmpeg_paths`, `hw_accel`, `vaapi_state`, `job_store`, `config`. It is threaded through both the GraphQL schema (`build_schema(ctx)`) and the axum router (`Extension(ctx)` layer). Step 3 must NOT re-introduce module globals alongside it.
+
+### `build_encode_argv` shape
+
+`ffmpeg_file::build_encode_argv` returns `Vec<String>` split at the input boundary — a pure value transform with no command-builder mutation. The chunker assembles `[pre_input..., "-i", input, post_input..., output_pattern]`. This makes the argv builder trivially testable via window-match assertions and eliminates the fluent-ffmpeg module-global `setFfmpegPath` footgun.
+
+### Cascade is a loop, not recursion
+
+Per `01-Streaming-Layer.md §3.4` — implemented in `services/chunker.rs::run_cascade` as `loop { match … }` over a `CascadeTier { FastVaapi, SwPadVaapi, Software }` enum. `vaapi_state` cache writes happen between iterations so subsequent chunks skip already-known-failing tiers.
+
+## Skipped — surfaced for follow-up
+
+Two pieces from the Bun chunker's contract were deferred. A future agent picking up Step 3 or a targeted follow-up step should address these before the Tauri package ships.
+
+### 1. `transcode_progress` periodic span events
+
+Bun's chunker uses fluent-ffmpeg's per-second progress callback to emit `transcode_progress` events (~10 s cadence) on the `transcode.job` span with `frames`, `fps`, `kbps`, `timemark`, `percent`. The Rust port spawns ffmpeg directly via `tokio::process` and does not currently parse `frame=N fps=… time=…` lines from stderr. All other span events (`transcode_started`, `transcode_complete`, `transcode_killed`, `transcode_silent_failure`) still emit correctly.
+
+**Follow-up:** add a stderr-line parser in `services/ffmpeg_pool.rs`. The stderr ring buffer is already in place; this is parsing logic on top of it. The parser pattern is a line-by-line scan for `frame=` prefix; the parsed struct maps directly to the existing `transcode_progress` event attribute set in `docs/architecture/Observability/server/00-Spans.md`.
+
+### 2. `orphan_no_connection` and `max_encode_timeout` watchdog timers
+
+The route's `kill_job(ClientDisconnected)` on the last-connection-drop covers the most common abandonment path. The absolute-budget timers (Bun's `chunker.ts:460` orphan timer, `chunker.ts:480` max-encode timer) are not yet wired in the Rust port.
+
+**Follow-up:** add `tokio::spawn`-driven timers in `services/chunker.rs::run_cascade` keyed on `AppConfig::orphan_timeout_ms` (30 s default) and `AppConfig::max_encode_rate_multiplier` (3× default). The two `kill_reason` values (`orphan_no_connection`, `max_encode_timeout`) are already defined in `kill_reason.rs`; the timers are the missing callers.
+
+## Lessons from Step 2 that apply to Step 3 and beyond
+
+These are now established conventions in the Rust workspace. Step 3's implementing agent inherits them.
+
+### `AppContext` is the dependency-injection bundle
+
+Long-lived state (`db`, `pool`, `ffmpeg_paths`, `hw_accel`, `vaapi_state`, `job_store`, `config`) lives on a single `Clone` struct threaded through both the GraphQL schema and the axum router via `Extension`. Do NOT re-introduce module globals in Step 3 (Tauri packaging). Any new long-lived state goes on `AppContext`.
+
+### `build_schema_for_tests(db)` exists for integration tests
+
+Integration tests that don't have a real ffmpeg binary construct a stub `AppContext::for_tests` with `/bin/true` paths. This pattern is in place; Step 3 tests that exercise the server layer should follow it.
+
+### No-`unwrap`/`expect` discipline held through the chunker port
+
+Mutex poisoning surfaces as `.lock().expect("…poisoned…")` only inside `ActiveJob::with_inner*` where the panic is a structural invariant; everywhere else returns `Result`. This is §14 of `docs/code-style/Invariants/00-Never-Violate.md` applied to the highest-exposure surface in the codebase.
+
+### `build_encode_argv` is a pure value transform
+
+`build_encode_argv` returns `Vec<String>` split at the input boundary. The chunker assembles the full argv slice. This makes argv construction trivially testable — no side-effects, no fluent-ffmpeg chain mutation, no module-global write. Keep this shape for any future codec/filter additions.
+
+### The cascade is a loop, not recursion
+
+`services/chunker.rs::run_cascade` is `loop { match … }` over `CascadeTier`. This eliminates the recursive-call + duplicated-event-emission problem in the Bun chunker. When adding a new HW backend tier (VideoToolbox, QSV), extend the enum — do not re-introduce recursion.
