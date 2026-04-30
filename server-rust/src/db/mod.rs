@@ -1,9 +1,16 @@
 //! SQLite layer — connection, migrations, and per-table query modules.
 //!
-//! Mirrors `server/src/db/index.ts` + `server/src/db/queries/*.ts`. The Rust
-//! port opens the same `tmp/xstream.db` file Bun uses (`DB_PATH` env var
-//! override matches Bun) so both processes see identical data during the
-//! Step 1 cutover.
+//! Mirrors `server/src/db/index.ts` + `server/src/db/queries/*.ts`.
+//!
+//! **Per-process DB isolation during cutover.** Bun opens `tmp/xstream.db`,
+//! Rust opens `tmp/xstream-rust.db`. The two backends are runtime-independent
+//! (no shared in-memory state, no shared segment cache, no shared DB rows) —
+//! sharing the DB produced cross-contamination where Bun would resolve a
+//! transcode_jobs row written by Rust whose `segment_dir` pointed at Rust's
+//! filesystem, then serve 0 segments on a 200 OK. Each process now writes
+//! and reads only its own DB. The seam dies at Step 3 (Tauri) when Bun is
+//! removed and the Rust DB becomes THE DB. `DB_PATH` env var overrides the
+//! default for testing.
 //!
 //! Notes / invariants:
 //! - WAL + foreign_keys=ON pragmas applied BEFORE any query (matches Bun).
@@ -77,11 +84,11 @@ pub fn default_db_path() -> PathBuf {
     if let Ok(p) = std::env::var("DB_PATH") {
         return PathBuf::from(p);
     }
-    // Default to the Bun server's path so both processes share the same DB
-    // during cutover. Bun resolves to `<repo>/tmp/xstream.db`. We don't have
-    // a guaranteed repo-root anchor here, so fall back to `tmp/xstream.db`
-    // relative to the working directory.
-    PathBuf::from("tmp/xstream.db")
+    // Per-process isolation: Rust gets its own DB so Bun-written
+    // transcode_jobs rows can't contaminate Rust's stream lookups (and
+    // vice versa). Resolved relative to the working directory; the dev
+    // script overrides via DB_PATH so it lands at `<repo>/tmp/xstream-rust.db`.
+    PathBuf::from("tmp/xstream-rust.db")
 }
 
 /// SHA-1 of a UTF-8 string, hex-encoded. Used for content-addressed IDs

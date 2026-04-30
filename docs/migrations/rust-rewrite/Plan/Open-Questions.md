@@ -415,9 +415,13 @@ _Move resolved entries here with the date and chosen path._
 
 ---
 
-### 10.4 Cache directory during cutover — Resolved 2026-04-30
+### 10.4 Per-process state isolation during cutover — Resolved 2026-04-30
 
-**Chosen path:** `tmp/segments-rust/` for Rust; Bun keeps `tmp/segments/`. Implemented in `AppConfig::dev_defaults` at `server-rust/src/config.rs`. Separate directories prevent index cross-contamination if one process evicts a segment the other still indexes. An env var override (`SEGMENT_DIR`) lets testers swap directories without recompiling.
+**Chosen path:** Full per-process isolation. Each backend keeps its own segment dir AND its own SQLite database file. Bun: `tmp/segments/` + `tmp/xstream.db`. Rust: `tmp/segments-rust/` + `tmp/xstream-rust.db`. Implemented in `AppConfig::dev_defaults` at `server-rust/src/config.rs`, `default_db_path()` at `server-rust/src/db/mod.rs`, and the Rust dev script's `DB_PATH` env var.
+
+The original "shared DB" decision (both processes opening `tmp/xstream.db`) failed under real testing: deterministic content-addressed `job_id`s mean Bun and Rust both compute the same id for the same content tuple, but each writes its own `segment_dir` value into the row. Whichever backend writes first owns the row; the other backend reads it back and tries to serve from the wrong filesystem. We saw Bun receive a `/stream/<jobid>` request, look up the row Rust had written, find `init.mp4` in Rust's dir (still satisfying `init_wait_complete has_init=true`), then serve 0 media segments because the segment-row paths weren't on Bun's plane.
+
+The fix matches the user's "each service should stay independent of the other" rule: split the cache state, keep the seam at file-system level. Rust seeds its DB by copying from Bun's (`cp tmp/xstream.db tmp/xstream-rust.db`) once at provisioning so the library + videos rows come along for the ride; from there the DBs diverge. At Step 3 (Tauri) Bun is removed and the Rust DB becomes THE DB, so the seam dies cleanly. `DB_PATH` and `SEGMENT_DIR` env vars remain as test overrides.
 
 ### 10.5 Mid-session flag-flip behaviour — Resolved 2026-04-30
 
