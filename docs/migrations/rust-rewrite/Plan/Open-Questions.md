@@ -369,7 +369,7 @@ These are the "Decisions to lock before starting" lines extracted from each step
 
 **10.2 Alternate-origin discovery.** Recommend hard-coded `http://localhost:<port>` with the port baked into `flagRegistry.ts` alongside the boolean. Dead-simple; deleted in Step 3 along with the flag. Step 2 reuses the same mechanism.
 
-**10.3 Flag shape.** Recommend one boolean per cutover (`useRustGraphQL`, then `useRustStreaming`). Enum is YAGNI.
+**10.3 Flag shape.** ~~Recommend one boolean per cutover (`useRustGraphQL`, then `useRustStreaming`). Enum is YAGNI.~~ **→ Superseded.** A two-boolean design was tried in Step 1 + Step 2; the combinations where the flags drift apart (Bun GraphQL + Rust streaming, or vice versa) produce 404 split-brain because the two backends do not share state. Collapsed to one boolean (`useRustBackend`) before Step 2 PR merge — it routes both `/graphql` and `/stream/*` to the same backend. See `02-Streaming.md` "Where this step sits".
 
 ### Step 2 — Streaming
 
@@ -421,7 +421,7 @@ _Move resolved entries here with the date and chosen path._
 
 ### 10.5 Mid-session flag-flip behaviour — Resolved 2026-04-30
 
-**Chosen path:** Graceful next-segment switch. `streamUrl(jobId)` reads the `useRustStreaming` flag at fetch-time (not at module-init), so in-flight Bun segments drain naturally and the next client `fetch` lands on the Rust endpoint. No spinner blip; no client retry needed.
+**Chosen path:** `streamUrl(jobId)` reads the flag at fetch-time, so an in-flight Bun segment drains naturally and the next client `fetch` lands on the Rust endpoint. **However,** the flag was consolidated to `useRustBackend` (which also gates GraphQL routing, read at module-init) — so a flag flip in practice requires a page reload to swing GraphQL too. The streaming-side fetch-time read remains; the user-visible behaviour is "reload to flip." See **10.3** for the consolidation rationale.
 
 ### 10.6 Rust ffmpeg subprocess wrapper — Resolved 2026-04-30
 
@@ -429,4 +429,4 @@ _Move resolved entries here with the date and chosen path._
 
 ### 10.7 Span-surface validation — Resolved 2026-04-30 (partial)
 
-**Chosen path:** Seq diff plan documented in PR #41 test plan. The diff method is: run the same playback session against both origins (Bun on port 3001, Rust on port 3002 with `useRustStreaming` on), query Seq for `transcode.job` and `stream.request` spans on each trace ID, and assert span name + key attribute set match. `transcode_started`, `transcode_complete`, `transcode_killed`, and `transcode_silent_failure` all emit. **Not yet executed** — span parity is in the test plan, not yet asserted as of PR #41. Follow-up: user must run the Seq diff before Step 3 begins. The missing gap is `transcode_progress` periodic events (see `Plan/02-Streaming.md` — skipped piece #1).
+**Chosen path:** Seq diff plan documented in PR #41 test plan. The diff method is: run the same playback session against both origins (Bun on port 3001 with `useRustBackend` off, Rust on port 3002 with `useRustBackend` on), query Seq for `transcode.job` and `stream.request` spans on each trace ID, and assert span name + key attribute set match. `transcode_started`, `transcode_complete`, `transcode_killed`, and `transcode_silent_failure` all emit. **Not yet executed** — span parity is in the test plan, not yet asserted as of PR #41. Follow-up: user must run the Seq diff before Step 3 begins. The missing gap is `transcode_progress` periodic events (see `Plan/02-Streaming.md` — skipped piece #1).

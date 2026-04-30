@@ -47,23 +47,18 @@ export const FLAG_KEYS = {
    *  ffmpeg stderr captured. Default OFF; remove once the root cause is
    *  fixed (Phase 5 of the plan). */
   devForceShortChunkAtZero: "flag.devForceShortChunkAtZero",
-  /** Step 1 of the Rust + Tauri migration. When ON, the Relay client
-   *  connects to the Rust GraphQL server at `localhost:3002` instead of the
-   *  Bun server (which stays on `localhost:3001`). Non-player pages
-   *  (Library, Watchlist, Settings) work; the player page is knowingly
-   *  broken because `/stream/:jobId` and the chunker land in Step 2.
-   *  Default OFF; toggle in Settings → Flags then reload the page (env
-   *  initialises before flag hydration, so a reload is required).
-   *  See `docs/migrations/rust-rewrite/Plan/01-GraphQL-And-Observability.md`. */
-  useRustGraphQL: "flag.useRustGraphQL",
-  /** Step 2 of the Rust + Tauri migration. When ON, StreamingService
-   *  fetches `/stream/:jobId` from the Rust server at `localhost:3002`
-   *  instead of the same-origin Bun endpoint. INDEPENDENT of
-   *  `useRustGraphQL`: each can be flipped alone for per-channel A/B and
-   *  regression isolation. Mid-session flip is graceful — the current Bun
-   *  segment finishes, the next request lands on Rust. Default OFF.
+  /** Single flag for the Rust + Tauri migration cutover. When ON, both the
+   *  Relay client and the streaming service route to the Rust server at
+   *  `localhost:3002`; when OFF, both go to the Bun server at
+   *  `localhost:3001`. The two services are runtime-independent (neither
+   *  knows about the other's job store, segment cache, or DB writes), so
+   *  splitting traffic between them produces a 404 / split-brain — they
+   *  must be flipped together as one backend. Both processes always run in
+   *  dev (mprocs) so toggling is instant. Default OFF.
+   *  Reload required after toggle — `relay/environment.ts` reads the flag
+   *  at module-init, before server hydration.
    *  See `docs/migrations/rust-rewrite/Plan/02-Streaming.md`. */
-  useRustStreaming: "flag.useRustStreaming",
+  useRustBackend: "flag.useRustBackend",
 } as const;
 
 export const FLAG_REGISTRY: readonly FlagDescriptor[] = [
@@ -109,19 +104,10 @@ export const FLAG_REGISTRY: readonly FlagDescriptor[] = [
     category: "experimental",
   },
   {
-    key: FLAG_KEYS.useRustGraphQL,
-    name: "Use Rust GraphQL server (Step 1 cutover)",
+    key: FLAG_KEYS.useRustBackend,
+    name: "Use Rust backend (migration cutover)",
     description:
-      "Routes Relay to the Rust GraphQL server on localhost:3002 instead of Bun (which stays on 3001). Non-player pages work; PLAYER PAGE IS BROKEN (Step 2 ships /stream and the chunker). Toggle requires page reload — env initialises before flag hydration.",
-    valueType: "boolean",
-    defaultValue: false,
-    category: "experimental",
-  },
-  {
-    key: FLAG_KEYS.useRustStreaming,
-    name: "Use Rust streaming endpoint (Step 2 cutover)",
-    description:
-      "Routes /stream/:jobId to the Rust server on localhost:3002. Independent of useRustGraphQL — flip either or both. Mid-session flip is graceful: the current segment finishes on Bun, the next request lands on Rust.",
+      "Routes ALL backend traffic — GraphQL + /stream — to the Rust server on localhost:3002. When OFF, everything goes to Bun on 3001. The two services are runtime-independent (neither shares state with the other), so this is one switch — splitting GraphQL and /stream between them does not work. Both servers always run in dev (mprocs), so toggling is instant. Reload required after toggle.",
     valueType: "boolean",
     defaultValue: false,
     category: "experimental",

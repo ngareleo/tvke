@@ -2,9 +2,11 @@
 
 ## Where this step sits
 
-Second Rust step. Predecessor: [Step 1 — GraphQL + Observability](01-GraphQL-And-Observability.md), shipped behind `useRustGraphQL`. Successor: [Step 3 — Tauri Packaging](03-Tauri-Packaging.md).
+Second Rust step. Predecessor: [Step 1 — GraphQL + Observability](01-GraphQL-And-Observability.md). Successor: [Step 3 — Tauri Packaging](03-Tauri-Packaging.md).
 
-At the end of this step, with **both** flags on, the player page works against the Rust `/stream/:jobId` endpoint — meaning the entire product runs on Rust. With only the GraphQL flag on (Step 1 state), behaviour is unchanged from Step 1 — player page stays broken in that mid-state. With both flags off, Bun serves everything as today.
+At the end of this step, with the single `useRustBackend` flag on, the entire product runs on the Rust binary at `localhost:3002` — both GraphQL and `/stream/:jobId`. With the flag off, the entire product runs on Bun at `localhost:3001`. There is no mixed mode: the two services are runtime-independent (neither knows about the other's job store, segment cache, or DB writes), so split traffic produces a 404 / split-brain. They are flipped together as one backend.
+
+> **Single-flag rule (post-Step-2 correction).** The original Step 2 design proposed two independent flags (`useRustGraphQL` + `useRustStreaming`) so each channel could be flipped alone for per-channel A/B and regression isolation. Real-world testing on `feat/rust-step2-streaming` showed that combination produces a structural failure: Bun creates a job in its in-memory store, the client routes `/stream/<id>` to Rust, Rust has no record of the id → universal 404 "Job not found." The independence the docs intended is a *runtime* property (no shared state between servers), not a flag-flippability property. The two flags were collapsed to one (`useRustBackend`) before the PR merged.
 
 ## Scope
 
@@ -15,7 +17,7 @@ At the end of this step, with **both** flags on, the player page works against t
 - ffmpeg pool: `Arc<Semaphore>` cap (today's `config.transcode.maxConcurrentJobs`), dying-set exclusion, SIGTERM → SIGKILL escalation grace, `KillReason` union, shutdown sweep.
 - Content-addressed cache key `(videoId, resolution, startS, endS)` decoupled from job ID. Cache index lives alongside the segment files.
 - `transcode.job` and `stream.request` span surfaces preserved (including `transcode_silent_failure` event).
-- Independent `useRustStreaming` flag wired into the client streaming services.
+- Single `useRustBackend` flag wired into both the Relay environment and the streaming service — toggles GraphQL + `/stream/*` together.
 
 **Out:**
 
@@ -34,12 +36,13 @@ Authoritative list at [`../00-Rust-Tauri-Port.md`](../00-Rust-Tauri-Port.md). Fo
 
 ## Cutover mechanism
 
-Side-by-side, mirrors Step 1.
+Side-by-side, single-flag.
 
-- **Two `/stream` endpoints, two ports.** Bun's `/stream/:jobId` keeps serving on its current port. Rust binds the same port chosen for Step 1's GraphQL service (one Rust process serves both `/graphql` and `/stream/*`, matching the Bun shape).
-- **Independent client flag.** Add `useRustStreaming` to [`client/src/config/flagRegistry.ts`](../../../../client/src/config/flagRegistry.ts). The client streaming service ([`client/src/services/StreamingService`](../../../../client/src/services/)) selects the alternate origin when on. **Independent of `useRustGraphQL`** — each can be flipped alone, allowing per-channel A/B and isolating regressions.
+- **Two `/stream` endpoints, two ports.** Bun's `/stream/:jobId` keeps serving on `localhost:3001`. Rust binds the same port chosen for Step 1's GraphQL service (`localhost:3002`); one Rust process serves both `/graphql` and `/stream/*`, matching the Bun shape.
+- **Single client flag.** `useRustBackend` in [`client/src/config/flagRegistry.ts`](../../../../client/src/config/flagRegistry.ts) routes BOTH GraphQL and `/stream/*` to the same backend. `client/src/config/rustOrigin.ts` exposes one predicate (`isRustBackendEnabled()`) consumed by both `relay/environment.ts` and `services/streamingService.ts`. The two backends are runtime-independent — neither knows about the other's job store, segment cache, or DB writes — so splitting traffic between them produces 404s. They are flipped together as one backend.
 - **Bun is the default.** `main` builds with the flag false. `main` stays fully functional unless the user opts in.
-- **Mid-session flag flip.** When a tester flips the streaming flag mid-session, in-flight Bun ffmpeg children must drain cleanly and the new Rust stream takes over on the next segment request. Decide implementation: fail-fast the Bun stream (client retries on Rust) vs. let the current segment finish then switch on the next request.
+- **Both servers always run in dev.** `mprocs.yaml` boots Bun (3001) and Rust (3002) in parallel so a flag flip is instant — no restart needed. Reload required because `relay/environment.ts` reads the flag at module-init.
+- **Mid-session flag flip.** GraphQL routing is fixed at module-init, so a session that started under one backend stays there until the page reloads. Streaming reads the flag at fetch-time, so a flip lands on the next chunk request — but in practice users will reload to flip GraphQL anyway.
 
 ## Pointers to layer references
 
@@ -83,7 +86,7 @@ The `db/queries/` split is already in place (libraries, videos, jobs, video_meta
 
 ### localStorage-first flag system
 
-`useRustStreaming` is covered by the general flag mechanism landed in Step 1. Add it to `client/src/config/flagRegistry.ts` with a default of `false` — the localStorage-first system handles everything else (local override wins, server hydration fills the rest, reset-to-default via FlagsTab).
+`useRustBackend` is covered by the general flag mechanism landed in Step 1. It lives in `client/src/config/flagRegistry.ts` with a default of `false` — the localStorage-first system handles everything else (local override wins, server hydration fills the rest, reset-to-default via FlagsTab). One key, one switch — toggling in the UI updates both localStorage and the server-side `user_settings` row atomically.
 
 ### Test checklist — tests are the spec, they travel with the port
 
@@ -111,9 +114,10 @@ These were open on day one of Step 2; all five are now locked by implementation 
 
 1. **Origin discovery for `/stream`.** Locked: reuses the Step 1 mechanism. Hard-coded `localhost:3002` in `rustOrigin.ts` serves both `/graphql` and `/stream/*`. No second discovery mechanism introduced.
 2. **Cache directory during cutover.** Locked: `tmp/segments-rust/` for Rust; Bun keeps `tmp/segments/`. Implemented in `AppConfig::dev_defaults` at `server-rust/src/config.rs`. See `Plan/Open-Questions.md §10.4`.
-3. **Mid-session flag-flip behaviour.** Locked: graceful next-segment switch. `streamUrl(jobId)` reads the flag at fetch-time. See `Plan/Open-Questions.md §10.5`.
+3. **Flag count and mid-session flip.** Locked: ONE flag (`useRustBackend`) routes both GraphQL and `/stream/*`. The original two-flag design (`useRustGraphQL` + `useRustStreaming`) was shown to produce 404 split-brain when the flags drift apart. GraphQL routing is read at module-init (reload required); streaming routing is read at fetch-time but in practice flips with the GraphQL reload. See `Plan/Open-Questions.md §10.5`.
 4. **Rust ffmpeg subprocess wrapper.** Locked: hand-rolled `tokio::process::Command` with `kill_on_drop(true)`; POSIX SIGTERM/SIGKILL via `nix` crate in `services/ffmpeg_pool.rs`. See `Plan/Open-Questions.md §10.6`.
 5. **Span surface validation.** Locked (plan only — not yet executed): Seq diff approach documented in PR #41 test plan. `transcode_progress` periodic events are the known gap. See `Plan/Open-Questions.md §10.7` and "Skipped" section below.
+6. **Stale-segment-dir wipe on re-encode.** Locked: `start_transcode` calls `remove_dir_all` (best-effort, ignores `NotFound`) before `create_dir_all` so a job re-encoded after error/interrupt cannot serve a stale-tail mix. Documented contract was already in `services/job_restore.rs`; this PR honors it in code. Surfaced by a "Invalid Top-Level Box" failure on `feat/rust-step2-streaming` traced to interleaved big/tiny segment files in `tmp/segments-rust/<id>/` from successive killed runs.
 
 ## What shipped beyond the spec (PR #41)
 

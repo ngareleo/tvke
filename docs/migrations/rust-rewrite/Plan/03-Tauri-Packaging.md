@@ -2,11 +2,11 @@
 
 ## Where this step sits
 
-Third step. Predecessors: [Step 1](01-GraphQL-And-Observability.md) and [Step 2](02-Streaming.md), both live behind their feature flags and exercised end-to-end. Successor: [Step 4 — Release](04-Release.md).
+Third step. Predecessors: [Step 1](01-GraphQL-And-Observability.md) and [Step 2](02-Streaming.md), both reachable via the `useRustBackend` flag and exercised end-to-end. Successor: [Step 4 — Release](04-Release.md).
 
-At the end of this step there is a **Tauri-bundled desktop binary** that runs the Rust server in-process and serves the React client from the same shell. The Bun runtime is gone. The two cutover flags (`useRustGraphQL`, `useRustStreaming`) are deleted because there is no alternate origin to route to.
+At the end of this step there is a **Tauri-bundled desktop binary** that runs the Rust server in-process and serves the React client from the same shell. The Bun runtime is gone. The single cutover flag (`useRustBackend`) is deleted because there is no alternate origin to route to.
 
-This is the step where "we have a Rust port we can flag-test against" turns into "we have a desktop app." Sign-off needs both flags green in real use, not just in CI.
+This is the step where "we have a Rust port we can flag-test against" turns into "we have a desktop app." Sign-off needs the Rust backend green in real use, not just in CI.
 
 ## Scope
 
@@ -17,7 +17,7 @@ This is the step where "we have a Rust port we can flag-test against" turns into
 - Bundled **jellyfin-ffmpeg** under `vendor/ffmpeg/<platform>/` per [`../06-File-Handling-Layer.md`](../06-File-Handling-Layer.md). The pinned manifest (`scripts/ffmpeg-manifest.json`) is the source of truth for per-platform SHA256.
 - Per-OS path resolution: `app_data_dir()` for the identity DB and any persistent state; `app_cache_dir()` for the segment cache. Env-var overrides (`DB_PATH`, `SEGMENT_DIR`, `SEGMENT_CACHE_GB`) preserved for advanced users / testing.
 - HW-accel probe softening on macOS / Windows. The current code is *fatal* on those OSes (per [`../../../server/Hardware-Acceleration/00-Overview.md`](../../../server/Hardware-Acceleration/00-Overview.md) and [`../08-Tauri-Packaging.md`](../08-Tauri-Packaging.md) §5). A user on mac/win must get a one-time toast and fall back to software encode, not a crashed app.
-- **Flag removal sweep.** Delete `useRustGraphQL` and `useRustStreaming` from `flagRegistry.ts`. Delete the alternate-origin discovery code in the Relay environment and streaming service. Delete the Bun server entry point and its workspace dependencies.
+- **Flag removal sweep.** Delete `useRustBackend` from `flagRegistry.ts`. Delete `client/src/config/rustOrigin.ts` and the alternate-origin call sites in the Relay environment and streaming service. Delete the Bun server entry point and its workspace dependencies.
 
 **Out:**
 
@@ -34,9 +34,9 @@ Authoritative list at [`../00-Rust-Tauri-Port.md`](../00-Rust-Tauri-Port.md). Fo
 
 ## Cutover mechanism
 
-N/A — this step **removes** the cutover mechanism. The flags are dead code at the start of this step (Steps 1 & 2 are both green) and deleted by the end of it.
+N/A — this step **removes** the cutover mechanism. The flag is dead code at the start of this step (Steps 1 & 2 are both green on the Rust backend) and deleted by the end of it.
 
-Discipline note: do **not** keep the flags around "just in case." Half-removed flag scaffolding rots fast and makes the next bug bisectable only against a confusing two-mode binary. Delete on this step or do not start it.
+Discipline note: do **not** keep the flag around "just in case." Half-removed flag scaffolding rots fast and makes the next bug bisectable only against a confusing two-mode binary. Delete on this step or do not start it.
 
 ## Pointers to layer references
 

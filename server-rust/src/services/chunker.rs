@@ -226,9 +226,24 @@ pub async fn start_transcode_job(
         }
     }
 
-    // Fresh transcode. Build segment_dir, register the job, kick off the
-    // background task that runs the cascade.
+    // Fresh transcode. Wipe any stale segment files from a prior errored
+    // (or interrupted) run on this same id BEFORE recreating the dir —
+    // ffmpeg HLS numbers segments from 0 each run, so a shorter second run
+    // overwrites only the prefix and leaves higher-index files from the
+    // first run intact. The stream pump reads them sequentially and serves
+    // a fresh prefix glued to a stale tail, which Firefox's MP4 parser
+    // rejects with "Invalid Top-Level Box". The wipe is what
+    // `job_restore::sweep_interrupted` documents as the recovery path.
     let segment_dir = ctx.config.segment_dir.join(&id);
+    if let Err(err) = tokio::fs::remove_dir_all(&segment_dir).await {
+        if err.kind() != std::io::ErrorKind::NotFound {
+            warn!(
+                segment_dir = %segment_dir.display(),
+                error = %err,
+                "could not wipe stale segment dir before re-encode"
+            );
+        }
+    }
     if let Err(err) = tokio::fs::create_dir_all(&segment_dir).await {
         reservation.release();
         return StartJobResult::Error {

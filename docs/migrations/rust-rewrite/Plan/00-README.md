@@ -8,9 +8,9 @@ The single source of truth for stable protocol contracts that every step must pr
 
 The migration ships in a strict order, each step gated on the prior. Architecture stays intact across all of them: client + server, GraphQL + binary stream contract, no client edits forced by the server move.
 
-1. **[Step 1 — GraphQL + Observability](01-GraphQL-And-Observability.md).** Port these two layers first. Side-by-side servers; client routes per `useRustGraphQL` flag. Every page works against Rust EXCEPT the player page (streaming has not moved). Bun stays default — `main` is fully functional with the flag off.
-2. **[Step 2 — Streaming](02-Streaming.md).** Port chunker + ffmpeg pool + `/stream/:jobId`. Independent `useRustStreaming` flag. With both flags on, the whole product runs on Rust.
-3. **[Step 3 — Tauri Packaging](03-Tauri-Packaging.md).** Wrap the Rust server + React client into a single Tauri desktop binary. The cutover flags are deleted in this step — there is no more Bun.
+1. **[Step 1 — GraphQL + Observability](01-GraphQL-And-Observability.md).** Port these two layers first. Side-by-side servers; client routes via the `useRustBackend` flag. Every page works against Rust EXCEPT the player page (streaming has not moved). Bun stays default — `main` is fully functional with the flag off.
+2. **[Step 2 — Streaming](02-Streaming.md).** Port chunker + ffmpeg pool + `/stream/:jobId` to the same Rust process. The `useRustBackend` flag now toggles the entire backend (GraphQL + `/stream/*`) — one switch, no split traffic. With it on, the whole product runs on Rust.
+3. **[Step 3 — Tauri Packaging](03-Tauri-Packaging.md).** Wrap the Rust server + React client into a single Tauri desktop binary. The cutover flag is deleted in this step — there is no more Bun.
 4. **[Step 4 — Release](04-Release.md).** Per-OS code signing, Ed25519-signed auto-update, CI release matrix on tag push. Ship the first beta to a soak group.
 
 ## Reading order for an implementing agent
@@ -26,8 +26,8 @@ Skip the layer references not cited by your step. They are organized by layer, n
 
 | File | Hook |
 |---|---|
-| [`01-GraphQL-And-Observability.md`](01-GraphQL-And-Observability.md) | Rust GraphQL + tracing/OTLP behind `useRustGraphQL`. Player page known-broken when flagged on — expected. |
-| [`02-Streaming.md`](02-Streaming.md) | axum `/stream/:jobId` + chunker + ffmpeg pool behind `useRustStreaming`. Length-prefixed binary preserved end-to-end. |
+| [`01-GraphQL-And-Observability.md`](01-GraphQL-And-Observability.md) | Rust GraphQL + tracing/OTLP behind `useRustBackend`. Player page known-broken when flagged on at Step-1 state — `/stream/*` is still on Bun. |
+| [`02-Streaming.md`](02-Streaming.md) | axum `/stream/:jobId` + chunker + ffmpeg pool on the same Rust process — `useRustBackend` now toggles the whole backend. Length-prefixed binary preserved end-to-end. |
 | [`03-Tauri-Packaging.md`](03-Tauri-Packaging.md) | Tauri shell, embedded Rust server, bundled jellyfin-ffmpeg, flag removal sweep. |
 | [`04-Release.md`](04-Release.md) | Per-OS signing, Ed25519 updates, tag-driven CI release matrix, first beta. |
 
