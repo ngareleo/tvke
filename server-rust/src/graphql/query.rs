@@ -1,5 +1,4 @@
-//! Root Query — read-only resolvers. Driven by data the Bun server already
-//! wrote into `tmp/xstream.db`.
+//! Root Query — read-only resolvers over the local SQLite DB.
 
 use async_graphql::{Context, Object, ID};
 

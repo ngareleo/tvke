@@ -369,17 +369,17 @@ These are the "Decisions to lock before starting" lines extracted from each step
 
 **10.2 Alternate-origin discovery.** Recommend hard-coded `http://localhost:<port>` with the port baked into `flagRegistry.ts` alongside the boolean. Dead-simple; deleted in Step 3 along with the flag. Step 2 reuses the same mechanism.
 
-**10.3 Flag shape.** Recommend one boolean per cutover (`useRustGraphQL`, then `useRustStreaming`). Enum is YAGNI.
+**10.3 Flag shape.** ~~Recommend one boolean per cutover (`useRustGraphQL`, then `useRustStreaming`). Enum is YAGNI.~~ **→ Superseded.** A two-boolean design was tried in Step 1 + Step 2; the combinations where the flags drift apart (Bun GraphQL + Rust streaming, or vice versa) produce 404 split-brain because the two backends do not share state. Collapsed to one boolean (`useRustBackend`) before Step 2 PR merge — it routes both `/graphql` and `/stream/*` to the same backend. See `02-Streaming.md` "Where this step sits".
 
 ### Step 2 — Streaming
 
-**10.4 Cache directory during cutover.** Recommend `tmp/segments-rust/` for Rust; Bun keeps `tmp/segments/`. Different content-addressed indexes; mixing risks corruption. Document the env var override path so testers can swap.
+**10.4 Cache directory during cutover.** ~~Recommend `tmp/segments-rust/` for Rust; Bun keeps `tmp/segments/`. Different content-addressed indexes; mixing risks corruption. Document the env var override path so testers can swap.~~ **→ Resolved. See Resolved section.**
 
-**10.5 Mid-session flag-flip behavior.** Recommend graceful next-segment switch — let the current segment finish on Bun, the next request lands on Rust. Fail-fast is uglier (spinner blip during the switch).
+**10.5 Mid-session flag-flip behavior.** ~~Recommend graceful next-segment switch — let the current segment finish on Bun, the next request lands on Rust. Fail-fast is uglier (spinner blip during the switch).~~ **→ Resolved. See Resolved section.**
 
-**10.6 Rust ffmpeg subprocess wrapper.** Recommend hand-rolled `tokio::process::Command` (per `07-Bun-To-Rust-Migration.md`). The wrapper crates add little when SIGTERM/SIGKILL escalation is the load-bearing part.
+**10.6 Rust ffmpeg subprocess wrapper.** ~~Recommend hand-rolled `tokio::process::Command` (per `07-Bun-To-Rust-Migration.md`). The wrapper crates add little when SIGTERM/SIGKILL escalation is the load-bearing part.~~ **→ Resolved. See Resolved section.**
 
-**10.7 Span-surface validation method.** Recommend Seq diff: same playback session against both origins, assert span name + key attribute set match. Document the diff command in the Step 2 PR.
+**10.7 Span-surface validation method.** ~~Recommend Seq diff: same playback session against both origins, assert span name + key attribute set match. Document the diff command in the Step 2 PR.~~ **→ Resolved. See Resolved section.**
 
 ### Step 3 — Tauri Packaging
 
@@ -412,3 +412,25 @@ These are the "Decisions to lock before starting" lines extracted from each step
 ## Resolved
 
 _Move resolved entries here with the date and chosen path._
+
+---
+
+### 10.4 Per-process state isolation during cutover — Resolved 2026-04-30
+
+**Chosen path:** Full per-process isolation. Each backend keeps its own segment dir AND its own SQLite database file. Bun: `tmp/segments/` + `tmp/xstream.db`. Rust: `tmp/segments-rust/` + `tmp/xstream-rust.db`. Implemented in `AppConfig::dev_defaults` at `server-rust/src/config.rs`, `default_db_path()` at `server-rust/src/db/mod.rs`, and the Rust dev script's `DB_PATH` env var.
+
+The original "shared DB" decision (both processes opening `tmp/xstream.db`) failed under real testing: deterministic content-addressed `job_id`s mean Bun and Rust both compute the same id for the same content tuple, but each writes its own `segment_dir` value into the row. Whichever backend writes first owns the row; the other backend reads it back and tries to serve from the wrong filesystem. We saw Bun receive a `/stream/<jobid>` request, look up the row Rust had written, find `init.mp4` in Rust's dir (still satisfying `init_wait_complete has_init=true`), then serve 0 media segments because the segment-row paths weren't on Bun's plane.
+
+The fix matches the user's "each service should stay independent of the other" rule: split the cache state, keep the seam at file-system level. Rust seeds its DB by copying from Bun's (`cp tmp/xstream.db tmp/xstream-rust.db`) once at provisioning so the library + videos rows come along for the ride; from there the DBs diverge. At Step 3 (Tauri) Bun is removed and the Rust DB becomes THE DB, so the seam dies cleanly. `DB_PATH` and `SEGMENT_DIR` env vars remain as test overrides.
+
+### 10.5 Mid-session flag-flip behaviour — Resolved 2026-04-30
+
+**Chosen path:** Single module-init snapshot in `rustOrigin.ts` — `getFlag(useRustBackend, false)` is read exactly once at module load and cached in `RUST_BACKEND_ENABLED`. Both `graphqlHttpUrl()` and `streamUrl(jobId)` consult the cached value. A mid-session toggle is invisible to both channels until the next page reload — matching the flag description's "Reload required after toggle." Earlier iteration tried a per-call read for `streamUrl`; that produced a 404 split-brain when a user toggled mid-session (Bun-frozen GraphQL created the job, Rust-live /stream couldn't find it). The single-snapshot rule keeps the two channels in lockstep. See **10.3** for the consolidation rationale.
+
+### 10.6 Rust ffmpeg subprocess wrapper — Resolved 2026-04-30
+
+**Chosen path:** Hand-rolled `tokio::process::Command` with `kill_on_drop(true)`. POSIX SIGTERM/SIGKILL escalation via the `nix` crate (Unix-only; stubs on Windows remain). Implementation lives in `server-rust/src/services/ffmpeg_pool.rs`. No wrapper crate adopted — the SIGTERM→SIGKILL escalation logic is the load-bearing part and is cleaner as first-class code.
+
+### 10.7 Span-surface validation — Resolved 2026-04-30 (partial)
+
+**Chosen path:** Seq diff plan documented in PR #41 test plan. The diff method is: run the same playback session against both origins (Bun on port 3001 with `useRustBackend` off, Rust on port 3002 with `useRustBackend` on), query Seq for `transcode.job` and `stream.request` spans on each trace ID, and assert span name + key attribute set match. `transcode_started`, `transcode_complete`, `transcode_killed`, and `transcode_silent_failure` all emit. **Not yet executed** — span parity is in the test plan, not yet asserted as of PR #41. Follow-up: user must run the Seq diff before Step 3 begins. The missing gap is `transcode_progress` periodic events (see `Plan/02-Streaming.md` — skipped piece #1).

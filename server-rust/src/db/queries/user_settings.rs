@@ -32,10 +32,9 @@ pub fn set_setting(db: &Db, key: &str, value: &str) -> DbResult<()> {
 
 // ── Tests ────────────────────────────────────────────────────────────────────
 //
-// No Bun counterpart — `userSettings.test.ts` doesn't exist on the source
-// side. Added here for pattern consistency. Critical given that this table
-// backs the client's localStorage-mirrored flag registry: silent ON-CONFLICT
-// breakage would corrupt every flag write.
+// This table backs the client's localStorage-mirrored flag registry, so
+// silent ON-CONFLICT breakage would corrupt every flag write — the tests
+// pin both the round-trip and the upsert-on-conflict semantic explicitly.
 
 #[cfg(test)]
 mod tests {
@@ -55,9 +54,9 @@ mod tests {
     #[test]
     fn set_then_get_round_trips_the_value() {
         let db = fresh_db();
-        set_setting(&db, "flag.useRustGraphQL", "1").expect("set");
+        set_setting(&db, "flag.useRustBackend", "1").expect("set");
         assert_eq!(
-            get_setting(&db, "flag.useRustGraphQL").expect("get"),
+            get_setting(&db, "flag.useRustBackend").expect("get"),
             Some("1".to_string())
         );
     }

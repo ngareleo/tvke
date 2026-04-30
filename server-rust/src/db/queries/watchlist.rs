@@ -105,11 +105,9 @@ pub fn update_watchlist_progress(
 
 // ── Tests ────────────────────────────────────────────────────────────────────
 //
-// No Bun counterpart — `server/src/db/queries/__tests__/watchlist.test.ts`
-// doesn't exist on the source side. Adding these here for pattern consistency
-// (every `db/queries/*.rs` has a tests block) and because the ON-CONFLICT
-// upsert + post-write read pattern in `add_watchlist_item` is non-obvious
-// enough to be worth pinning down.
+// The ON-CONFLICT upsert + post-write read pattern in `add_watchlist_item`
+// is non-obvious enough to be worth pinning down — a wrong merge direction
+// or a missed re-read would silently corrupt the watchlist.
 
 #[cfg(test)]
 mod tests {

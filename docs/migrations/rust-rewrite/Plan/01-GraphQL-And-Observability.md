@@ -4,7 +4,9 @@
 
 First Rust step. Predecessor: the Bun prototype on `main` plus the landed migration docs (PR #32). Successor: [Step 2 — Streaming](02-Streaming.md).
 
-At the end of this step, with `useRustGraphQL` flag **on**, every page in the client works end-to-end against the Rust GraphQL server **except the player page** — that page requires `/stream/:jobId`, which is still served by Bun until Step 2 lands. With the flag **off**, behaviour is identical to today: `main` stays fully functional for any user who never opts in.
+At the end of this step, with the `useRustBackend` flag **on**, every page in the client works end-to-end against the Rust GraphQL server **except the player page** — that page requires `/stream/:jobId`, which is still served by Bun until Step 2 lands. With the flag **off**, behaviour is identical to today: `main` stays fully functional for any user who never opts in.
+
+> **Naming history.** Step 1 originally shipped this flag as `useRustGraphQL` with a sibling `useRustStreaming` flag planned for Step 2. The Step 2 PR collapsed both to one `useRustBackend` after testing showed split-flag combinations produce 404 split-brain (the two services do not share state — see `02-Streaming.md` "Where this step sits"). All references in this doc have been updated to the consolidated name.
 
 > **For reviewers:** the player page being broken when the flag is on is an *expected, documented* state at the end of Step 1 — not a regression. Do not block the PR on it. Step 2 closes the loop.
 
@@ -38,7 +40,7 @@ Authoritative list at [`../00-Rust-Tauri-Port.md`](../00-Rust-Tauri-Port.md). Fo
 Side-by-side, client-routes, default-off.
 
 - **Two processes, two ports.** Bun keeps its current `config.port`. Rust binds a separate port (decision below). Both servers run during cutover; nothing proxies between them.
-- **Client flag.** Add `useRustGraphQL` to [`client/src/config/flagRegistry.ts`](../../../../client/src/config/flagRegistry.ts) (per the [feature-flag registry](../../../client/Feature-Flags/00-Registry.md)). The Relay environment ([`client/src/relay/environment.ts`](../../../../client/src/relay/environment.ts)) reads the flag and selects the alternate origin for both HTTP `/graphql` and the WebSocket subscription URL.
+- **Client flag.** `useRustBackend` in [`client/src/config/flagRegistry.ts`](../../../../client/src/config/flagRegistry.ts) (per the [feature-flag registry](../../../client/Feature-Flags/00-Registry.md)). The Relay environment ([`client/src/relay/environment.ts`](../../../../client/src/relay/environment.ts)) reads the flag and selects the alternate origin for both HTTP `/graphql` and the WebSocket subscription URL. Step 2 adds `client/src/services/streamingService.ts` as a second consumer of the same flag — both channels move together.
 - **Default-off.** Bun is the default. `main` builds with the flag false; testers opt in via the Settings → Flags UI. `main` is *fully functional* without the flag — no UX regression unless the user opts in.
 - **Player page warning copy.** When the flag is on and the user navigates to the player page, the Relay environment is talking to Rust but the streaming client is talking to Bun's `/stream` (unchanged). The page will render but playback will fail because Bun lacks the new GraphQL job-resolution shape (or vice-versa). Decide during implementation whether to surface a "this page is in cutover, expect breakage" toast — minimum bar is that it's documented and not a silent crash.
 
@@ -63,7 +65,7 @@ These were open on day one of Step 1; all four are now locked by implementation 
 
 1. **Rust port number.** Locked: Bun on `3001`, Rust on `3002`. Hard-coded in `server-rust/src/main.rs`; `client/src/config/rustOrigin.ts` hard-codes `localhost:3002`. The Tauri step kills both.
 2. **How the client discovers the alternate origin.** Locked: hard-coded `localhost:3002` in `rustOrigin.ts`. Step 2 reuses the same origin — no second discovery mechanism needed. Flag toggle requires a page reload (localStorage mirror writes synchronously; Relay environment is re-read on next mount).
-3. **Flag shape.** Locked: one boolean (`useRustGraphQL`). `useRustStreaming` is a separate boolean for Step 2 — same pattern.
+3. **Flag shape.** Locked: one boolean. Originally shipped as `useRustGraphQL`; renamed to `useRustBackend` in the Step 2 PR after the planned-second-flag (`useRustStreaming`) was shown to produce split-brain when its value drifted from the GraphQL flag. Step 2 adds the streaming consumer onto the same one boolean.
 4. **Scope of the Step 1 PR.** Locked: one PR (#39) — but scope grew significantly beyond the original spec during review. See "What shipped beyond the spec" below.
 
 ## What shipped beyond the spec (PR #39, commits a422976…ec6c90e)
@@ -80,7 +82,7 @@ The original Step 1 spec covered the GraphQL/observability shell. The following 
 
 ### localStorage-first flag system (commit 4713116)
 
-`client/src/config/featureFlags.ts` reads every flag from localStorage at module load (synchronous); server hydration fills cache entries only where there is no existing localStorage override — local toggles win. New `useFeatureFlagControls()` hook backs two buttons in FlagsTab: "Clear local overrides" (drops localStorage; reload pulls server values) and "Reset all to defaults" (every flag set to registry default, persisted to localStorage AND server). The `useRustGraphQL`-specific localStorage mirror was subsumed by this general pattern. **Step 2's `useRustStreaming` flag is covered automatically by this mechanism.**
+`client/src/config/featureFlags.ts` reads every flag from localStorage at module load (synchronous); server hydration fills cache entries only where there is no existing localStorage override — local toggles win. New `useFeatureFlagControls()` hook backs two buttons in FlagsTab: "Clear local overrides" (drops localStorage; reload pulls server values) and "Reset all to defaults" (every flag set to registry default, persisted to localStorage AND server). The original `useRustGraphQL`-specific localStorage mirror was subsumed by this general pattern. **Step 2 wires the streaming service onto the same `useRustBackend` flag — covered automatically by this mechanism.**
 
 > Note: `docs/client/Feature-Flags/00-Registry.md` still describes the old server-truth model. Architect has been asked to update it after PR #39 merges.
 

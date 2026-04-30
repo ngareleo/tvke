@@ -1,9 +1,10 @@
-//! GraphQL enum types — must match the Bun SDL byte-equivalent at the
-//! enum-name and variant-name level, AND match the Bun mapper contract:
-//! every `from_internal` returns `Option<Self>`, with `None` on an unknown
-//! input. The Bun side throws on unknown; the Rust side returns None and
-//! lets the caller decide whether to log + degrade or propagate as a typed
-//! error. Either way the unhappy path is visible — never a silent fallback.
+//! GraphQL enum types — every enum name and variant name is part of the
+//! published SDL wire contract (locked in `scripts/check-sdl-parity.ts`).
+//!
+//! Mapper contract: every `from_internal` returns `Option<Self>`, with
+//! `None` on an unknown input. Callers decide whether to log + degrade or
+//! propagate as a typed error — never a silent fallback. The unhappy path
+//! is always visible to the caller.
 
 use async_graphql::Enum;
 
@@ -120,11 +121,9 @@ pub enum PlaybackErrorCode {
 
 // ── Tests ────────────────────────────────────────────────────────────────────
 //
-// Mirrors `server/src/graphql/__tests__/mappers.test.ts`. The Bun mapper
-// throws on unknown input; the Rust mapper returns `None`. Same contract
-// in different idioms — either way the unhappy path is visible to the
-// caller. Round-trip every variant, then assert unknown values resolve
-// to `None`.
+// Round-trip every variant, then assert unknown values resolve to `None`.
+// The unhappy path must be visible to the caller — never a silent
+// fallback to a default variant.
 
 #[cfg(test)]
 mod tests {
@@ -149,8 +148,7 @@ mod tests {
 
     #[test]
     fn resolution_returns_none_on_unknown_value() {
-        // Bun side throws — Rust side returns None. Either way the unhappy
-        // path is visible to the caller (no silent fallback).
+        // Unhappy path is visible to the caller — no silent fallback.
         assert!(Resolution::from_internal("8k").is_none());
         assert!(Resolution::from_internal("").is_none());
         assert!(Resolution::from_internal("RESOLUTION_240P").is_none()); // wrong direction
@@ -172,7 +170,9 @@ mod tests {
 
     #[test]
     fn job_status_is_case_sensitive_and_rejects_unknowns() {
-        // Same case-sensitivity assertion the Bun test pins.
+        // Wire format is the lowercase form — uppercase variants must not
+        // be tolerated by the parser, since the DB writes the lowercase
+        // form and a case-insensitive read would mask a write bug.
         assert!(JobStatus::from_internal("RUNNING").is_none());
         assert!(JobStatus::from_internal("paused").is_none());
         assert!(JobStatus::from_internal("").is_none());
@@ -193,9 +193,9 @@ mod tests {
 
     #[test]
     fn media_type_rejects_unknowns_and_typos() {
-        // Mirrors the Bun assertions: "MUSIC" (other media), "MOVIE"
-        // (singular vs plural typo), and "MOVIES" (wrong direction —
-        // that's the GraphQL form, not the internal form).
+        // "MUSIC" (other media), "MOVIE" (singular vs plural typo), and
+        // "MOVIES" (wrong direction — that's the GraphQL form, not the
+        // internal form).
         assert!(MediaType::from_internal("music").is_none());
         assert!(MediaType::from_internal("movie").is_none());
         assert!(MediaType::from_internal("MOVIES").is_none());

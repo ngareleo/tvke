@@ -38,8 +38,8 @@ Keep rows short (≤ ~120 chars). When adding a new topic file to `docs/`, add i
 | Tauri packaging (bundle layout, embedded server, bundled ffmpeg, Ed25519 self-hosted updates, code-signing, CI matrix) | `docs/migrations/rust-rewrite/08-Tauri-Packaging.md` |
 | Tauri packaging internals (build pipeline, installed-app layout per OS, tauri-plugin-updater mechanics, Electron mental-model corrections) | `docs/migrations/rust-rewrite/09-Tauri-Packaging-Internals.md` |
 | Rust+Tauri release-journey playbook (4-step execution shape, parallel-track callout, out-of-scope list) | `docs/migrations/rust-rewrite/Plan/00-README.md` |
-| Step 1 — Rust GraphQL + Observability cutover (`useRustGraphQL` flag, side-by-side servers, player page known-broken when on) | `docs/migrations/rust-rewrite/Plan/01-GraphQL-And-Observability.md` |
-| Step 2 — Rust streaming cutover (`useRustStreaming` flag, `/stream/:jobId` framing preserved, sharing constraints) | `docs/migrations/rust-rewrite/Plan/02-Streaming.md` |
+| Step 1 — Rust GraphQL + Observability cutover (`useRustBackend` flag, side-by-side servers, player page known-broken when on at Step-1 state) | `docs/migrations/rust-rewrite/Plan/01-GraphQL-And-Observability.md` |
+| Step 2 — Rust streaming cutover (single `useRustBackend` flag also routes `/stream/*`, framing preserved, sharing constraints, segment-dir wipe) | `docs/migrations/rust-rewrite/Plan/02-Streaming.md` |
 | Step 3 — Tauri packaging step (embedded server, bundled jellyfin-ffmpeg, flag removal sweep, HW-accel softening) | `docs/migrations/rust-rewrite/Plan/03-Tauri-Packaging.md` |
 | Step 4 — Release plumbing + first beta (per-OS signing, Ed25519 updates, CI release matrix, soak group) | `docs/migrations/rust-rewrite/Plan/04-Release.md` |
 | Peer-to-peer streaming model (passthrough, Ed25519 invite tokens, content-addressed cache reuse, cross-peer traceparent, invariants) | `docs/architecture/Sharing/00-Peer-Streaming.md` |
