@@ -114,6 +114,23 @@ pub fn upsert_video_metadata(db: &Db, row: &VideoMetadataRow) -> DbResult<()> {
     })
 }
 
+/// Video IDs in `library_id` that have no `video_metadata` row yet. The
+/// scanner's auto-match step uses this to feed OMDb only for unmatched
+/// videos, so re-runs are idempotent (already-matched videos stay put).
+/// Mirrors `server/src/db/queries/videoMetadata.ts:getUnmatchedVideoIds`.
+pub fn get_unmatched_video_ids(db: &Db, library_id: &str) -> DbResult<Vec<String>> {
+    db.with(|c| {
+        let mut stmt = c.prepare(
+            r#"SELECT v.id FROM videos v
+               LEFT JOIN video_metadata m ON v.id = m.video_id
+               WHERE v.library_id = ?1 AND m.video_id IS NULL"#,
+        )?;
+        let rows = stmt.query_map(params![library_id], |r| r.get::<_, String>(0))?;
+        let collected: rusqlite::Result<Vec<_>> = rows.collect();
+        Ok(collected?)
+    })
+}
+
 pub fn delete_video_metadata(db: &Db, video_id: &str) -> DbResult<()> {
     db.with(|c| {
         c.execute(
@@ -261,6 +278,39 @@ mod tests {
         let (matched, unmatched) = count_matched_by_library(&db, "lib1").expect("count");
         assert_eq!(matched, 0);
         assert_eq!(unmatched, 0);
+    }
+
+    #[test]
+    fn get_unmatched_video_ids_returns_only_videos_without_metadata() {
+        let db = fresh_db();
+        seed_library_and_videos(&db, "lib1", &["v1", "v2", "v3"]);
+        upsert_video_metadata(&db, &metadata("v2", "tt0002", "M2")).expect("match v2");
+        let mut ids = get_unmatched_video_ids(&db, "lib1").expect("query");
+        ids.sort();
+        assert_eq!(ids, vec!["v1".to_string(), "v3".to_string()]);
+    }
+
+    #[test]
+    fn get_unmatched_video_ids_empty_when_all_matched() {
+        let db = fresh_db();
+        seed_library_and_videos(&db, "lib1", &["v1"]);
+        upsert_video_metadata(&db, &metadata("v1", "tt0001", "M1")).expect("match v1");
+        assert!(get_unmatched_video_ids(&db, "lib1")
+            .expect("query")
+            .is_empty());
+    }
+
+    #[test]
+    fn get_unmatched_video_ids_does_not_leak_other_libraries() {
+        let db = fresh_db();
+        seed_library_and_videos(&db, "lib1", &["v1"]);
+        seed_library_and_videos(&db, "lib2", &["v2"]);
+        // Only lib2's v2 is matched; lib1's v1 stays unmatched.
+        upsert_video_metadata(&db, &metadata("v2", "tt0002", "M2")).expect("match v2");
+        let lib1 = get_unmatched_video_ids(&db, "lib1").expect("lib1");
+        let lib2 = get_unmatched_video_ids(&db, "lib2").expect("lib2");
+        assert_eq!(lib1, vec!["v1".to_string()]);
+        assert!(lib2.is_empty());
     }
 
     #[test]

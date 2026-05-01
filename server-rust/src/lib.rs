@@ -186,10 +186,29 @@ pub async fn run(config: ServerConfig) -> AppResult<()> {
     let hw_accel = resolve_hw_accel(&ffmpeg_paths.ffmpeg, hw_mode).await?;
     tracing::info!(kind = hw_accel.kind_str(), "Hardware acceleration selected");
 
-    let app_config = AppConfig::with_paths(config.segment_dir.clone(), config.db_path.clone());
+    let mut app_config = AppConfig::with_paths(config.segment_dir.clone(), config.db_path.clone());
     if let Err(err) = tokio::fs::create_dir_all(&app_config.segment_dir).await {
         tracing::warn!(error = %err, dir = %app_config.segment_dir.display(),
             "could not create segment dir up-front — chunker will retry per-job");
+    }
+
+    // OMDb auto-match key resolution. Env wins; the persisted
+    // `omdbApiKey` user setting is the fallback (mirrors
+    // `server/src/services/omdbService.ts:40-43`). `None` is fine — the
+    // scanner skips auto-match silently when no key is configured.
+    let omdb_key_from_env = std::env::var("OMDB_API_KEY").ok().filter(|s| !s.is_empty());
+    let omdb_key_from_db = match db::get_setting(&db, "omdbApiKey") {
+        Ok(opt) => opt.filter(|s| !s.is_empty()),
+        Err(err) => {
+            tracing::warn!(error = %err, "could not read omdbApiKey from user_settings; env-only");
+            None
+        }
+    };
+    app_config.omdb_api_key = omdb_key_from_env.or(omdb_key_from_db);
+    if app_config.omdb_api_key.is_some() {
+        tracing::info!("OMDb auto-match enabled");
+    } else {
+        tracing::info!("OMDb auto-match disabled — set OMDB_API_KEY env or omdbApiKey setting");
     }
 
     let ctx = AppContext::new(db, app_config, Arc::new(ffmpeg_paths), hw_accel);

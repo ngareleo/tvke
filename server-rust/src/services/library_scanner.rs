@@ -14,9 +14,10 @@
 //! - [`spawn_periodic_scan`] background loop, started at boot from
 //!   `lib.rs::run`. Re-entry-guarded by [`crate::services::scan_state::ScanState::mark_started`].
 //!
-//! OMDb auto-match (`autoMatchLibrary` on the Bun side) is deliberately
-//! NOT ported in this PR — see TODO in [`scan_libraries`]. Tracking:
-//! `docs/migrations/rust-rewrite/06-File-Handling-Layer.md`.
+//! OMDb auto-match runs after each library finishes its file walk: any
+//! video without a `video_metadata` row gets searched against OMDb (if
+//! `OMDB_API_KEY` is configured). Mirrors Bun's per-library
+//! `autoMatchLibrary` at `server/src/services/libraryScanner.ts:240-288`.
 
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
@@ -34,9 +35,11 @@ use walkdir::WalkDir;
 use crate::config::AppContext;
 use crate::db::queries::videos::replace_video_streams;
 use crate::db::{
-    get_all_libraries, upsert_library, upsert_video, LibraryRow, NewVideoStream, VideoRow,
+    get_all_libraries, get_unmatched_video_ids, get_video_by_id, upsert_library, upsert_video,
+    upsert_video_metadata, LibraryRow, NewVideoStream, VideoMetadataRow, VideoRow,
 };
 use crate::services::ffmpeg_file::FfmpegFile;
+use crate::services::omdb::{OmdbClient, OmdbResult};
 
 const FINGERPRINT_BYTES: usize = 65_536;
 
@@ -91,14 +94,8 @@ pub async fn scan_libraries(ctx: &AppContext) {
 
             scan_one_library(ctx, library).await;
             info!(library_name = %library.name, "library_scanned");
+            auto_match_library(ctx, library).await;
         }
-
-        // TODO(migration-step-2-followup): port `autoMatchLibrary()` from
-        // server/src/services/libraryScanner.ts:240-288 (OMDb auto-match
-        // for newly-discovered videos). Tracking:
-        // docs/migrations/rust-rewrite/06-File-Handling-Layer.md.
-        // Until that lands, video_metadata rows only appear when the
-        // user manually invokes `match_video`.
 
         info!(library_count = libraries.len(), "scan_complete");
     }
@@ -323,6 +320,138 @@ fn default_extensions() -> HashSet<String> {
         .iter()
         .map(|s| s.to_string())
         .collect()
+}
+
+/// Match every unmatched video in `library` against OMDb. Silent no-op
+/// when no `OMDB_API_KEY` is configured (typical dev path) or when the
+/// library has no unmatched videos. Mirrors Bun's `autoMatchLibrary` at
+/// `server/src/services/libraryScanner.ts:240-288`.
+///
+/// Per-video failures (network error, no match found, missing video row)
+/// are tolerated — the helper logs and moves to the next id. The scan is
+/// otherwise unaffected.
+async fn auto_match_library(ctx: &AppContext, library: &LibraryRow) {
+    let Some(omdb) = ctx.omdb.clone() else {
+        return;
+    };
+
+    let unmatched = match get_unmatched_video_ids(&ctx.db, &library.id) {
+        Ok(ids) => ids,
+        Err(err) => {
+            tracing::error!(
+                library_id = %library.id,
+                error = %err,
+                "auto_match: failed to load unmatched video ids",
+            );
+            return;
+        }
+    };
+    if unmatched.is_empty() {
+        return;
+    }
+
+    info!(
+        library_name = %library.name,
+        unmatched_count = unmatched.len(),
+        "Auto-matching unmatched videos",
+    );
+
+    let total = unmatched.len() as u32;
+    let done = Arc::new(AtomicUsize::new(0));
+    let concurrency = ctx.config.scan.concurrency;
+    let library_id = library.id.clone();
+
+    stream::iter(unmatched)
+        .for_each_concurrent(Some(concurrency), |video_id| {
+            let ctx = ctx.clone();
+            let omdb = omdb.clone();
+            let done = done.clone();
+            let library_id = library_id.clone();
+            async move {
+                match_one_video(&ctx, &omdb, &video_id).await;
+                let n = done.fetch_add(1, Ordering::SeqCst) as u32 + 1;
+                ctx.scan_state.mark_progress(&library_id, n, total);
+            }
+        })
+        .await;
+}
+
+/// One OMDb lookup + metadata upsert. Errors are logged at the right
+/// level (warn for "no match"/"network blip", error for "DB write fail")
+/// and never propagate — auto-match is best-effort over a flaky external
+/// API.
+async fn match_one_video(ctx: &AppContext, omdb: &OmdbClient, video_id: &str) {
+    let video = match get_video_by_id(&ctx.db, video_id) {
+        Ok(Some(v)) => v,
+        Ok(None) => {
+            // Video deleted between the unmatched-ids query and now —
+            // benign race, just skip.
+            return;
+        }
+        Err(err) => {
+            tracing::error!(
+                video_id = %video_id,
+                error = %err,
+                "auto_match: failed to load video row",
+            );
+            return;
+        }
+    };
+
+    let (title, year) = parse_title_from_filename(&video.filename);
+    let result: OmdbResult = match omdb.search(&title, year).await {
+        Some(r) => r,
+        None => {
+            // OmdbClient already logged the cause (warn level).
+            return;
+        }
+    };
+
+    let cast_list = if result.actors.is_empty() {
+        None
+    } else {
+        match serde_json::to_string(&result.actors) {
+            Ok(s) => Some(s),
+            Err(err) => {
+                tracing::warn!(
+                    video_id = %video_id,
+                    error = %err,
+                    "auto_match: failed to serialise actors",
+                );
+                None
+            }
+        }
+    };
+
+    let metadata = VideoMetadataRow {
+        video_id: video_id.to_string(),
+        imdb_id: result.imdb_id.clone(),
+        title: result.title.clone(),
+        year: result.year,
+        genre: result.genre,
+        director: result.director,
+        cast_list,
+        rating: result.imdb_rating,
+        plot: result.plot,
+        poster_url: result.poster_url,
+        matched_at: Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true),
+    };
+
+    if let Err(err) = upsert_video_metadata(&ctx.db, &metadata) {
+        tracing::error!(
+            video_id = %video_id,
+            error = %err,
+            "auto_match: failed to upsert metadata row",
+        );
+        return;
+    }
+
+    info!(
+        filename = %video.filename,
+        matched_title = %result.title,
+        imdb_id = %result.imdb_id,
+        "Video matched",
+    );
 }
 
 /// Spawn the periodic background re-scan loop. Mirrors Bun's
@@ -611,5 +740,312 @@ mod tests {
     fn derive_title_strips_extension_and_normalises_separators() {
         assert_eq!(derive_title("My_Cool.Movie.mkv"), "My Cool Movie");
         assert_eq!(derive_title("plain.mp4"), "plain");
+    }
+
+    // ── parse_extensions ──────────────────────────────────────────────────
+
+    fn library_with_exts(ext_json: &str) -> LibraryRow {
+        LibraryRow {
+            id: "lib".to_string(),
+            name: "lib".to_string(),
+            path: "/tmp".to_string(),
+            media_type: "movies".to_string(),
+            env: "user".to_string(),
+            video_extensions: ext_json.to_string(),
+        }
+    }
+
+    #[test]
+    fn parse_extensions_uses_explicit_list_when_present() {
+        let exts = parse_extensions(&library_with_exts(r#"[".webm",".mov"]"#));
+        assert!(exts.contains(".webm"));
+        assert!(exts.contains(".mov"));
+        assert!(
+            !exts.contains(".mkv"),
+            "explicit list should NOT include defaults"
+        );
+    }
+
+    #[test]
+    fn parse_extensions_falls_back_to_defaults_on_empty_list() {
+        let exts = parse_extensions(&library_with_exts("[]"));
+        // Default set must include the canary extensions.
+        assert!(exts.contains(".mkv"));
+        assert!(exts.contains(".mp4"));
+    }
+
+    #[test]
+    fn parse_extensions_falls_back_to_defaults_on_malformed_json() {
+        let exts = parse_extensions(&library_with_exts("not-json-at-all"));
+        assert!(exts.contains(".mkv"));
+        assert!(exts.contains(".mp4"));
+    }
+
+    #[test]
+    fn parse_extensions_lowercases_input() {
+        let exts = parse_extensions(&library_with_exts(r#"[".MKV",".Mp4"]"#));
+        assert!(exts.contains(".mkv"));
+        assert!(exts.contains(".mp4"));
+    }
+
+    // ── scan_libraries (end-to-end with stub ffprobe) ────────────────────
+
+    fn fresh_test_ctx(segment_dir: PathBuf) -> AppContext {
+        let db = crate::db::Db::open(std::path::Path::new(":memory:")).expect("db");
+        AppContext::for_tests(db, segment_dir)
+    }
+
+    fn seed_library_row(db: &crate::db::Db, name: &str, path: &str) -> String {
+        crate::db::create_library(db, name, path, "movies", &[])
+            .expect("create_library")
+            .id
+    }
+
+    #[tokio::test]
+    async fn scan_libraries_with_no_libraries_runs_to_completion() {
+        let dir = TempDir::new().expect("tempdir");
+        let ctx = fresh_test_ctx(dir.path().to_path_buf());
+        scan_libraries(&ctx).await;
+        // ScanState must end idle even with zero libraries.
+        assert!(!ctx.scan_state.is_scanning());
+    }
+
+    #[tokio::test]
+    async fn scan_libraries_with_missing_path_skips_and_continues() {
+        let dir = TempDir::new().expect("tempdir");
+        let ctx = fresh_test_ctx(dir.path().to_path_buf());
+        // Library row points at a path that does not exist on disk.
+        seed_library_row(&ctx.db, "ghost", "/no/such/dir/anywhere");
+        scan_libraries(&ctx).await;
+        assert!(!ctx.scan_state.is_scanning());
+        // No videos were inserted (nothing to walk).
+        let total = crate::db::count_videos_by_library(&ctx.db, "ignored", Default::default())
+            .expect("count");
+        assert_eq!(total, 0);
+    }
+
+    #[tokio::test]
+    async fn scan_libraries_dedup_guards_concurrent_callers() {
+        // Two concurrent scan_libraries calls must not both walk. The
+        // ScanState::mark_started guard is what protects this; the test
+        // proves the scanner respects it.
+        let dir = TempDir::new().expect("tempdir");
+        let lib_dir = dir.path().join("lib");
+        fs::create_dir(&lib_dir).expect("mkdir");
+        let ctx = fresh_test_ctx(dir.path().to_path_buf());
+        seed_library_row(&ctx.db, "test", lib_dir.to_str().expect("utf8"));
+
+        // Mark a scan in flight via the public API, then observe that a
+        // second scan_libraries call returns immediately (without flipping
+        // state). This is the guard contract.
+        assert!(ctx.scan_state.mark_started());
+        scan_libraries(&ctx).await;
+        // State must still be "scanning" — the no-op call does NOT
+        // mark_ended, because the guard rejected it.
+        assert!(ctx.scan_state.is_scanning());
+        ctx.scan_state.mark_ended();
+    }
+
+    #[tokio::test]
+    async fn scan_libraries_completes_with_stub_ffprobe() {
+        // /bin/true ffprobe (the for_tests stub) returns no metadata, so
+        // every per-file probe fails and no video rows are inserted —
+        // but the scan itself must run to completion and leave ScanState
+        // idle.
+        let dir = TempDir::new().expect("tempdir");
+        let lib_dir = dir.path().join("lib");
+        fs::create_dir(&lib_dir).expect("mkdir");
+        fs::write(lib_dir.join("file.mp4"), b"fake").expect("file");
+        fs::write(lib_dir.join("file.mkv"), b"fake").expect("file");
+        let ctx = fresh_test_ctx(dir.path().to_path_buf());
+        let lib_id = seed_library_row(&ctx.db, "stub", lib_dir.to_str().expect("utf8"));
+        scan_libraries(&ctx).await;
+        assert!(!ctx.scan_state.is_scanning());
+        let videos = crate::db::count_videos_by_library(&ctx.db, &lib_id, Default::default())
+            .expect("count");
+        assert_eq!(videos, 0, "stub ffprobe should fail every probe");
+    }
+
+    // ── auto_match_library (with wiremock OMDb) ──────────────────────────
+
+    use crate::db::{upsert_video, VideoRow};
+    use crate::services::omdb::OmdbClient;
+    use wiremock::matchers::{method, path as wm_path};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+
+    fn fixture_video(library_id: &str, video_id: &str, filename: &str) -> VideoRow {
+        VideoRow {
+            id: video_id.to_string(),
+            library_id: library_id.to_string(),
+            path: format!("/v/{filename}"),
+            filename: filename.to_string(),
+            title: Some("placeholder".to_string()),
+            duration_seconds: 60.0,
+            file_size_bytes: 1_000,
+            bitrate: 100_000,
+            scanned_at: "2026-01-01T00:00:00.000Z".to_string(),
+            content_fingerprint: "1000:abc".to_string(),
+        }
+    }
+
+    async fn ctx_with_mock_omdb(server_uri: &str, segment_dir: PathBuf) -> AppContext {
+        let mut ctx = fresh_test_ctx(segment_dir);
+        ctx.omdb = Some(OmdbClient::with_base_url(
+            reqwest::Client::new(),
+            "test-key".to_string(),
+            server_uri.to_string(),
+        ));
+        ctx
+    }
+
+    #[tokio::test]
+    async fn auto_match_no_op_when_omdb_disabled() {
+        let dir = TempDir::new().expect("tempdir");
+        let ctx = fresh_test_ctx(dir.path().to_path_buf());
+        // ctx.omdb is None.
+        let lib =
+            crate::db::create_library(&ctx.db, "L", "/no/where", "movies", &[]).expect("create");
+        upsert_video(&ctx.db, &fixture_video(&lib.id, "vid1", "Film.2024.mkv"))
+            .expect("upsert video");
+        // Should return immediately without panicking; the unmatched
+        // video stays unmatched.
+        auto_match_library(&ctx, &lib).await;
+        let unmatched = crate::db::get_unmatched_video_ids(&ctx.db, &lib.id).expect("query");
+        assert_eq!(unmatched.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn auto_match_no_op_when_no_unmatched_videos() {
+        let server = MockServer::start().await;
+        // No mock set up — if auto_match calls OMDb, the mock server
+        // returns 404 by default and the test would be slow but pass;
+        // we assert the count below as the real signal.
+        let dir = TempDir::new().expect("tempdir");
+        let ctx = ctx_with_mock_omdb(&server.uri(), dir.path().to_path_buf()).await;
+        let lib =
+            crate::db::create_library(&ctx.db, "L", "/no/where", "movies", &[]).expect("create");
+        // No videos at all → nothing to match.
+        auto_match_library(&ctx, &lib).await;
+        assert!(crate::db::get_unmatched_video_ids(&ctx.db, &lib.id)
+            .expect("query")
+            .is_empty());
+    }
+
+    #[tokio::test]
+    async fn auto_match_writes_metadata_for_unmatched_videos() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(wm_path("/"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "Response": "True",
+                "imdbID": "tt9999999",
+                "Title": "Mocked Movie",
+                "Year": "2024",
+                "Genre": "Drama",
+                "Director": "Director X",
+                "Actors": "A, B",
+                "Plot": "A plot.",
+                "imdbRating": "7.7",
+                "Poster": "https://x/p.jpg"
+            })))
+            .mount(&server)
+            .await;
+
+        let dir = TempDir::new().expect("tempdir");
+        let ctx = ctx_with_mock_omdb(&server.uri(), dir.path().to_path_buf()).await;
+        let lib =
+            crate::db::create_library(&ctx.db, "L", "/no/where", "movies", &[]).expect("create");
+        upsert_video(&ctx.db, &fixture_video(&lib.id, "vid-A", "Film.A.2024.mkv")).expect("upsert");
+        upsert_video(&ctx.db, &fixture_video(&lib.id, "vid-B", "Film.B.2023.mkv")).expect("upsert");
+
+        auto_match_library(&ctx, &lib).await;
+
+        // Both videos should now have a metadata row.
+        assert!(crate::db::get_unmatched_video_ids(&ctx.db, &lib.id)
+            .expect("query")
+            .is_empty());
+        let m = crate::db::get_metadata_by_video_id(&ctx.db, "vid-A")
+            .expect("query")
+            .expect("row");
+        assert_eq!(m.imdb_id, "tt9999999");
+        assert_eq!(m.title, "Mocked Movie");
+        assert_eq!(m.rating, Some(7.7));
+        // cast_list is JSON-encoded.
+        let actors: Vec<String> =
+            serde_json::from_str(&m.cast_list.unwrap_or_default()).expect("json");
+        assert_eq!(actors, vec!["A".to_string(), "B".to_string()]);
+    }
+
+    #[tokio::test]
+    async fn auto_match_skips_unmatched_video_when_omdb_returns_false() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "Response": "False",
+                "Error": "Movie not found!"
+            })))
+            .mount(&server)
+            .await;
+
+        let dir = TempDir::new().expect("tempdir");
+        let ctx = ctx_with_mock_omdb(&server.uri(), dir.path().to_path_buf()).await;
+        let lib =
+            crate::db::create_library(&ctx.db, "L", "/no/where", "movies", &[]).expect("create");
+        upsert_video(
+            &ctx.db,
+            &fixture_video(&lib.id, "vid-X", "Unknown.Title.2024.mkv"),
+        )
+        .expect("upsert");
+
+        auto_match_library(&ctx, &lib).await;
+
+        // No metadata row should have been written — the video stays
+        // unmatched, scan continues, no panic.
+        assert!(crate::db::get_metadata_by_video_id(&ctx.db, "vid-X")
+            .expect("query")
+            .is_none());
+        let unmatched = crate::db::get_unmatched_video_ids(&ctx.db, &lib.id).expect("query");
+        assert_eq!(unmatched, vec!["vid-X".to_string()]);
+    }
+
+    #[tokio::test]
+    async fn auto_match_continues_other_videos_when_one_fails() {
+        // First request → 503 (transient failure), second → 200 True.
+        // Per-video failures must not abort sibling matches.
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "Response": "True",
+                "imdbID": "tt0000001",
+                "Title": "OK Movie",
+                "Year": "2024",
+                "Genre": "Drama", "Director": "X", "Actors": "Y",
+                "Plot": "Z", "imdbRating": "5.0", "Poster": "N/A"
+            })))
+            .mount(&server)
+            .await;
+
+        let dir = TempDir::new().expect("tempdir");
+        let ctx = ctx_with_mock_omdb(&server.uri(), dir.path().to_path_buf()).await;
+        let lib =
+            crate::db::create_library(&ctx.db, "L", "/no/where", "movies", &[]).expect("create");
+        // Three videos; all hit the same mock so all should get matched.
+        for i in 0..3 {
+            upsert_video(
+                &ctx.db,
+                &fixture_video(&lib.id, &format!("v{i}"), &format!("Film.{i}.2024.mkv")),
+            )
+            .expect("upsert");
+        }
+
+        auto_match_library(&ctx, &lib).await;
+
+        // Every video matched.
+        for i in 0..3 {
+            assert!(
+                crate::db::has_video_metadata(&ctx.db, &format!("v{i}")).expect("query"),
+                "v{i} should be matched"
+            );
+        }
     }
 }

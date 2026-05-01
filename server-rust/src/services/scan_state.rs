@@ -276,6 +276,49 @@ mod tests {
     }
 
     #[test]
+    fn mark_progress_outside_a_scan_still_records_state() {
+        // The scanner only calls mark_progress while inside a scan, but
+        // the API does not enforce that ordering — confirm that a stale
+        // progress call (no preceding mark_started) still updates the
+        // snapshot rather than panicking. Defensive assertion against
+        // a future refactor accidentally tightening the contract.
+        let s = ScanState::new();
+        s.mark_progress("lib-stale", 7, 10);
+        let snap = s.current();
+        assert_eq!(snap.library_id.as_deref(), Some("lib-stale"));
+        assert_eq!(snap.done, Some(7));
+        assert_eq!(snap.total, Some(10));
+        // Note: scanning is true even though mark_started wasn't called —
+        // that's the documented mark_progress behaviour.
+        assert!(snap.scanning);
+    }
+
+    #[tokio::test]
+    async fn subscribe_after_state_change_misses_old_events_but_sees_new_ones() {
+        // Broadcast channels do NOT replay history to late subscribers.
+        // Late subscribers must use `current()` to seed; this test pins
+        // that expectation so a future refactor doesn't silently switch
+        // to a replay-on-subscribe channel without updating the
+        // subscription resolvers.
+        let s = ScanState::new();
+        s.mark_started();
+        s.mark_progress("lib-a", 1, 5);
+
+        let mut rx = s.subscribe();
+        // The next state change should land — old ones are gone.
+        s.mark_progress("lib-a", 2, 5);
+        let snap = timeout(Duration::from_millis(100), rx.recv())
+            .await
+            .expect("recv")
+            .expect("snapshot");
+        assert_eq!(snap.done, Some(2));
+
+        // current() still returns the latest snapshot regardless of
+        // subscription history.
+        assert_eq!(s.current().done, Some(2));
+    }
+
+    #[test]
     fn no_subscribers_does_not_break_mark_progress() {
         // Regression guard for §14: broadcast SendError on a no-subscriber
         // channel must not propagate or panic. Scan must continue.

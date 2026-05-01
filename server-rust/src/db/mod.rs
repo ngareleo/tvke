@@ -119,8 +119,8 @@ pub use queries::playback_history::{
 };
 pub use queries::user_settings::{get_setting, set_setting};
 pub use queries::video_metadata::{
-    count_matched_by_library, delete_video_metadata, get_metadata_by_video_id, has_video_metadata,
-    upsert_video_metadata, VideoMetadataRow,
+    count_matched_by_library, delete_video_metadata, get_metadata_by_video_id,
+    get_unmatched_video_ids, has_video_metadata, upsert_video_metadata, VideoMetadataRow,
 };
 pub use queries::videos::{
     count_videos_by_library, get_streams_by_video_id, get_video_by_id, get_videos,

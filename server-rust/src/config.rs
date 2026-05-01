@@ -14,6 +14,7 @@ use crate::services::ffmpeg_file::HwAccelConfig;
 use crate::services::ffmpeg_path::FfmpegPaths;
 use crate::services::ffmpeg_pool::FfmpegPool;
 use crate::services::job_store::JobStore;
+use crate::services::omdb::OmdbClient;
 use crate::services::scan_state::ScanState;
 
 /// Per-source VAAPI capability state, learned from prior failures. Lives on
@@ -99,8 +100,8 @@ impl Default for StreamConfig {
     }
 }
 
-/// Top-level server config. `port`, OMDb settings, and other late-step
-/// fields land as their respective subsystems are ported.
+/// Top-level server config. `port` and other late-step fields land as
+/// their respective subsystems are ported.
 #[derive(Clone, Debug)]
 pub struct AppConfig {
     pub segment_dir: PathBuf,
@@ -108,6 +109,12 @@ pub struct AppConfig {
     pub transcode: TranscodeConfig,
     pub stream: StreamConfig,
     pub scan: ScanConfig,
+    /// OMDb API key — `None` means auto-match is disabled (the scanner
+    /// skips the metadata fetch silently). Resolved at boot from the
+    /// `OMDB_API_KEY` env var with a fallback to the persisted
+    /// `omdbApiKey` setting in `user_settings`. Mirrors Bun's
+    /// `getApiKey()` at `server/src/services/omdbService.ts:40-43`.
+    pub omdb_api_key: Option<String>,
 }
 
 /// Library-scanner tunables. Mirrors `server/src/config.ts` `scanIntervalMs`
@@ -155,6 +162,7 @@ impl AppConfig {
             transcode: TranscodeConfig::default(),
             stream: StreamConfig::default(),
             scan: ScanConfig::default(),
+            omdb_api_key: None,
         }
     }
 }
@@ -171,6 +179,11 @@ pub struct AppContext {
     pub vaapi_state: VaapiVideoStateMap,
     pub job_store: JobStore,
     pub scan_state: ScanState,
+    /// `Some` when an `OMDB_API_KEY` is configured (env or DB setting).
+    /// `None` means auto-match is silently disabled — the scanner just
+    /// skips the metadata fetch step. Cheap-clone: wraps a shared
+    /// `reqwest::Client` so the connection pool spans every call.
+    pub omdb: Option<OmdbClient>,
 }
 
 impl AppContext {
@@ -181,6 +194,12 @@ impl AppContext {
         hw_accel: HwAccelConfig,
     ) -> Self {
         let pool = FfmpegPool::new(config.transcode.clone());
+        let omdb = config.omdb_api_key.clone().map(|key| {
+            // One Client → shared connection pool across every auto-match
+            // call. reqwest::Client is internally Arc'd, so cloning it
+            // for the OmdbClient wrapper is cheap.
+            OmdbClient::production(reqwest::Client::new(), key)
+        });
         Self {
             db,
             config,
@@ -190,6 +209,7 @@ impl AppContext {
             vaapi_state: Arc::new(DashMap::<String, VaapiVideoState>::new()),
             job_store: JobStore::new(),
             scan_state: ScanState::new(),
+            omdb,
         }
     }
 
@@ -202,6 +222,7 @@ impl AppContext {
             transcode: TranscodeConfig::default(),
             stream: StreamConfig::default(),
             scan: ScanConfig::default(),
+            omdb_api_key: None,
         };
         let paths = Arc::new(FfmpegPaths {
             ffmpeg: PathBuf::from("/bin/true"),

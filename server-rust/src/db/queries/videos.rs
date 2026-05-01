@@ -559,6 +559,32 @@ mod tests {
     }
 
     #[test]
+    fn upsert_video_on_path_conflict_overwrites_library_id() {
+        // Edge case: a file is moved between libraries (rare, but the
+        // path-keyed upsert must follow library_id like every other
+        // mutable column — anything else would leave the row pointing at
+        // the wrong library after a re-scan.
+        let db = fresh_db();
+        seed_library(&db, "lib-A");
+        seed_library(&db, "lib-B");
+
+        let mut row = fixture_video("lib-A", "vid-mover", "/v/shared.mkv");
+        upsert_video(&db, &row).expect("first insert under lib-A");
+
+        // Same path, but row now claims lib-B.
+        row.library_id = "lib-B".to_string();
+        upsert_video(&db, &row).expect("conflict update to lib-B");
+
+        let fetched = get_video_by_id(&db, "vid-mover")
+            .expect("query")
+            .expect("row exists");
+        assert_eq!(
+            fetched.library_id, "lib-B",
+            "upsert_video must follow library_id on ON CONFLICT(path)"
+        );
+    }
+
+    #[test]
     fn upsert_video_propagates_fk_violation_when_library_missing() {
         // FK protection: scanner must not create orphaned video rows.
         let db = fresh_db();

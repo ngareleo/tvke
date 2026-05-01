@@ -205,6 +205,59 @@ mod tests {
     }
 
     #[test]
+    fn upsert_library_inserts_a_new_row() {
+        let db = fresh_db();
+        let row = LibraryRow {
+            id: "lib-up".to_string(),
+            name: "Upserted".to_string(),
+            path: "/lib/upserted".to_string(),
+            media_type: "movies".to_string(),
+            env: "user".to_string(),
+            video_extensions: r#"[".mkv"]"#.to_string(),
+        };
+        upsert_library(&db, &row).expect("upsert");
+        let fetched = get_library_by_id(&db, "lib-up")
+            .expect("query")
+            .expect("row exists");
+        assert_eq!(fetched.name, "Upserted");
+        assert_eq!(fetched.path, "/lib/upserted");
+    }
+
+    #[test]
+    fn upsert_library_on_path_conflict_replaces_mutable_fields() {
+        let db = fresh_db();
+        let first = LibraryRow {
+            id: "id-original".to_string(),
+            name: "Before".to_string(),
+            path: "/lib/same".to_string(),
+            media_type: "movies".to_string(),
+            env: "dev".to_string(),
+            video_extensions: r#"[".mkv"]"#.to_string(),
+        };
+        upsert_library(&db, &first).expect("first");
+
+        // Same path but every other field changed — name, media_type,
+        // env, extensions all should be overwritten by the conflict.
+        let second = LibraryRow {
+            id: "id-new-but-ignored".to_string(),
+            name: "After".to_string(),
+            path: "/lib/same".to_string(),
+            media_type: "tvShows".to_string(),
+            env: "user".to_string(),
+            video_extensions: r#"[".mp4"]"#.to_string(),
+        };
+        upsert_library(&db, &second).expect("conflict update");
+
+        let fetched = get_library_by_id(&db, "id-original")
+            .expect("query")
+            .expect("original id still wins");
+        assert_eq!(fetched.name, "After");
+        assert_eq!(fetched.media_type, "tvShows");
+        assert_eq!(fetched.env, "user");
+        assert_eq!(fetched.video_extensions, r#"[".mp4"]"#);
+    }
+
+    #[test]
     fn create_library_on_conflict_updates_name_and_media_type() {
         let db = fresh_db();
         let first =
