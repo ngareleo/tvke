@@ -39,3 +39,7 @@ These items require the OTel metrics SDK (`MeterProvider`) which is not yet wire
 - [ ] **PLAYBACK-001** Concurrent stream limit UI: currently throws `"Too many concurrent streams"` as an error overlay. Consider a friendlier modal that explains the limit (3 tabs) and links to the Settings page.
 
 - [ ] **FLAGS-001** Centralised release-time feature-flag controls: today flags persist per-user in `user_settings` only, so an operator cannot soft-launch a flag to everyone with a single toggle. Add a server-side `feature_flags` table with a precedence model (global override > user setting > `FLAG_REGISTRY.defaultValue`) and an admin UI to flip the global override. `getFlag` / `getEffectiveBufferConfig` should read the resolved value without caller changes. See `docs/client/Feature-Flags/README.md` for the current architecture.
+
+## Migrations / Rust Port
+
+- [ ] **OMDB-001** Port `autoMatchLibrary` from `server/src/services/libraryScanner.ts:240-288` to `server-rust/src/services/library_scanner.rs`. The scanner port (PR #44) deferred this — there is a `TODO(migration-step-2-followup)` marker in `library_scanner.rs::scan_libraries` at the spot where Bun calls `autoMatchLibrary` after `library_scanned`. Blocked on porting `server/src/services/omdbService.ts` first (HTTP client + API key handling). Tracking pointer: `docs/migrations/rust-rewrite/06-File-Handling-Layer.md` §6.
