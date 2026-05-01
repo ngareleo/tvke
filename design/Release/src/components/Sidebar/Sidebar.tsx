@@ -38,7 +38,7 @@ export const Sidebar: FC = () => {
             mergeClasses(s.navItem, isActive && s.navItemActive)
           }
         >
-          <span style={{ opacity: 0.9 }}>{it.icon}</span>
+          <span className={s.navItemIcon}>{it.icon}</span>
           <span>{it.label}</span>
         </NavLink>
       ))}

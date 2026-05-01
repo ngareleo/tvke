@@ -134,4 +134,5 @@ export const useSidebarStyles = makeStyles({
     color: tokens.colorTextMuted,
     transform: "rotate(-90deg)",
   },
+  navItemIcon: { opacity: 0.9 },
 });
