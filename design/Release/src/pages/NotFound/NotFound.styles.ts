@@ -11,6 +11,8 @@ export const useNotFoundStyles = makeStyles({
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
+    paddingTop: tokens.headerHeight,
+    boxSizing: "border-box",
   },
   grain: { opacity: 0.2 },
   glow: {

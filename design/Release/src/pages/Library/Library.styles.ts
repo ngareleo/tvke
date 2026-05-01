@@ -9,30 +9,14 @@ export const useLibraryStyles = makeStyles({
     overflowX: "hidden",
     overflowY: "auto",
     backgroundColor: tokens.colorBg0,
-    paddingTop: "24px",
-    paddingLeft: "32px",
-    paddingRight: "32px",
   },
 
-  // Hero — sized so the first row clears the fold on 1920x1200
+  // Hero — full-bleed, starts at viewport top so the glass header overlays it
   hero: {
     flexShrink: 0,
-    height: "340px",
+    height: "380px",
     position: "relative",
     overflow: "hidden",
-    borderRadius: "6px",
-    borderTopWidth: "1px",
-    borderRightWidth: "1px",
-    borderBottomWidth: "1px",
-    borderLeftWidth: "1px",
-    borderTopStyle: "solid",
-    borderRightStyle: "solid",
-    borderBottomStyle: "solid",
-    borderLeftStyle: "solid",
-    borderTopColor: tokens.colorBorder,
-    borderRightColor: tokens.colorBorder,
-    borderBottomColor: tokens.colorBorder,
-    borderLeftColor: tokens.colorBorder,
   },
   heroSlides: {
     position: "absolute",
@@ -87,8 +71,8 @@ export const useLibraryStyles = makeStyles({
   heroBody: {
     position: "absolute",
     inset: "0",
-    paddingTop: "36px",
-    paddingBottom: "40px",
+    paddingTop: `calc(${tokens.headerHeight} + 4px)`,
+    paddingBottom: "32px",
     paddingLeft: "44px",
     paddingRight: "44px",
     display: "flex",
@@ -142,8 +126,8 @@ export const useLibraryStyles = makeStyles({
   // Search bar (above the rows)
   searchBar: {
     marginTop: "20px",
-    marginLeft: "0",
-    marginRight: "0",
+    marginLeft: "32px",
+    marginRight: "32px",
     display: "flex",
     alignItems: "center",
     columnGap: "12px",
@@ -237,6 +221,8 @@ export const useLibraryStyles = makeStyles({
     flexGrow: 1,
     paddingTop: "16px",
     paddingBottom: "60px",
+    paddingLeft: "32px",
+    paddingRight: "32px",
     display: "flex",
     flexDirection: "column",
     rowGap: "28px",

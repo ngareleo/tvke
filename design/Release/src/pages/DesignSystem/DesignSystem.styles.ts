@@ -5,10 +5,11 @@ export const useDesignSystemStyles = makeStyles({
   shell: {
     height: "100%",
     overflowY: "auto",
-    paddingTop: "32px",
+    paddingTop: `calc(${tokens.headerHeight} + 32px)`,
     paddingBottom: "80px",
     paddingLeft: "40px",
     paddingRight: "40px",
+    boxSizing: "border-box",
   },
   eyebrow: { color: tokens.colorGreen },
   hero: {

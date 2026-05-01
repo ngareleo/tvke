@@ -6,6 +6,8 @@ export const useSettingsStyles = makeStyles({
     height: "100%",
     display: "grid",
     gridTemplateColumns: "220px 1fr",
+    paddingTop: tokens.headerHeight,
+    boxSizing: "border-box",
     overflowX: "hidden",
     overflowY: "hidden",
   },

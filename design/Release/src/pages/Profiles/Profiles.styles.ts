@@ -6,6 +6,8 @@ export const useProfilesStyles = makeStyles({
     display: "grid",
     gridTemplateColumns: "1fr 0px 0px",
     height: "100%",
+    paddingTop: tokens.headerHeight,
+    boxSizing: "border-box",
     transitionProperty: "grid-template-columns",
     transitionDuration: tokens.transitionSlow,
     transitionTimingFunction: "ease",

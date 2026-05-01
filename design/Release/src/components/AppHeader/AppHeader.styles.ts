@@ -3,8 +3,11 @@ import { tokens } from "../../styles/tokens.js";
 
 export const useAppHeaderStyles = makeStyles({
   header: {
-    gridArea: "head",
-    position: "relative",
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    height: tokens.headerHeight,
     zIndex: 10,
     display: "grid",
     gridTemplateColumns: "1fr auto 1fr",

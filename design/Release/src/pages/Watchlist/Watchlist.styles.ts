@@ -7,10 +7,11 @@ export const useWatchlistStyles = makeStyles({
     overflowX: "hidden",
     overflowY: "auto",
     backgroundColor: tokens.colorBg0,
-    paddingTop: "60px",
+    paddingTop: `calc(${tokens.headerHeight} + 60px)`,
     paddingBottom: "80px",
     paddingLeft: "60px",
     paddingRight: "60px",
+    boxSizing: "border-box",
   },
 
   header: {
