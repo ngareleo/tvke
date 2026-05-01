@@ -1,6 +1,6 @@
 # AppHeader
 
-> Status: **done** (Spec) · **not started** (Production) · last design change **2026-05-01**
+> Status: **done** (Spec) · **not started** (Production) · last design change **2026-05-01** (PR #46 commit 787f136)
 
 ## Files
 
@@ -10,153 +10,123 @@
 
 ## Purpose
 
-Top header strip — brand wordmark on the left, searchable + functional search input in the centre-left, scan trigger on the far right. Lives inside [`AppShell`](AppShell.md), spans both grid columns.
+Top header strip — brand wordmark on the left, three centred navigation links, and a right cluster (icon-only scan button + avatar). Lives inside [`AppShell`](AppShell.md), spans the single grid column. **The search form that previously lived here has moved to the Library/home page.**
 
 ## Visual
 
 ### Header shell
+
 - `gridArea: head`, `position: relative`, `zIndex: 10`.
-- `gridTemplateColumns: ${tokens.sidebarWidth} 1fr auto` — brand cell aligned to the sidebar width, search occupies the middle, scan button auto-sizes on the right.
-- **Glass treatment**:
+- **Three-column grid:** `gridTemplateColumns: 1fr auto 1fr` — brand cell on the left (`1fr`), centred nav links (`auto`), right cluster (`1fr`).
+- **Glass treatment:**
   - `backgroundImage: linear-gradient(180deg, rgba(20,28,24,0.55) 0%, rgba(8,11,10,0.78) 100%)`
   - `backgroundColor: rgba(8,11,10,0.62)` (fallback under the gradient)
   - `backdropFilter: blur(20px) saturate(1.6)` (+ `-webkit-` prefix)
   - `borderBottom: 1px solid rgba(37,48,42,0.45)` — soft division from main
   - `boxShadow: inset 0 1px 0 rgba(255,255,255,0.05), inset 0 -1px 0 rgba(0,0,0,0.18), 0 6px 22px rgba(0,0,0,0.42)` — top sheen + bottom shadow
-- The header is a sibling row in the AppShell grid (not absolute over main); the glass effect is therefore **cosmetic** — `backdrop-filter` only affects content within the same grid row. If a true overlay-glass is desired later, the AppShell grid must be restructured (see [`AppShell.md`](AppShell.md)).
+- The header is a sibling row in the AppShell grid (not absolute over main); `backdrop-filter` is therefore cosmetic only.
 
-### Brand cell
-- `paddingLeft/Right: 18px`, no border (no vertical divider between brand and search — this was removed in the iteration session).
-- `<Link to="/">` with `aria-label="Xstream — home"`, two spans:
-  - `<span>X</span>` — Anton, 26px, `letter-spacing: -0.02em`, `color: var(--green)`, `text-shadow: 0 0 12px var(--green-glow)`
-  - `<span>stream</span>` — same font/size, `color: var(--text)`
+### Brand cell (left column)
 
-### Search cell (the form element)
-- `width: 380px`, `justifySelf: start` — pinned compact, sits adjacent to brand instead of stretching across the column.
-- `marginTop/Bottom: 8px`, `marginLeft: 14px`, `marginRight: 0`.
-- `paddingLeft/Right: 14px`, `borderRadius: ${tokens.radiusMd}` (4px on all corners).
-- **Background — horizontal-fade gradient** (so the box's left/right edges blend into the header instead of forming a hard rectangle):
-  - At rest: `linear-gradient(90deg, rgba(20,28,24,0) 0%, rgba(20,28,24,0.55) 22%, rgba(20,28,24,0.55) 78%, rgba(20,28,24,0) 100%)`
-  - On focus (`searchCellFocused`): same shape, alpha `0.78` instead of `0.55`
-  - On hover (`searchCellHover`, only when not focused): animates the gradient between `rgba(20,28,24,0.45)` and `rgba(28,40,34,0.7)` over 3.4s ease-in-out infinite, with an outer `box-shadow: 0 0 14px var(--green-soft)` at the apex
-- `backgroundColor: transparent` (the gradient does the work).
-- **No border, no outline.** `outlineWidth: 0` on the form; `outlineStyle: none` on the input. *Both* are required because Chromium's `:focus-visible` UA outline renders even at `outline-width: 0` when `outline-style` is `auto` (the UA default).
+- `paddingLeft: 24px`, `justifySelf: start`, `alignSelf: center`.
+- `<Link to="/">` with `aria-label="Xstream — home"`.
+- Font: **Bytesized**, 34px.
+- Two spans: the brand wordmark rendered in the Bytesized typeface at `color: var(--text)`. (The prior green `X` / `stream` split has been consolidated into a single wordmark.)
 
-### Search icon
-- `<IconSearch>`, `color: var(--green)`, flex-shrink 0, sits in the columnGap row (10px gap to the input wrap).
+### Nav links (centre column)
 
-### Input
-- `width: 100%`, height 100%, transparent bg, no border, `outline-style: none`.
-- `color: var(--text)`, JetBrains Mono 12px, `letter-spacing: 0.08em`.
-- `paddingRight: 16px` (room for the custom caret).
-- `caret-color: transparent` — native caret hidden.
-- `::placeholder` styled `color: var(--text-muted)`, `letter-spacing: 0.12em`, `text-transform: uppercase`.
-- Placeholder text `"Search films, profiles, paths…"`, **hidden when focused** (`placeholder={focused ? "" : PLACEHOLDER}` in TSX).
+- Three `<NavLink>` elements: **Home** (`/`), **Profiles** (`/profiles`), **Watchlist** (`/watchlist`).
+- Font: **Jersey 25**, 26px.
+- `gap: 32px` between links (or equivalent).
+- At rest: `color: var(--text-muted)`.
+- Active state: `color: var(--green)` + `::after` pseudo-element underline (not `text-decoration`).
+  - `::after`: `content: ""`, `position: absolute`, `bottom: -4px` (approx), `left: 0`, `right: 0`, `height: 2px`, `backgroundColor: var(--green)`.
+  - The link container is `position: relative` to anchor the pseudo-element.
+- `NavLink` `end` prop set for `/` so it does not stay active on child routes.
 
-### Custom pulsing caret
-- A `<span>` rendered only when `focused`, absolutely positioned inside `inputWrap`.
-- Geometry: `8px × 16px`, `top: 50%`, `marginTop: -8px`, 1px corner radius.
-- Colour: `backgroundColor: var(--green)`, `box-shadow: 0 0 6px var(--green), 0 0 16px var(--green-glow)`.
-- **Position pinned to end-of-text** via a hidden mirror span:
-  - `<span ref={mirrorRef} className={s.mirror}>{query}</span>` rendered alongside the input with the same font + size, `position: absolute`, `visibility: hidden`, `white-space: pre`.
-  - `useLayoutEffect(() => setCaretX(mirrorRef.current?.offsetWidth ?? 0), [query, focused])` measures the rendered text width.
-  - Caret is positioned via inline `style={{ left: \`${caretX}px\` }}`.
-- Animation: keyframes `{ "0%, 100%": { opacity: "1", transform: "scaleY(1)" }, "50%": { opacity: "0.25", transform: "scaleY(0.86)" } }`, 1.05s ease-in-out infinite.
+### Right cluster (right column)
 
-### Scan button
-- Mirrors the Prerelease `btn` idiom (transparent + no border + JetBrains Mono uppercase). Only the colour cue is Xstream-green.
-- `paddingTop/Bottom: 8px`, `paddingLeft/Right: 14px`.
-- `backgroundColor: transparent`, `border-width: 0` on all sides, `outlineStyle: none`.
-- `color: var(--text-muted)` at rest, JetBrains Mono 11px / `letter-spacing: 0.18em` / uppercase.
-- `transition: color, text-shadow ${tokens.transition}`.
-- `:hover`: `color: var(--green)`, `text-shadow: 0 0 6px var(--green), 0 0 16px var(--green-glow)`.
+- `justifySelf: end`, `alignSelf: center`, `paddingRight: 24px`.
+- `display: flex`, `gap: 12px`, `alignItems: center`.
+
+#### Scan button (icon-only)
+
+- 22×22 `<IconRefresh>`, wrapped in a `<button>`.
+- `backgroundColor: transparent`, no border, no outline.
+- `color: var(--text-muted)` at rest; `color: var(--green)` on hover.
+- On click: sets `scanning = true`, `setTimeout(() => setScanning(false), 2000)`.
+- While `scanning`: icon gets a spinning animation (`animationName: { to: { transform: "rotate(360deg)" } }`, 1.1s linear infinite) for approximately 2s.
+- `aria-busy={scanning}`.
+- Production: replace the `setTimeout` with a `scanLibraries` mutation.
+
+#### Avatar
+
+- 34×34 button.
+- `border-radius: 4px` on each corner.
+- `background: linear-gradient(140deg, ${colorGreenDeep}, ${colorGreen})`, `color: tokens.colorGreenInk`, `font-weight: 700`.
+- Displays `user.initials` (two-letter string).
+- Same gradient + initials shape as the former Sidebar user-row avatar, now promoted to the header.
 
 ## Behaviour
 
-### Search submit
-- `<form onSubmit={submit}>` wraps icon + input + suggestions.
-- On submit:
-  - If a suggestion is highlighted, `navigate(suggestion.href)`.
-  - Else if `query.trim()`, `navigate(\`/library?q=${encodeURIComponent(query.trim())}\`)`.
-  - Then clear `query` + blur input.
+### Nav active state
 
-### Suggestions dropdown
-- Sourced live from `films` and `profiles` in `src/data/mock.ts` (production: replace with backend search query).
-- Films match on `title` / `director` / `filename` (case-insensitive substring), max 5.
-- Profiles match on `name` / `path`, max 3.
-- Shown when `focused && (suggestions.length > 0 || query.trim().length > 0)`.
-- Empty state when query is non-empty but matches `[]`: `"No matches — press Enter to search"`.
-- Item shape: `<span class={suggLabel}>{label}</span>` (Inter 13px, `var(--text)`) + `<span class={suggMeta}>` (JetBrains Mono 10px, `var(--text-muted)`, prefixed `FILM · ` or `LIBRARY · ` then the meta line).
-- Highlight via state `highlight: number`. Highlighted row gets `backgroundColor: var(--green-soft)` (inline style; takes precedence over the shared `:hover` rule).
-- Mouse-enter on a row updates `highlight` so click-area state stays in sync.
-
-### Keyboard navigation
-- `ArrowDown` / `ArrowUp` move highlight, clamped `[0, suggestions.length - 1]`.
-- `Enter` triggers `submit` (handled by the form, not key handler).
-- `Escape` clears `query` and blurs.
-
-### Mouse navigation
-- `onMouseDown` on a suggestion item calls `e.preventDefault()` (prevents input blur from firing first), then `navigate(suggestion.href)`, clears, blurs.
-- Click navigates: film → `/library?film=<id>`, profile → `/library?profile=<id>`.
+- Managed by React Router's `<NavLink>`. When a link is active, its CSS class receives the active variant which adds the `::after` underline and flips text colour to green.
+- `/` link uses `end` prop so it does not stay active when on `/profiles` or `/watchlist`.
 
 ### Scan button click
+
 - Calls `handleScan()`. If already `scanning`, no-op.
 - Sets `scanning = true`, `setTimeout(() => setScanning(false), 2000)`.
-- Label flips: `"Scan"` → `"Scanning…"`.
-- `<IconRefresh>` gets `s.scanIconSpinning` class — `animationName: { to: { transform: "rotate(360deg)" } }`, 1.1s linear infinite.
+- `<IconRefresh>` gets the spinning class.
 - `aria-busy={scanning}` on the button.
-- Production: replace the `setTimeout` with a `scanLibraries` mutation; reflect job state in `scanning`.
 
-### Suggestions dropdown — animation
-- `position: absolute`, `top: calc(100% + 6px)`, `left/right: 0`.
-- Translucent bg (`rgba(10,13,12,0.92)`), `backdrop-filter: blur(18px) saturate(1.4)`, border `var(--border)`, `box-shadow: 0 18px 40px rgba(0,0,0,0.55)`.
-- `animationName: { from: { opacity: 0, transform: translateY(-4px) }, to: { opacity: 1, transform: translateY(0) } }`, 0.14s ease-out fillMode both.
+## Tokens used
 
-### Accessibility
-- Form `role="search"`.
-- Input `aria-label="Search"`, `aria-autocomplete="list"`, `aria-expanded={showSuggestions}`, `aria-controls="header-search-suggestions"`, `spellCheck={false}`, `autoComplete="off"`.
-- Suggestions list `id="header-search-suggestions"`, `role="listbox"`, items `role="option"`, `aria-selected={idx === highlight}`.
-- Caret span `aria-hidden="true"`. Mirror span `aria-hidden="true"`. Search icon span `aria-hidden="true"`.
-- Scan button `aria-busy={scanning}`.
-- Brand link `aria-label="Xstream — home"`.
+- `tokens.fontDisplay` — `"'Bytesized', system-ui, sans-serif"` (brand wordmark)
+- `tokens.fontNav` — `"'Jersey 25', system-ui, sans-serif"` (nav links)
+- Both fonts loaded via Google Fonts in `design/Release/index.html`.
 
-### Mock data shapes
-The component reads `films` (Film[]) and `profiles` (Profile[]) from `~/data/mock.ts`. Production: replace with a Relay query / GraphQL fetch. Suggestion shape is internal to the component:
-```ts
-interface Suggestion {
-  id: string;          // "film:<id>" or "profile:<id>"
-  kind: "film" | "profile";
-  label: string;
-  meta: string;        // "<year> · <resolution> · <profile>" or "<path>"
-  href: string;
-}
-```
+## Accessibility
+
+- Brand link: `aria-label="Xstream — home"`.
+- Scan button: `aria-busy={scanning}`.
+- Avatar button: `aria-label` for the user identity (e.g. `aria-label="Account — {user.initials}"`).
+- Nav links: standard React Router `<NavLink>`; active state conveyed via colour change and `::after` underline (not `aria-current` override needed — NavLink sets it automatically).
 
 ## Porting checklist (`client/src/components/AppHeader/`)
 
-- [ ] Glass treatment matches: gradient + backdrop-filter + inner highlight + drop shadow
-- [ ] No vertical divider between brand cell and search
-- [ ] Brand wordmark Anton 26px, X in `var(--green)` with `text-shadow: 0 0 12px var(--green-glow)`
-- [ ] Search input pinned to ~380px with `justifySelf: start`, sits adjacent to brand
-- [ ] Search box background uses horizontal `linear-gradient` fade — transparent at 0%/100%, opaque from 22%–78%
-- [ ] No border on the search box
-- [ ] **`outline-style: none` on the input** (Chromium UA `:focus-visible` ring suppressed — `outline-width: 0` alone is insufficient)
-- [ ] Placeholder hidden when focused (`placeholder={focused ? "" : PLACEHOLDER}`)
-- [ ] Native caret hidden via `caret-color: transparent`
-- [ ] Custom 8×16 green pulsing caret pinned to end-of-text via hidden mirror span (`useLayoutEffect` measures `offsetWidth`)
-- [ ] Caret animation: opacity 1↔0.25 + scaleY 1↔0.86, 1.05s ease-in-out infinite, with green glow
-- [ ] Hover breathing animation only when **not** focused (`mergeClasses(s.searchCell, !focused && s.searchCellHover, focused && s.searchCellFocused)`)
-- [ ] Search wired to backend search API (films + libraries) — replace mock filter
-- [ ] Suggestions dropdown: ArrowDown/Up moves highlight, Enter selects (submit), Escape clears + blurs, click navigates
-- [ ] Empty-results message `"No matches — press Enter to search"`
-- [ ] Suggestion item: label (Inter 13) + meta (Mono 10, prefixed `FILM · ` / `LIBRARY · `)
-- [ ] Suggestions dropdown styled with own translucent bg + backdrop-blur + entry animation translateY -4px → 0 over 0.14s
-- [ ] Scan button: transparent bg, no border, JetBrains Mono uppercase, text-muted → green text-shadow glow on hover
-- [ ] Scan button wired to `scanLibraries` mutation (replaces the 2s mock timer)
-- [ ] Refresh icon spins (1.1s linear infinite) while scanning; `aria-busy` toggled
-- [ ] Brand link `aria-label="Xstream — home"`; form `role="search"`; input has full ARIA (`aria-autocomplete`, `aria-expanded`, `aria-controls`)
+- [ ] Three-column grid: `1fr auto 1fr`
+- [ ] Glass treatment: gradient + backdrop-filter + inner highlight + drop shadow (same values as prior spec)
+- [ ] Brand cell left-aligned, `paddingLeft: 24px`, Bytesized 34px font
+- [ ] Brand link `aria-label="Xstream — home"` as a `<Link to="/">`
+- [ ] Three `<NavLink>` centred: Home `/` (with `end`), Profiles `/profiles`, Watchlist `/watchlist`
+- [ ] Nav font: Jersey 25, 26px
+- [ ] Nav active: `color: var(--green)` + `::after` pseudo-element underline (not `text-decoration`)
+- [ ] Nav `::after` anchored by `position: relative` on the link container
+- [ ] `tokens.fontDisplay` (`'Bytesized'`) and `tokens.fontNav` (`'Jersey 25'`) registered in token file
+- [ ] Both Google Fonts loaded in HTML `<head>` (Bytesized + Jersey 25)
+- [ ] Right cluster: `justifySelf: end`, flex row, gap 12px
+- [ ] Scan button: 22×22 `<IconRefresh>`, icon-only (no text label), transparent bg, no border
+- [ ] Scan icon spins (~2s) on click while `scanning`; `aria-busy` toggled
+- [ ] Scan button wired to `scanLibraries` mutation (replaces 2s mock timer)
+- [ ] Avatar: 34×34 button, `border-radius: 4px`, green-deep→green gradient, green-ink initials
+- [ ] No search form in the header (search moved to Library/home page)
+
+## What changed from the prior spec (787f136)
+
+The prior AppHeader spec described the search-centric layout: a three-column grid keyed to `${tokens.sidebarWidth} 1fr auto`, a full search form with suggestions dropdown, caret animation, and mirror span, and a text-label scan button. All of that is superseded:
+
+- **Grid** changed from `${tokens.sidebarWidth} 1fr auto` to `1fr auto 1fr`.
+- **Search form, suggestions dropdown, custom caret, mirror span** — deleted from the header; now live on the Library/home page in a simpler form.
+- **Scan trigger** — was a text button (`"Scan"` / `"Scanning…"` in JetBrains Mono); now an icon-only button (22×22 `<IconRefresh>`).
+- **Brand** — was Anton 26px with `X` in green; now Bytesized 34px single wordmark.
+- **Nav links** — were absent from the header (navigation was in the Sidebar); now three centred Jersey 25 links with `::after` underline for active state.
+- **Avatar** — was in the Sidebar user-row; now in the header right cluster (34×34 instead of 30×30).
+
+The glass treatment, scan spin animation, and `aria-busy` pattern are unchanged.
 
 ## Status
 
-- [x] Designed in `design/Release` lab — last change **2026-05-01**
+- [x] Designed in `design/Release` lab — full rewrite (2026-05-01, PR #46 commit 787f136, `feat/release-design-omdb-griffel`, not yet merged to main)
 - [ ] Production implementation

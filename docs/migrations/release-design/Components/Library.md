@@ -1,7 +1,7 @@
 # Library (page)
 
 > Status: **baseline** (Spec) · **not started** (Production)
-> Spec updated: 2026-05-01 (PR #46, commit 04ea22b) — full rewrite. Prior spec described a grid/filter/DetailPane layout that has been replaced by a hero+rows dash view with a full-bleed film-details overlay.
+> Spec updated: 2026-05-01 (PR #46, commit 787f136) — search bar added between hero and rows; search-driven view swap documented. Prior update (04ea22b) replaced grid/filter/DetailPane with hero+rows+overlay.
 
 ## Files
 
@@ -19,7 +19,7 @@ Single param, read/write via `useSearchParams`:
 
 - `?film=<id>` — overlay open, showing that film's details. Absent → dash view.
 
-No profile filter, no search query, no view-mode toggle in this layout.
+The search bar (see below) filters in-page via local state only — it does not write a URL param in the current lab iteration. The `?q=<query>` TODO below tracks the production wiring.
 
 ## Visual — dash view
 
@@ -39,9 +39,22 @@ Same pattern as the Profiles hero, tuned larger:
 - **Cycle timing:** `HERO_INTERVAL_MS` = 7 000ms, `HERO_FADE_MS` = 700ms (vs. Profiles' 6 000ms / 600ms).
 - **Canonical poster order:** `["oppenheimer", "barbie", "nosferatu", "civilwar"]`. Falls back to `films.slice(0, 4)` if any id is absent.
 
-### Row section (below hero)
+### Search bar (between hero and rows)
 
-Two horizontal-scroll rows. Shared row anatomy:
+Rendered between the hero and the row section. Present in the dash view only (hidden when the overlay is open).
+
+- **Input container:** mono input, full width (or constrained width — `TODO(redesign): confirm exact width`), `padding: 0 28px` to align with the row tracks.
+- **Input:** JetBrains Mono, `color: var(--text)`, `backgroundColor: transparent` (or a subtle dark fill — see lab source).
+- **Focus ring:** green ring on focus — `outline: 2px solid var(--green)` or equivalent `box-shadow` ring.
+- **Clear button:** `✕` icon button, shown when query is non-empty. Clicking clears the query and resets to the two-row view.
+- **Empty state:** when query is empty → show the two default rows (Continue Watching + Watchlist).
+- **Results state:** when query is non-empty → replace both rows with a single `"Results · {N}"` row filtered against `title`, `filename`, `director`, and `genre` across all `films`. Label is JetBrains Mono 9px / faint (same as section labels).
+- **No-match state:** when query is non-empty but zero results → `"No films match"` empty-state message.
+- All filtering is client-side against the in-memory `films` array. Production: replace with a backend search query (Relay refetch or subscription).
+
+### Row section (below search bar)
+
+Two horizontal-scroll rows (shown when search query is empty). Shared row anatomy:
 
 - Track: `display: flex`, `gap: 12px`, `overflow-x: auto`, `padding: 0 28px`. Scrollbar hidden.
 - Section label above each row: JetBrains Mono 9px / 0.28em / `colorTextFaint`, `padding: 0 28px`.
@@ -122,11 +135,22 @@ Same state machine as Profiles:
 
 ## TODO(redesign)
 
-- `?q=<query>` URL param is not yet wired — AppHeader search submits to `/library?q=` but the row filter does not consume it. Needed when production wires live search.
+- `?q=<query>` URL param is not yet wired in the lab — the search bar filters in local state only. Production should write `?q=` to the URL so the filtered view is shareable/bookmarkable. When wired, the Library page should also read an incoming `?q=` on mount and pre-populate the input.
 - The scroll teaser timings (700ms / 2 200ms) are hardcoded; consider extracting to a constant.
 - Production: "Continue watching" and "Watchlist" derivation must come from a backend query (progress field on the job/film relation) not mock data.
+- Search bar: confirm exact container width and whether the input has a visible background fill or is fully transparent.
 
 ## Porting checklist (`client/src/pages/Library/`)
+
+### Search bar
+
+- [ ] Mono input rendered between hero and rows, aligned with `padding: 0 28px`
+- [ ] Green focus ring on focus
+- [ ] Clear (✕) button appears when query is non-empty; click resets to two-row view
+- [ ] Empty query → two default rows (Continue Watching + Watchlist)
+- [ ] Non-empty query → single `"Results · {N}"` row filtered by title / filename / director / genre
+- [ ] "No films match" empty state when query non-empty and zero results
+- [ ] Production: replace client-side filter with backend search query / Relay refetch
 
 ### Dash view — hero
 
@@ -178,5 +202,5 @@ Same state machine as Profiles:
 
 ## Status
 
-- [x] Designed in `design/Release` lab — hero+rows+overlay layout (2026-05-01, PR #46 commit 04ea22b). Grid/filter/DetailPane layout superseded.
+- [x] Designed in `design/Release` lab — hero+rows+overlay layout (2026-05-01, PR #46 commit 04ea22b). Search bar between hero and rows added (2026-05-01, PR #46 commit 787f136). Grid/filter/DetailPane layout superseded. PR #46 on `feat/release-design-omdb-griffel`, not yet merged to main.
 - [ ] Production implementation
