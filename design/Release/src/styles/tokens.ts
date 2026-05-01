@@ -40,7 +40,7 @@ export const tokens = {
   fontBody: "'Inter', sans-serif",
   fontMono: "'JetBrains Mono', ui-monospace, monospace",
   fontDisplay: "'Bytesized', system-ui, sans-serif",
-  fontNav: "'Jersey 25', system-ui, sans-serif",
+  fontNav: "'Bowlby One', system-ui, sans-serif",
 
   // Geometry
   radiusSm: "2px",
