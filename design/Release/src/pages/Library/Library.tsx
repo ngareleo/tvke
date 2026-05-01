@@ -92,8 +92,18 @@ export const Library: FC = () => {
   );
 
   const [search, setSearch] = useState("");
+  const [searchFocused, setSearchFocused] = useState(false);
+  const [searchCaretX, setSearchCaretX] = useState(0);
+  const searchInputRef = useRef<HTMLInputElement>(null);
+  const searchMirrorRef = useRef<HTMLSpanElement>(null);
   const trimmedQuery = search.trim().toLowerCase();
   const searching = trimmedQuery.length > 0;
+
+  useEffect(() => {
+    if (searchMirrorRef.current !== null) {
+      setSearchCaretX(searchMirrorRef.current.offsetWidth);
+    }
+  }, [search, searchFocused]);
 
   const searchResults = useMemo<Film[]>(() => {
     if (!trimmedQuery) return [];
@@ -164,6 +174,56 @@ export const Library: FC = () => {
         <div className={styles.heroEdgeFade} />
         <div className={styles.heroBottomFade} />
         <div className="grain-layer" />
+
+        <div
+          className={mergeClasses(
+            styles.searchBar,
+            searchFocused && styles.searchBarFocused,
+          )}
+        >
+          <span className={styles.searchIcon} aria-hidden="true">
+            <IconSearch />
+          </span>
+          <div className={styles.searchInputWrap}>
+            <span
+              ref={searchMirrorRef}
+              className={styles.searchMirror}
+              aria-hidden="true"
+            >
+              {search}
+            </span>
+            <input
+              ref={searchInputRef}
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              onFocus={() => setSearchFocused(true)}
+              onBlur={() => window.setTimeout(() => setSearchFocused(false), 120)}
+              placeholder={searchFocused ? "" : "Search films, directors, genres…"}
+              className={styles.searchInput}
+              aria-label="Search the library"
+              spellCheck={false}
+              autoComplete="off"
+            />
+            {searchFocused && (
+              <span
+                className={styles.searchCaret}
+                style={{ left: `${searchCaretX}px` }}
+                aria-hidden="true"
+              />
+            )}
+          </div>
+          {searching && (
+            <button
+              type="button"
+              onClick={() => setSearch("")}
+              aria-label="Clear search"
+              className={styles.searchClear}
+            >
+              <IconClose width={12} height={12} />
+            </button>
+          )}
+        </div>
+
         <div className={styles.heroBody}>
           <div>
             <div className={styles.greetingEyebrow}>
@@ -190,31 +250,6 @@ export const Library: FC = () => {
             ))}
           </div>
         </div>
-      </div>
-
-      <div className={styles.searchBar}>
-        <span className={styles.searchIcon} aria-hidden="true">
-          <IconSearch />
-        </span>
-        <input
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          placeholder="Search films, directors, genres…"
-          className={styles.searchInput}
-          aria-label="Search the library"
-          spellCheck={false}
-          autoComplete="off"
-        />
-        {searching && (
-          <button
-            type="button"
-            onClick={() => setSearch("")}
-            aria-label="Clear search"
-            className={styles.searchClear}
-          >
-            <IconClose width={12} height={12} />
-          </button>
-        )}
       </div>
 
       <div className={styles.rowsScroll}>
