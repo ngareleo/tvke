@@ -42,4 +42,6 @@ These items require the OTel metrics SDK (`MeterProvider`) which is not yet wire
 
 ## Migrations / Rust Port
 
-- [ ] **OMDB-001** Port `autoMatchLibrary` from `server/src/services/libraryScanner.ts:240-288` to `server-rust/src/services/library_scanner.rs`. The scanner port (PR #44) deferred this — there is a `TODO(migration-step-2-followup)` marker in `library_scanner.rs::scan_libraries` at the spot where Bun calls `autoMatchLibrary` after `library_scanned`. Blocked on porting `server/src/services/omdbService.ts` first (HTTP client + API key handling). Tracking pointer: `docs/migrations/rust-rewrite/06-File-Handling-Layer.md` §6.
+- [x] **OMDB-001** Port `autoMatchLibrary` from `server/src/services/libraryScanner.ts:240-288` to `server-rust/src/services/library_scanner.rs`. Landed in PR #44.
+
+- [ ] **OMDB-002** Port the remaining OMDb surface area: the `match_video` mutation (currently a stub in `server-rust/src/graphql/mutation.rs`) and the `searchOmdb` query (Bun: `server/src/graphql/resolvers/query.ts:95-107`). Both should reuse `services/omdb::OmdbClient` from PR #44 — add `fetch_by_id(imdb_id)` and `search_list(query, year)` methods that mirror `omdbService.ts:fetchOmdbById` and `searchOmdbList`. Tracking pointer: `docs/migrations/rust-rewrite/06-File-Handling-Layer.md` §6.
