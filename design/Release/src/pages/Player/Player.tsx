@@ -67,6 +67,14 @@ export const Player: FC = () => {
     else if (state === "playing") setState("idle");
   };
 
+  const goBackWithTransition = (): void => {
+    if (typeof document.startViewTransition === "function") {
+      document.startViewTransition(() => navigate(-1));
+    } else {
+      navigate(-1);
+    }
+  };
+
   if (!film) {
     return (
       <div className={styles.unknownFilmBox}>
@@ -88,12 +96,12 @@ export const Player: FC = () => {
         chromeHidden={chromeHidden}
         onPlay={startPlay}
         onTogglePlay={togglePlay}
-        onBack={() => navigate(-1)}
+        onBack={goBackWithTransition}
       />
       <SidePanel
         film={film}
         chromeHidden={chromeHidden}
-        onBack={() => navigate(-1)}
+        onBack={goBackWithTransition}
       />
     </div>
   );

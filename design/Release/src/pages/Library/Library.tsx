@@ -1,5 +1,5 @@
 import { type FC, useEffect, useMemo, useRef, useState } from "react";
-import { Link, useSearchParams } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { mergeClasses } from "@griffel/react";
 import {
   type Film,
@@ -264,15 +264,20 @@ export const Library: FC = () => {
       <div className={styles.rowsScroll}>
         {searching ? (
           searchResults.length > 0 ? (
-            <Row title={`Results · ${searchResults.length}`}>
-              {searchResults.map((film) => (
-                <FilmTile
-                  key={film.id}
-                  film={film}
-                  onClick={() => openFilm(film.id)}
-                />
-              ))}
-            </Row>
+            <div className={styles.searchResults}>
+              <div className={styles.rowHeader}>
+                Results · {searchResults.length}
+              </div>
+              <div className={styles.searchGrid}>
+                {searchResults.map((film) => (
+                  <FilmTile
+                    key={film.id}
+                    film={film}
+                    onClick={() => openFilm(film.id)}
+                  />
+                ))}
+              </div>
+            </div>
           ) : (
             <div className={styles.noResults}>
               No films match &ldquo;{search.trim()}&rdquo;
@@ -383,6 +388,17 @@ interface FilmDetailsOverlayProps {
 
 const FilmDetailsOverlay: FC<FilmDetailsOverlayProps> = ({ film, onClose }) => {
   const styles = useLibraryStyles();
+  const navigate = useNavigate();
+
+  const playWithTransition = (): void => {
+    const target = `/player/${film.id}`;
+    if (typeof document.startViewTransition === "function") {
+      document.startViewTransition(() => navigate(target));
+    } else {
+      navigate(target);
+    }
+  };
+
   return (
     <div className={styles.overlay}>
       <Poster
@@ -427,10 +443,14 @@ const FilmDetailsOverlay: FC<FilmDetailsOverlayProps> = ({ film, onClose }) => {
         )}
         {film.plot && <div className={styles.overlayPlot}>{film.plot}</div>}
         <div className={styles.overlayActions}>
-          <Link to={`/player/${film.id}`} className={styles.playCta}>
+          <button
+            type="button"
+            onClick={playWithTransition}
+            className={styles.playCta}
+          >
             <IconPlay />
             <span>Play</span>
-          </Link>
+          </button>
           <span className={styles.overlayFilename}>{film.filename}</span>
         </div>
       </div>

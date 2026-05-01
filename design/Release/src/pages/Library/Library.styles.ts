@@ -14,7 +14,7 @@ export const useLibraryStyles = makeStyles({
   // Hero — full-bleed, starts at viewport top so the glass header overlays it
   hero: {
     flexShrink: 0,
-    height: "300px",
+    height: "420px",
     position: "relative",
     overflow: "hidden",
   },
@@ -92,7 +92,7 @@ export const useLibraryStyles = makeStyles({
     fontSize: "64px",
     lineHeight: "0.92",
     color: tokens.colorText,
-    marginTop: "12px",
+    marginTop: "28px",
     letterSpacing: "-0.02em",
   },
   slideDots: {
@@ -249,6 +249,18 @@ export const useLibraryStyles = makeStyles({
     color: tokens.colorTextMuted,
     textAlign: "center",
   },
+  searchResults: {
+    display: "flex",
+    flexDirection: "column",
+    rowGap: "16px",
+  },
+  searchGrid: {
+    display: "grid",
+    gridTemplateColumns: "repeat(auto-fill, 180px)",
+    justifyContent: "start",
+    columnGap: "16px",
+    rowGap: "24px",
+  },
 
   // Rows below the hero
   rowsScroll: {
@@ -372,6 +384,7 @@ export const useLibraryStyles = makeStyles({
     width: "100%",
     height: "100%",
     objectFit: "cover",
+    viewTransitionName: "film-backdrop",
     animationName: {
       "0%": { transform: "scale(1.04) translate(-0.4%, -0.3%)" },
       "100%": { transform: "scale(1.04) translate(0.4%, 0.3%)" },

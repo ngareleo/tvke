@@ -40,6 +40,7 @@ export const usePlayerStyles = makeStyles({
     height: "100%",
     objectFit: "cover",
     filter: "brightness(0.85) contrast(1.05)",
+    viewTransitionName: "film-backdrop",
   },
   grain: {
     opacity: 0.18,
