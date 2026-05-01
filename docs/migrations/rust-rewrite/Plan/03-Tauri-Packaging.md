@@ -50,8 +50,10 @@ This is the step where "we have a Rust port we can flag-test against" turns into
 
 **Out:**
 
-- Code signing per OS, auto-update, CI release matrix, distribution — [Step 4](04-Release.md).
+- Code signing per OS, auto-update, **full** CI release matrix (all four OS runners, signing secrets, updater-manifest publish), distribution — [Step 4](04-Release.md).
 - Peer sharing.
+
+**Boundary note — unsigned Linux-only CD:** A `release.yml` that builds + publishes a **draft, pre-release, unsigned** `.deb` + `.AppImage` on tag push (Linux runner only, no signing secrets, no updater manifest) is Step-3-scoped. It is the verification mechanism that lets PR reviewers and soak users confirm the Step-3 outcome ("we have a desktop app") before Step 4 adds signing, the multi-OS matrix, and the updater-manifest publish. Step 4 extends the existing workflow; it does not create it. Equally, a `tauri-build` job in `ci.yml` (unsigned Linux build on every push/PR) is unambiguously Step-3 build-parity verification, not release plumbing.
 
 ## Stable contracts to preserve
 
