@@ -71,13 +71,17 @@ jobs:
       - name: Clippy
         # `--all-targets` covers the test binary in tests/ as well as src/.
         # `-D warnings` makes any new lint a CI failure — keeps drift out.
-        run: cargo clippy --all-targets -- -D warnings
+        # `--exclude xstream-tauri` skips the Tauri shell crate — it depends
+        # on `webkit2gtk-4.1-dev` etc. which this job does not apt-install
+        # (the dedicated `tauri-build` job below does). Linting xstream-tauri
+        # belongs there, not here.
+        run: cargo clippy --workspace --exclude xstream-tauri --all-targets -- -D warnings
 
       - name: Build
-        run: cargo build --workspace --all-targets
+        run: cargo build --workspace --exclude xstream-tauri --all-targets
 
       - name: Test
-        run: cargo test --workspace
+        run: cargo test --workspace --exclude xstream-tauri
 
       - name: Install ffmpeg (apt, for SDL parity boot)
         # The SDL parity step boots the Rust server, which probes for ffmpeg
@@ -110,7 +114,13 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p tmp
-          DB_PATH="$PWD/tmp/ci-xstream.db" cargo run --quiet --bin xstream-server &
+          # Build the binary first, then exec — separates compile time from
+          # server-up time. With `cargo run`, a cold workspace cache (e.g. on
+          # the first run after Cargo.lock changes) eats into the healthcheck
+          # window and the for-loop times out before the server has even
+          # finished compiling.
+          cargo build --bin xstream-server
+          DB_PATH="$PWD/tmp/ci-xstream.db" target/debug/xstream-server &
           SERVER_PID=$!
           trap "kill $SERVER_PID 2>/dev/null || true; wait $SERVER_PID 2>/dev/null || true" EXIT
 
@@ -125,6 +135,100 @@ jobs:
           curl -fs http://127.0.0.1:3002/healthz >/dev/null
 
           RUST_GRAPHQL_URL=http://127.0.0.1:3002/graphql bun run scripts/check-sdl-parity.ts
+
+  tauri-build:
+    name: Tauri — Linux build (unsigned)
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo registry + target
+        uses: Swatinem/rust-cache@v2
+        with:
+          # Workspace root is the repo root; target dir is at <root>/target.
+          # Reuses the same cache as the server-rust job — Tauri's `setup` and
+          # `runtime` crates compile separately, but xstream-server's deps are
+          # shared.
+          workspaces: . -> target
+          # Tauri builds are slow; force cache writes even on failure so a
+          # subsequent run picks up the partially-built tree.
+          cache-on-failure: true
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install Tauri Linux build deps
+        # Mirrors install.sh §0b. webkit2gtk-4.1 is what tauri 2 / wry expects.
+        # appindicator + rsvg cover system-tray + icon rendering. ffmpeg is
+        # already pulled in via setup-ffmpeg below.
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y \
+            pkg-config \
+            libgtk-3-dev \
+            libwebkit2gtk-4.1-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev
+
+      - name: Install bun deps (root + workspaces)
+        run: bun install
+
+      - name: Generate Relay artifacts
+        # The Tauri bundler runs `bun run --filter client build`, which expects
+        # `client/src/relay/__generated__/` to exist. The client job above also
+        # does this; we re-run here so the tauri-build job is independently
+        # runnable.
+        run: bun run --filter client relay
+
+      - name: Cache tauri-cli binary
+        # tauri-cli is ~3min to compile and the binary itself is the same
+        # across runs. Cache by `^2` major version pin from package.json
+        # `tauri:dev`/`tauri:build` scripts.
+        id: tauri-cli-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/bin/cargo-tauri
+          key: ${{ runner.os }}-cargo-tauri-cli-v2
+
+      - name: Install tauri-cli
+        if: steps.tauri-cli-cache.outputs.cache-hit != 'true'
+        run: cargo install tauri-cli --version '^2' --locked
+
+      - name: Stage bundled ffmpeg for tauri build
+        # `setup-ffmpeg --target=tauri-bundle` is also the `beforeBuildCommand`
+        # in `tauri.conf.json`, but invoking it explicitly here lets the cache
+        # step capture the staged binaries into a workflow cache, dropping
+        # ~50 MB of repeated downloads from subsequent runs.
+        run: bun run setup-ffmpeg --target=tauri-bundle
+
+      - name: Build Tauri bundle (deb + AppImage)
+        env:
+          # Skip the VAAPI probe — CI runners have no /dev/dri. This is the
+          # same env shape the SDL-parity job uses.
+          HW_ACCEL: "off"
+        run: cd src-tauri && cargo tauri build --bundles deb,appimage
+
+      - name: Upload Tauri artifacts
+        # Reviewers can download the .AppImage / .deb from a green CI run to
+        # smoke-test PR #43 without building locally. Retention 7 days is
+        # enough for a review cycle and saves Actions storage.
+        #
+        # Bundle output lives at the workspace-root `target/` because
+        # `src-tauri` is a workspace member, not a standalone crate —
+        # cargo writes to the shared workspace target dir regardless of
+        # where the build was invoked from.
+        uses: actions/upload-artifact@v4
+        with:
+          name: xstream-tauri-linux-x86_64
+          path: |
+            target/release/bundle/deb/*.deb
+            target/release/bundle/appimage/*.AppImage
+          retention-days: 7
+          if-no-files-found: error
 
   client:
     name: Client — lint, test, relay, build

@@ -411,6 +411,8 @@ In-app updater checks at startup + every 24h; the manifest is fetched, version-c
 
 GitHub Actions workflow at `.github/workflows/release.yml`. Triggered by `push` of tags matching `v*.*.*`.
 
+**Baseline from Step 3:** A Linux-only, unsigned, draft-pre-release form of `release.yml` is established during Step 3 (commit `5d8bf06`, PR #43 — not yet merged to main as of 2026-05-01). It uses `tauri-apps/tauri-action@v0` with no signing secrets, produces `.deb` + `.AppImage` as draft GitHub Release artefacts and 7-day workflow artefacts, and carries `HW_ACCEL=off` (CI runners have no `/dev/dri`). The same PR also adds a `tauri-build` job to `ci.yml` for per-push build-parity verification. The eventual-state matrix shown below is what Step 4 promotes to.
+
 ```yaml
 name: Release
 on:

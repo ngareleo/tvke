@@ -24,6 +24,29 @@ else
   info "docker found: $(docker --version)"
 fi
 
+# ── 0b. Linux system libraries (required for Tauri build) ─────────────────────
+
+# Tauri's webview backend (`wry` → `webkit2gtk`) needs system libraries that
+# don't ship with most distros by default. The list mirrors the one in
+# `docs/migrations/rust-rewrite/08-Tauri-Packaging.md` §9. Mac/Windows have
+# their webview baked into the OS — this block is Linux-only.
+if [ "$(uname -s)" = "Linux" ]; then
+  TAURI_DEPS=(pkg-config libgtk-3-dev libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev)
+  MISSING=()
+  for pkg in "${TAURI_DEPS[@]}"; do
+    if ! dpkg -s "$pkg" &>/dev/null; then
+      MISSING+=("$pkg")
+    fi
+  done
+  if [ "${#MISSING[@]}" -gt 0 ]; then
+    info "Installing Tauri Linux build deps (missing: ${MISSING[*]})..."
+    sudo apt-get update
+    sudo apt-get install -y "${MISSING[@]}"
+  else
+    info "Tauri Linux build deps already installed."
+  fi
+fi
+
 # ── 1. Bun ────────────────────────────────────────────────────────────────────
 
 if ! command -v bun &>/dev/null; then
@@ -35,6 +58,24 @@ if ! command -v bun &>/dev/null; then
   info "bun installed: $(bun --version)"
 else
   info "bun found: $(bun --version)"
+fi
+
+# ── 1b. Rust toolchain + tauri-cli ────────────────────────────────────────────
+
+# The Rust port (server-rust) and the Tauri shell (src-tauri) both compile
+# against stable Rust. tauri-cli provides the `cargo tauri dev|build`
+# subcommands invoked by `bun run tauri:dev` / `tauri:build`.
+if ! command -v cargo &>/dev/null; then
+  warning "cargo not found — install Rust from https://rustup.rs and re-run this script."
+  warning "  curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh"
+else
+  info "cargo found: $(cargo --version)"
+  if ! command -v cargo-tauri &>/dev/null; then
+    info "tauri-cli not found — installing (this takes a few minutes the first time)..."
+    cargo install tauri-cli --version '^2' --locked
+  else
+    info "tauri-cli found: $(cargo-tauri --version 2>/dev/null || echo unknown)"
+  fi
 fi
 
 # ── 2. Dependencies ───────────────────────────────────────────────────────────
@@ -79,9 +120,12 @@ fi
 echo ""
 info "Setup complete. To start development:"
 echo ""
-echo "    bun run dev"
+echo "    bun run dev          # browser-mode: Bun + Rust + client dev (mprocs)"
+echo "    bun run tauri:dev    # desktop-mode: Tauri window with embedded Rust server"
 echo ""
-echo "  Server:  http://localhost:3001/graphql"
-echo "  Client:  http://localhost:5173"
+echo "  Browser-mode:"
+echo "    Bun:    http://localhost:3001/graphql"
+echo "    Rust:   http://localhost:3002/graphql  (toggle 'useRustBackend' flag in Settings)"
+echo "    Client: http://localhost:5173"
 echo ""
 info "See README.md for full usage instructions."

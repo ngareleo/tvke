@@ -1,0 +1,126 @@
+name: Release
+
+# Tag-triggered CD that produces installable Linux artifacts (.AppImage + .deb)
+# and attaches them to a draft GitHub Release. Push `v0.1.0` (or any
+# `v*.*.*`) to fire it.
+#
+# **Unsigned for now** — code-signing, Ed25519 update keys, the auto-updater,
+# and macOS / Windows bundling are all Step 4 of the migration playbook
+# (`docs/migrations/rust-rewrite/Plan/04-Release.md` +
+# `08-Tauri-Packaging.md` §6–§9). The first user-installable artefacts
+# come out of *this* workflow; the signed-and-updated ones replace them
+# when Step 4 lands.
+#
+# Reviewers / users:
+#   1. Push a tag: `git tag v0.1.0 && git push origin v0.1.0`
+#   2. Wait for the workflow to finish (10–15 min on a cold cache)
+#   3. The Release lands on GitHub as a *draft* — review and publish it
+#      manually so a misfire doesn't immediately broadcast to users
+#   4. Download the `.AppImage` (`chmod +x` then run) or the `.deb`
+#      (`sudo dpkg -i`) for a real install
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+  workflow_dispatch:
+    # Lets you trigger a build off any branch via the Actions UI without
+    # having to push a tag. Useful for testing the workflow itself before
+    # the first real release.
+    inputs:
+      tag:
+        description: "Tag name to attach the release to (e.g. v0.1.0)"
+        required: true
+        type: string
+
+jobs:
+  build:
+    name: Build Tauri bundle (Linux x86_64)
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: write # needed to create / update the Release
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo registry + target
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: . -> target
+          cache-on-failure: true
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install Tauri Linux build deps
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y \
+            pkg-config \
+            libgtk-3-dev \
+            libwebkit2gtk-4.1-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev
+
+      - name: Install bun deps
+        run: bun install
+
+      - name: Generate Relay artifacts
+        run: bun run --filter client relay
+
+      - name: Cache tauri-cli binary
+        id: tauri-cli-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/bin/cargo-tauri
+          key: ${{ runner.os }}-cargo-tauri-cli-v2
+
+      - name: Install tauri-cli
+        if: steps.tauri-cli-cache.outputs.cache-hit != 'true'
+        run: cargo install tauri-cli --version '^2' --locked
+
+      - name: Build + attach to GitHub Release
+        # `tauri-apps/tauri-action` runs `tauri build`, uploads each emitted
+        # artefact to the draft Release, and creates the Release if it
+        # doesn't exist yet. We deliberately leave the signing secrets
+        # empty — the resulting .AppImage / .deb are *unsigned*. The
+        # `tauri-plugin-updater` is also not enabled (no `pubkey` in
+        # `tauri.conf.json`), so users on this build do NOT auto-update.
+        # Step 4 of the migration playbook layers signing + updater on
+        # top of this same `tauri-action` invocation by populating the
+        # `TAURI_SIGNING_PRIVATE_KEY` + per-OS cert env vars.
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # No signing keys this iteration. See top-of-file note.
+        with:
+          tagName: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+          releaseName: "xstream ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}"
+          releaseBody: |
+            **Unsigned alpha build.** No code signing, no auto-update.
+
+            Linux x86_64 only (Step 3 scope). macOS / Windows bundles + signed
+            updates land in Step 4 of the Rust + Tauri migration.
+
+            ### Install
+            - **AppImage:** download `xstream_*_amd64.AppImage`, `chmod +x`, run.
+            - **Deb:** `sudo dpkg -i xstream_*_amd64.deb`
+
+            ### What works
+            - GraphQL + streaming via the embedded Rust server on a free `127.0.0.1:<port>` (per launch).
+            - Bundled jellyfin-ffmpeg portable build — no host install needed.
+            - DB at `~/.local/share/com.example.xstream/xstream.db`, segment cache at `~/.cache/com.example.xstream/segments/`.
+
+            ### Known gaps (deferred to follow-up Step 3 subtasks)
+            - HW-accel probe softening — `HW_ACCEL=off` is forced; software encoding only.
+            - Library picker UX — no folder-add inside the app yet; seed `app_local_data_dir/xstream.db` manually.
+            - macOS / Windows bundling — Linux-only this iteration.
+
+            See `docs/migrations/rust-rewrite/Plan/03-Tauri-Packaging.md` for the full Step 3 status.
+          releaseDraft: true # never auto-publish; user reviews + clicks Publish
+          prerelease: true # marks the Release as pre-release in GitHub UI
+          args: --bundles deb,appimage
