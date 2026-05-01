@@ -159,6 +159,15 @@ export const Library: FC = () => {
     setParams(next);
   };
 
+  const [greetingTilt, setGreetingTilt] = useState({ rx: 0, ry: 0 });
+  const onGreetingMouseMove = (e: React.MouseEvent<HTMLDivElement>): void => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    const nx = (e.clientX - rect.left) / rect.width - 0.5;
+    const ny = (e.clientY - rect.top) / rect.height - 0.5;
+    setGreetingTilt({ rx: ny * 18, ry: -nx * 18 });
+  };
+  const onGreetingMouseLeave = (): void => setGreetingTilt({ rx: 0, ry: 0 });
+
   if (selectedFilm) {
     return <FilmDetailsOverlay film={selectedFilm} onClose={closeFilm} />;
   }
@@ -238,7 +247,14 @@ export const Library: FC = () => {
             <div className={styles.greetingEyebrow}>
               · {greeting()}, {user.name.toUpperCase()}
             </div>
-            <div className={styles.greeting}>
+            <div
+              className={styles.greeting}
+              onMouseMove={onGreetingMouseMove}
+              onMouseLeave={onGreetingMouseLeave}
+              style={{
+                transform: `perspective(800px) rotateX(${greetingTilt.rx}deg) rotateY(${greetingTilt.ry}deg)`,
+              }}
+            >
               Tonight&apos;s
               <br />
               library.
