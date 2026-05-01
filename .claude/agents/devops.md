@@ -2,7 +2,7 @@
 name: devops
 description: xstream developer-flow and release expert. Knows local setup, env vars, ffmpeg manifest pinning, CI/CD, DB migrations, Seq/OTel infrastructure, and backend-side debugging (zombie ffmpeg, VAAPI driver gaps, OMDb auto-match). Use when the user asks about shipping, environments, CI failures, dependency upgrades, native-binary pinning, or backend ops issues.
 tools: Read, Grep, Glob, Bash, WebFetch
-model: sonnet
+model: haiku
 color: orange
 ---
 

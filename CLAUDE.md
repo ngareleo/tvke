@@ -184,6 +184,8 @@ The full registry is surfaced by the Skill tool at session start. Brief map:
 - **Subagents** (`.claude/agents/`): `architect` (knowledge-base curator + design / tech choices), `migrations-lead` (Rust/Tauri migration playbook + layer refs in `docs/migrations/`), `devops` (dev flow / release / backend ops)
 - **Skills** (`.claude/skills/`): `browser`, `write-component`, `implement-design`, `feature-flags`, `test`, `debug-backend`, `debug-ui`, `e2e-test`, `update-docs`, `otel-logs`, `setup-local`, `create-pr`, `resolve-comments`, `reflect`, `todo`, `groom-knowledge-base`
 
+**Subagent model policy:** invoke all subagents on `haiku` by default. Custom agents in `.claude/agents/` are pinned via frontmatter; built-in agents (`Explore`, `Plan`, `general-purpose`, …) need `model: "haiku"` passed per `Agent` call. Escalate to `sonnet` only when Haiku is known to be insufficient for the specific task; never default a subagent to `opus`.
+
 When the user asks about "ultrareview" or how to run it, explain that `/ultrareview` launches a multi-agent cloud review. It is user-triggered and billed; don't attempt to launch it yourself.
 
 When the user asks for `/help` or wants to give feedback, point them at `/help` and `https://github.com/anthropics/claude-code/issues`.

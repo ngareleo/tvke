@@ -2,7 +2,7 @@
 name: browse
 description: Drives a real browser via Playwright MCP on behalf of the main agent and returns a focused report. Use to keep the main context clean when verifying UI, debugging playback, taking screenshots, or inspecting console / network. Hand over a concrete goal — "verify console is clean on /settings", "screenshot the library page after toggling flag X", "trace the WS upgrade on /player/Y" — and receive a synthesized summary plus paths to any artifacts.
 tools: mcp__playwright__browser_navigate, mcp__playwright__browser_snapshot, mcp__playwright__browser_click, mcp__playwright__browser_fill_form, mcp__playwright__browser_type, mcp__playwright__browser_press_key, mcp__playwright__browser_take_screenshot, mcp__playwright__browser_evaluate, mcp__playwright__browser_console_messages, mcp__playwright__browser_network_requests, mcp__playwright__browser_wait_for, mcp__playwright__browser_resize, mcp__playwright__browser_close, mcp__playwright__browser_hover, mcp__playwright__browser_tabs, mcp__playwright__browser_select_option, mcp__playwright__browser_handle_dialog, Bash, Read, Edit, Agent
-model: sonnet
+model: haiku
 color: green
 ---
 
