@@ -54,7 +54,7 @@ export const useAppHeaderStyles = makeStyles({
   },
   navLink: {
     fontFamily: tokens.fontNav,
-    fontSize: "14px",
+    fontSize: "12px",
     letterSpacing: "0.04em",
     textTransform: "lowercase",
     color: tokens.colorTextDim,
