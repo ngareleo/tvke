@@ -75,6 +75,12 @@ Subtitle line renders `{item.year} · {item.duration} · {item.resolution}` — 
 
 None promoted — the tile is an inline element within the page. Promote to a separate file (`WatchlistTile`) when porting to production if the tile logic grows.
 
+## Changes from Prerelease
+
+No Prerelease counterpart — the Watchlist page is new in the Release redesign. The Prerelease lab had no `/watchlist` route and no watchlist surface in `App.tsx`.
+
+Cross-reference: [`Changes.md`](../Changes.md) — "Watchlist" entry.
+
 ## TODO(redesign)
 
 - Production: decide whether `progress` on a watchlist item means the film is in both "Continue watching" (on Library) and the Watchlist simultaneously, or whether a film transitions out of the Watchlist once it has any progress.

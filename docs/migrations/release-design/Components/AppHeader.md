@@ -125,6 +125,18 @@ Top header strip — brand wordmark on the left, three centred navigation links,
 - [ ] Avatar: 34×34 button, `border-radius: 4px` all corners, `backgroundImage: linear-gradient(140deg, colorGreenDeep, colorGreen)`, `color: colorGreenInk`, fontMono 700 12px; hover: `translateY(-1px)` + `boxShadow: 0 4px 14px colorGreenSoft`
 - [ ] No search form in the header (search is inside the Library/home hero)
 
+## Changes from Prerelease
+
+- **Position model:** OLD — `gridArea: head`, `position: sticky`, `top: 0`, part of the AppShell grid. NEW — `position: absolute`, `top: 0`, `left: 0`, `right: 0`, `height: 52px`, `zIndex: 10`; floats over the page content.
+- **Layout:** OLD — brand cell (sidebar-width) + flex content slot (1fr) + actionsSlot (clip-path angled cutout). NEW — three-column grid `1fr auto 1fr` (brand left, nav centre, actions right). No clip-path cutout.
+- **Brand identity:** OLD — `<LogoShield>` SVG + `"MORAN"` in Bebas Neue 21px, `letterSpacing: 0.12em`. NEW — `"Xstream"` in Bytesized 34px, `letterSpacing: 0.04em`, two spans (`<brandX>X</brandX>` green with green-glow, `<brandWord>stream</brandWord>` in colorText). `aria-label="Xstream — home"` on the `<Link>`.
+- **Glass colour:** OLD — red glass: `linear-gradient(160deg, rgba(235,45,60,0.30) 0%, rgba(130,5,18,0.52) 100%)`, `backdropFilter: blur(28px) saturate(2.8) brightness(0.72)`, `borderBottom: 1px solid rgba(206,17,38,0.28)`. NEW — green glass: `linear-gradient(180deg, rgba(20,28,24,0.55) 0%, rgba(8,11,10,0.78) 100%)`, `backdropFilter: blur(20px) saturate(1.6)`, `borderBottom: 1px solid rgba(37,48,42,0.45)`.
+- **Navigation:** OLD — no nav links in the header; navigation lived in the Sidebar. NEW — three centred `<NavLink>` elements (Home `/`, Profiles `/profiles`, Watchlist `/watchlist`) in Science Gothic 12px, lowercase, with `::after` underline pseudo-element (`scaleX(0)` → `scaleX(1)` on active). The `fontNav` token is `'Science Gothic', system-ui, sans-serif`.
+- **Search form:** OLD — each page injected a search input into the header's `content` slot (Dashboard used `<LinkSearch>`, Library had its own search widget). NEW — no search form in the header at all. The Library/home page has its own ghost search bar inside the hero.
+- **Scan button:** OLD — full-text "Scan All" button with icon in the `actionsSlot`. NEW — icon-only 38×38 `<button>` containing `<IconRefresh 22×22>`. Dynamic `aria-label`: `"Scanning library"` while scanning, `"Scan library"` otherwise.
+- **Avatar:** OLD — user avatar lived in the Sidebar user-row (30×30). NEW — 34×34 gradient avatar button in the header right cluster. Same gradient (`linear-gradient(140deg, colorGreenDeep, colorGreen)`), same initials pattern.
+- **Font tokens:** OLD — `fontHead: 'Bebas Neue'` for the brand. NEW — `fontDisplay: 'Bytesized'` (brand), `fontNav: 'Science Gothic'` (nav links). Anton (`fontHead`) is used in page-level display text, not the header.
+
 ## What changed from the prior spec (773681e → 558da06)
 
 - **Nav font:** Bowlby One replaced by **Science Gothic** (commit `558da06`).

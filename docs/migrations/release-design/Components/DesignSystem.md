@@ -49,6 +49,12 @@ Live single-page showcase (`/design-system`) of the Xstream visual language: col
 ### `Section` helper (inline)
 - Renders the label badge + title + children block. (Source: lines after the `COLORS` array.)
 
+## Changes from Prerelease
+
+No Prerelease counterpart — the DesignSystem page is new in the Release redesign. Prerelease had no `/design-system` route and no equivalent design-token showcase tool.
+
+Cross-reference: [`Changes.md`](../Changes.md) — "DesignSystem — new in Release".
+
 ## TODO(redesign)
 
 - The "selection" workflow is informal — clicking a `LogoCard` doesn't change the highlighted entry. Could become an interactive picker that writes to a localStorage flag, with a "Promote to default" button that updates the export.

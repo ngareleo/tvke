@@ -52,6 +52,15 @@ Sign-out farewell, full-screen (`/goodbye`). **Bypasses [`AppShell`](AppShell.md
 
 None.
 
+## Changes from Prerelease
+
+- **Brand mark:** OLD — `<LogoShield>` SVG (shield mark, `width: 44, height: 52`, `opacity: 0.5`). NEW — `<Logo02 size={64} showWordmark={false} />` (stacked X monogram, `opacity: 0.6`).
+- **Primary CTA colour:** OLD — `btnRed` class — `background: var(--red)`, `color: var(--white)` (crimson). NEW — `background: var(--green)`, `color: var(--green-ink)` (dark green ink on green).
+- **Design language:** OLD — grain + radial gradient glow + ghost watermark "GOODBYE" (all present in Prerelease). NEW — identical atmospheric layers retained; only the colour token driving the glow and CTA changes.
+- **Timer logic:** Identical in both labs — `REDIRECT_DELAY = 4`, `countdown` state decrements 1/s, both manual and auto navigation use `replace: true`. StrictMode artefact is unchanged.
+- **Route and shell bypass:** Identical — `/goodbye`, bypasses AppShell in both labs.
+- **No structural change** beyond brand mark + colour identity.
+
 ## TODO(redesign)
 
 - The countdown StrictMode artefact could be cleaned up by keying the timer off `Date.now()` rather than incremental state. Confirm whether this matters in production (StrictMode may not be enabled).

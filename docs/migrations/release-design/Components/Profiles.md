@@ -83,6 +83,19 @@ Flex column, `overflow: hidden`, `position: relative`.
 - Play link: `<Link to="/player/:id">` styled as a small button. Selected variant gets green bg + green-ink text; unselected gets transparent + 1px border.
 - `e.stopPropagation()` on the play-link click so it doesn't toggle selection.
 
+## Changes from Prerelease
+
+- **Route:** OLD — primary home route `/` (was `<Dashboard>`). NEW — secondary route `/profiles`.
+- **Component name:** OLD — `<Dashboard>` at `pages/Dashboard/`. NEW — `<Profiles>` at `pages/Profiles/`.
+- **Hero:** OLD — a full-width slideshow hero existed above the profile directory in the Dashboard (Prerelease `<Slideshow>` component, cycling 4 images, greeting overlay). NEW — no hero. The page opens directly at the breadcrumb. (A hero slideshow with Ken Burns was added in commit e088fb5, then removed in commit 04ea22b — the final state is no hero.)
+- **URL pane state:** OLD — Dashboard used `?pane=film-detail&filmId=xxx` (two params: `pane` and `filmId`). NEW — Profiles uses `?film=<id>` (single param, matching the Library pattern).
+- **Pane width:** OLD — `useSplitResize(360)` — 360px default pane width. NEW — same hook, pane width unchanged at 360px (Release `useSplitResize` call still passes 360).
+- **Header clearance:** OLD — the AppShell grid reserved a 52px header row; Dashboard did not need to add any `paddingTop`. NEW — `splitBody` adds `paddingTop: tokens.headerHeight, boxSizing: border-box` because the shell no longer reserves a grid row.
+- **AppHeader rendering:** OLD — Dashboard rendered its own `<AppHeader>` as a direct child, placing it in the `gridArea: head` grid cell. NEW — AppHeader is rendered by `<AppShell>` (absolute layer); Profiles does not render its own header.
+- **NewProfilePane:** OLD — Dashboard had a `<NewProfilePane>` form rendered in the right rail when `?pane=new-profile` was set. NEW — no equivalent in Release Profiles (the `+ NEW PROFILE` footer button exists but has no handler — `TODO(redesign)`).
+- **Film detail surface:** OLD — `<FilmDetailPane>` inline component with gradient-placeholder 200px hero + re-link/linking toggle. NEW — Release `<Profiles>` uses the standalone `<DetailPane>` component (with real OMDb poster via `<Poster>`).
+- **Identity:** Active film row: OLD — `background: var(--red-dim)`, `borderLeft: 2px solid var(--red)`. NEW — `background: var(--green-soft)`, `borderLeft: 2px solid var(--green)`. Match bar: OLD — filled red when unmatched. NEW — filled yellow when unmatched.
+
 ## TODO(redesign)
 
 - `+ NEW PROFILE` footer button has no handler. Needs URL pane state (e.g. `?pane=new-profile`) + form pane.

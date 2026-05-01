@@ -87,6 +87,17 @@ The shared name makes the View Transitions API treat the two poster elements as 
   - First 3 entries from `watchlist`. Each `watchlistRow`: title + `"● ON DISK"` (green) / `"○ NOT ON DISK YET"` (muted) based on whether a matching film exists in `films`. A `<Link to="/player/{filmId}" replace>` play link shown only if on disk.
 - **Footer (`footerRow`)**: `"OPEN IN VLC"` button + `"← BACK"` button (calls `onBack` → `goBackWithTransition`).
 
+## Changes from Prerelease
+
+- **Shell grid expression:** OLD — `chromeHidden` toggled a dynamic inline `style={{ gridTemplateColumns: "1fr 290px" | "1fr 0px" }}`. NEW — two Griffel classes: `.shell` (`gridTemplateColumns: "1fr 290px"`) and `.shellChromeHidden` (`gridTemplateColumns: "1fr 0px"`), applied via `mergeClasses`. No visual difference; Griffel-idiomatic.
+- **Cursor when hidden:** OLD — `cursor: "none"` via inline style. NEW — `cursor: none` in the `.shellChromeHidden` Griffel class.
+- **Back navigation:** OLD — both VideoArea topbar Back button and SidePanel footer Back button used inline lambdas `() => navigate(-1)`. NEW — both callsites share `goBackWithTransition()` helper: `document.startViewTransition(() => navigate(-1))` when the API is available, else plain `navigate(-1)`.
+- **View transitions:** OLD — no view transitions. NEW — `.backdrop` (the `<Poster>` background in `VideoArea`) carries `viewTransitionName: "film-backdrop"`, which must stay in sync with `Library.overlayPoster`. The forward-entry path (Library → Player) uses `playWithTransition` in `Library`; no Player-side change required for the entry.
+- **SidePanel "UP NEXT" source:** OLD — (was ambiguous in prior spec). NEW — confirmed: up to 3 films from `films` where `film.profile === currentFilm.profile && film.id !== currentFilm.id`.
+- **SidePanel "FROM YOUR WATCHLIST":** OLD — the watchlist section in the SidePanel existed in Prerelease (first 3 watchlist entries shown). NEW — confirmed identical; spec section explicitly named "FROM YOUR WATCHLIST" with on-disk indicator dot.
+- **Footer:** OLD — VLC button + Back button in `footerRow`. NEW — identical; both buttons present. Back button calls `onBack` → `goBackWithTransition()`.
+- **Identity:** The Player page itself carries the Release visual identity (green progress bar fill, green-glow box-shadow on idle button) vs. Prerelease red. No structural difference — colour tokens changed.
+
 ## TODO(redesign)
 
 - All controls (−10s, +10s, volume, fullscreen) are decorative — no handlers wired.

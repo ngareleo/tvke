@@ -36,6 +36,12 @@ Image wrapper that renders an OMDb (or other CDN) poster URL with a graceful fal
 
 None.
 
+## Changes from Prerelease
+
+No Prerelease counterpart — `<Poster>` is a new component in the Release redesign. In Prerelease, poster images were simulated by CSS gradient strings in the `Film.gradient` field (e.g. `linear-gradient(160deg, #0d1b2a, #1b2838)`); no `<img>` element was rendered. Release replaces gradient placeholders with real OMDb-fetched JPGs served from `/posters/<id>.jpg`, requiring a proper image wrapper with an error-fallback path.
+
+Cross-reference: [`Changes.md`](../Changes.md) — "Poster" entry.
+
 ## TODO(redesign)
 
 - `errored` state should reset when `url` changes — currently stuck after a single failure (use `useEffect(() => setErrored(false), [url])` or key the component by url).

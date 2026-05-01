@@ -26,6 +26,7 @@ Implementation in production has not started.
 - [`design/Prerelease/`](../../../design/Prerelease/) — the frozen Moran prototype. Behavioural reference for any contract not re-stated in the Release spec (URL pane state, drag-resize, Player state machine, inactivity hide all port verbatim).
 - [`docs/design/UI-Design-Spec/01-Release-Tokens-And-Layout.md`](../../design/UI-Design-Spec/01-Release-Tokens-And-Layout.md) — token map + page-by-page status, lives outside this migration because tokens survive past the port.
 - [`client/src/`](../../../client/src/) — the port target.
+- [`Changes.md`](Changes.md) — cross-cutting diff of every meaningful design change between Prerelease and Release. Start here when you need a high-level orientation before reading individual component specs.
 
 ## Contract
 

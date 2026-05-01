@@ -255,6 +255,23 @@ The contract applies in both directions:
 
 Fallback on browsers without View Transitions support (e.g., Safari < 18): plain `navigate(...)` — no morph, no error.
 
+## Changes from Prerelease
+
+- **Route:** OLD — secondary route `/library`. NEW — primary home route `/`.
+- **Page purpose:** OLD — flat catalogue browser (grid or list view of all films). NEW — Netflix-style home page with hero + horizontal-scroll rows + full-bleed overlay.
+- **Layout model:** OLD — `split-body` grid (`1fr / 4px / 360px`), right-rail `DetailPane` at 360px via `?film=<id>`. NEW — flex column with 75vh inset hero + `rowsScroll` rows below; tile click opens full-bleed `FilmDetailsOverlay` (replaces entire page output). No split-body, no resize handle.
+- **Hero:** OLD — no hero on the Library page (hero existed on Dashboard/Profiles). NEW — `height: 75vh`, `borderRadius: 6px`, inset 40px from page edges. B&W cycling poster slideshow (four canonical posters, 7 000ms interval, 0.9s opacity crossfade) with Ken Burns pan. 3D-tilted greeting (Anton 64px, `±9°` mouse-tilt, `perspective(800px) rotateX/rotateY`). Floating ghost search bar top-right inside hero.
+- **Filter bar:** OLD — horizontal filter strip: search input, profile chip row, type select, grid/list toggle. NEW — no filter bar. Search is a ghost pill inside the hero, client-side only against `films` array.
+- **Search:** OLD — standard `<input>` in the filter bar, filters by title/genre/filename. NEW — ghost search bar inside hero (absolute positioned, `width: 320px`, horizontal gradient background, `caretColor: transparent`, custom pulsing green caret via mirror-span measurement). Same filter fields (title, filename, director, genre). Results render as a vertical CSS grid (`repeat(auto-fill, 200px)`, `justifyContent: start`) instead of a horizontal row.
+- **Rows:** OLD — no horizontal-scroll rows. NEW — three rows: "Continue watching" (watchlist items with `progress`), "New releases" (curated `newReleaseIds`), "Watchlist" (watchlist items without `progress`). Arrow-driven RAF-eased pagination (`easeInOutCubic` 720ms, page = `Math.floor(clientWidth/216)*216` px).
+- **Tile size:** OLD — `<PosterCard>` in Prerelease Library used a `posterImg` div sized by the grid (approx. 180px wide). NEW — `<FilmTile>` `width: 200px`, `aspectRatio: 2/3`, `scrollSnapAlign: start`.
+- **Tile hover:** OLD — gray `border-color` change + `box-shadow`. NEW — bottom-up green border wipe via `tileFrame::after` `clipPath: inset(100% 0 0 0)` → `inset(0 0 0 0)` + `translateY(-3px)` lift + `boxShadow: 0 8px 20px colorGreenGlow`.
+- **Click → detail:** OLD — tile click sets `?film=<id>`, slides in a 360px `DetailPane` on the right (the `<DetailPane>` component). NEW — tile click sets `?film=<id>`, renders full-bleed `FilmDetailsOverlay` (replaces the whole page). The overlay has a Back pill (top-left) and Close button (top-right), both calling `onClose`.
+- **Overlay content:** OLD — `DetailPane` had poster gradient hero (200px) + body with badges + rating + plot. NEW — `FilmDetailsOverlay` has full-bleed poster (Ken Burns 26s, full-colour), layered gradients, content stack at `bottom: 72px` with Anton 72px title, chips row, meta row, director line, plot (15px, 1.55 line-height), green Play CTA.
+- **View transitions:** OLD — no view transitions. NEW — `PlayCTA` calls `document.startViewTransition(() => navigate("/player/{id}"))`. `.overlayPoster` carries `viewTransitionName: "film-backdrop"` (must match Player `.backdrop`).
+- **Play CTA:** OLD — `<Link to="/player/:id">` (standard navigation). NEW — `<button onClick={playWithTransition}>` wrapping `startViewTransition` with plain-navigate fallback.
+- **Mock data:** OLD — 4 canonical films with `gradient` string fields. NEW — 13 films with `posterUrl: string | null` (real OMDb JPGs). `watchlist` grows to 13 entries (12 with `progress`). `newReleaseIds` curated array is new.
+
 ## TODO(redesign)
 
 - `?q=<query>` URL param is not yet wired in the lab — the search bar filters in local state only. Production should write `?q=` to the URL so the filtered view is shareable/bookmarkable. When wired, the Library page should also read an incoming `?q=` on mount and pre-populate the input.

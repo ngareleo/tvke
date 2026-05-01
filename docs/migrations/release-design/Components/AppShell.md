@@ -44,6 +44,15 @@ All of that is superseded. The shell is now a positioned-layer model: shell `pos
 
 The prior note about `TODO(redesign)` overlay-glass is now resolved — this commit is that iteration.
 
+## Changes from Prerelease
+
+- **Shell layout model:** Prerelease used a CSS grid (`gridTemplateRows: 52px 1fr`, `gridTemplateColumns: 220px 1fr`, `gridTemplateAreas: '"header header" "sidebar main"'`). Release uses a positioned-layer model — `.shell` is `position: relative`, `.main` is `position: absolute inset: 0`, `<AppHeader>` is `position: absolute top/left/right height: 52px zIndex: 10`. No grid anywhere.
+- **Sidebar removed:** Prerelease AppShell rendered `<Sidebar>` as a direct child and managed the `collapsed` state. Release AppShell renders only `<AppHeader>` (absolute) and `<main>` (absolute). Sidebar is deleted.
+- **Header clearance:** Prerelease reserved the first grid row for the header — pages got `gridArea: main` and started below the 52px strip automatically. Release shifts that responsibility to each page: every page must add `paddingTop: tokens.headerHeight` (or a `calc(...)` variant) to its outermost container.
+- **Header-blur target:** Because both header and main share `inset: 0`, the header's `backdropFilter: blur(20px) saturate(1.6)` now blurs actual page content (e.g. the Library hero poster) rather than the shell's background colour. This produces the "poster behind glass" effect on the Library page.
+- **LoadingBar / DevPanel removed:** Prerelease AppShell wrapped children in `<DevToolsProvider>` + `<LoadingBarProvider>`, rendered `<LoadingBar>` and `<DevPanel>`. These are absent from the Release shell.
+- **`collapsed` state removed:** The sidebar-collapse boolean and the `rootCollapsed` style class do not exist in Release.
+
 ## Porting checklist (`client/src/components/Layout/AppShell/`)
 
 - [ ] `.shell`: `position: relative`, full-viewport (100vw × 100vh), `overflow: hidden`, `colorBg0` bg, `colorText` color. No grid.

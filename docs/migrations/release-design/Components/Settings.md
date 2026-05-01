@@ -53,6 +53,13 @@ App settings (`/settings`). Two-pane layout: left nav (220px) + right content. S
 ### `Selector`
 - TODO(redesign): surface-2 button-style selector for enum values.
 
+## Changes from Prerelease
+
+- **Header clearance:** OLD — AppShell grid reserved a 52px header row; Settings did not need any `paddingTop`. NEW — `.shell` adds `paddingTop: tokens.headerHeight, boxSizing: border-box` because the shell no longer reserves a grid row.
+- **AppHeader rendering:** OLD — Settings rendered `<AppHeader collapsed={false}>` as its own child (required by the Prerelease grid model). NEW — AppHeader is provided by the Release `<AppShell>`; Settings does not render its own header.
+- **Identity:** Active nav button: OLD — `background: var(--red-dim)`, `border-left: 2px solid var(--red)`, `color: var(--white)`. NEW — `background: var(--green-soft)`, `border-left: 2px solid var(--green)`, `color: var(--green)`. Otherwise the left nav structure (220px, `bg-1`, eyebrow `SETTINGS`, gap 4px, 9px 12px buttons) is unchanged.
+- **No structural change** — 220px left nav + 1fr right content, six sections, `?section=<id>` URL state, `max-width: 640px` body — all unchanged from Prerelease.
+
 ## TODO(redesign)
 
 - All settings controls are decorative — no state wires through to backend.

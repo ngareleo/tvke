@@ -56,6 +56,20 @@ The sidebar spec recorded these values prior to deletion. They are not porting t
 - **userMeta:** 10px JetBrains Mono, `colorTextMuted` — shows `user.hostMode`.
 - Chevron: `colorTextMuted`, rotated `-90deg`.
 
+## Changes from Prerelease
+
+The Sidebar existed and was fully implemented in Prerelease. In Release it is deleted.
+
+Key surface that existed in Prerelease and has no Release equivalent:
+- `LIBRARIES` section: one row per profile with a live status dot (`libraryDotOk` green / `libraryDotWarn` yellow) and a film/episode count. This signal is absent from the Release shell entirely.
+- Collapse toggle: `<button>` in the sidebar animated the AppShell grid column from 220px to 52px. The Release shell has no collapsible navigation surface.
+- User-row chevron / account dropdown: in Prerelease, clicking the user-row opened a `<ProfileMenu>` (profile links + account settings + sign-out). In Release, the avatar button is in the AppHeader right cluster — a sign-out dropdown is not yet implemented (flagged as `TODO` in `AppHeader.md`).
+- Nav structure: in Prerelease the sidebar held 4 links — Profiles (`/`), Library (`/library`), Settings, Feedback. All moved to the header except Feedback, which is removed.
+
+For the full prior spec values (container dimensions, nav item styles, library-row anatomy, user-row avatar) see the "Prior spec (preserved for reference)" section above.
+
+Cross-reference: [`Changes.md`](../Changes.md) — "Sidebar — deleted".
+
 ## Status
 
 - [x] Designed in `design/Release` lab — **deleted** (2026-05-01, PR #46 commit 787f136, `feat/release-design-omdb-griffel`, not yet merged to main)

@@ -2,6 +2,8 @@
 
 One spec file per UI element of `design/Release/`. Each file follows the same skeleton (Files, Purpose, Visual, Behaviour, Subcomponents, Porting checklist, Status). When you edit a file in the lab, update the matching spec. When you port a component to `client/src/`, tick the checklist.
 
+For a high-level summary of every architectural and per-page change between the Prerelease (Moran) and Release (Xstream) labs, see [`../Changes.md`](../Changes.md).
+
 Inline subcomponents (ProfileRow, FilmRow, ProfileChip, PosterCard, ListRow, VideoArea, SidePanel, SettingsRow, Toggle) are documented as **sections within their parent file**, not separate files. Promote one to its own file when its `.tsx` is extracted.
 
 ## Catalog
