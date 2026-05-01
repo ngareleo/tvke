@@ -1,8 +1,10 @@
 /**
  * Mock data for the Xstream design lab.
  * Seeded from `/home/dag/Downloads/app-mockups.jsx` POSTERS (Oppenheimer,
- * Barbie, Nosferatu, Civil War — real OMDb poster URLs) and expanded to
- * populate the library grid + multiple profiles.
+ * Barbie, Nosferatu, Civil War) and expanded to populate the library grid +
+ * multiple profiles. Poster JPGs are pulled from OMDb via
+ * `scripts/fetch-posters.ts` and served from `/posters/<id>.jpg` so the lab
+ * stays offline-safe.
  *
  * Mirrors the Profile / Film / WatchlistItem shapes used by the Prerelease
  * lab so future refactors that share types stay trivial.
@@ -65,14 +67,10 @@ export interface WatchlistItem {
 /* ---------- The four canonical films from the Figma JSX ---------- */
 
 const POSTER_URLS = {
-  oppenheimer:
-    "https://m.media-amazon.com/images/M/MV5BN2JkMDc5MGQtZjg3YS00NmFiLWIyZmQtZTJmNTM5MjVmYTQ4XkEyXkFqcGdeQXVyNzAwMjU2MTY@._V1_SX600.jpg",
-  barbie:
-    "https://m.media-amazon.com/images/M/MV5BNjU3N2QxNzYtMjk1NC00MTc4LTk1NTQtMmUxNTljM2I0NDA5XkEyXkFqcGdeQXVyODE5NzE3OTE@._V1_SX600.jpg",
-  nosferatu:
-    "https://m.media-amazon.com/images/M/MV5BNzZjMjI3YTYtMTY0YS00ZTU2LWE5YjMtMmFhMjkyNzgyMmE2XkEyXkFqcGc@._V1_SX600.jpg",
-  civilwar:
-    "https://m.media-amazon.com/images/M/MV5BNzdmMjMxNGItM2YyOS00ODc3LTlmMmUtMmIxZDdhYWY3OWQ0XkEyXkFqcGdeQXVyMTA3MDk2NDg2._V1_SX600.jpg",
+  oppenheimer: "/posters/oppenheimer.jpg",
+  barbie: "/posters/barbie.jpg",
+  nosferatu: "/posters/nosferatu.jpg",
+  civilwar: "/posters/civilwar.jpg",
 } as const;
 
 export type PosterId = keyof typeof POSTER_URLS;
