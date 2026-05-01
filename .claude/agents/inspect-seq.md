@@ -2,7 +2,7 @@
 name: inspect-seq
 description: Queries the local Seq instance (http://localhost:5341) over its HTTP API on behalf of the main agent and returns a focused report. Use to keep the main context clean when reading OTel logs and traces — "fetch all playback.stalled spans in the last hour", "get every event for trace XYZ", "list transcode.job spans for job ABC". Returns synthesized findings, not the raw event JSON.
 tools: Bash, Read, Edit, Agent
-model: sonnet
+model: haiku
 color: purple
 ---
 

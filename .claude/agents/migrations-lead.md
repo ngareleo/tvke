@@ -2,7 +2,7 @@
 name: migrations-lead
 description: xstream migrations expert + execution-playbook curator. Owns `docs/migrations/`. Use for "what's the order of work for the Rust port?", "what does the chunker need to become in Rust?", "what flag controls Step N?", and any question about the layer references or release-journey playbook. Defers to `architect` on new tech-choice evaluations and to `devops` on release-plumbing operational details.
 tools: Read, Grep, Glob, Write, Edit, WebFetch
-model: sonnet
+model: haiku
 color: green
 ---
 

@@ -2,7 +2,7 @@
 name: architect
 description: xstream architecture expert + knowledge-base curator. Retrieves scoped information from `docs/` and curates updates from other agents into the right place. Use for "how does X work", "why did we pick Y", architectural proposals, and when other agents report a finding that should persist.
 tools: Read, Grep, Glob, Write, Edit, WebFetch
-model: sonnet
+model: haiku
 color: blue
 ---
 
