@@ -1,7 +1,7 @@
 # Library (page)
 
 > Status: **baseline** (Spec) · **not started** (Production)
-> Spec updated: 2026-05-01 (PR #46, commit 787f136) — search bar added between hero and rows; search-driven view swap documented. Prior update (04ea22b) replaced grid/filter/DetailPane with hero+rows+overlay.
+> Spec updated: 2026-05-01 (PR #46, commit 9cc6d48) — page-level padding added, hero downsized to 340px, hero reads as a bordered card, body/greeting/search/row spacing tightened. Prior update (787f136) added search bar. Prior update (04ea22b) replaced grid/filter/DetailPane with hero+rows+overlay.
 
 ## Files
 
@@ -23,27 +23,27 @@ The search bar (see below) filters in-page via local state only — it does not 
 
 ## Visual — dash view
 
-### Hero (420px tall)
+### Hero (340px tall)
 
-Same pattern as the Profiles hero, tuned larger:
+Same pattern as the Profiles hero, tuned larger. The hero now reads as a **card** (rounded corners + 1px border on all four sides) rather than a full-bleed banner. The `.page` rule adds `paddingTop: 24px`, `paddingLeft: 32px`, `paddingRight: 32px` so the hero (and all content below it) sits inset from the viewport edges.
 
-- **Slide deck.** Four canonical poster images rendered simultaneously (`position: absolute, inset: 0`) inside `heroSlides`. Each carries `heroImg` (`opacity: 0`, `filter: grayscale(1) brightness(0.55)`, `transition: opacity 0.7s ease`). Active slide gets `heroImgActive` (`opacity: 1`); outgoing slide gets `heroImgFading` (`opacity: 0`) during the crossfade so both transitions overlap.
-- **Ken Burns.** Every `heroImg` has a looping animation: `scale(1.08) translate(-1%, -0.8%)` → `scale(1.08) translate(1%, 0.8%)` over 20s, ease-in-out, alternate, infinite.
+- **Slide deck.** Four canonical poster images rendered simultaneously (`position: absolute, inset: 0`) inside `heroSlides`. Each carries `heroImg` (`opacity: 0`, `filter: grayscale(1) brightness(0.55)`, `transition: opacity 0.9s ease`). Active slide gets `heroImgActive` (`opacity: 1`); outgoing slide gets `heroImgFading` (`opacity: 0`) during the crossfade so both transitions overlap.
+- **Ken Burns.** Every `heroImg` has a looping animation: `scale(1.06) translate(-0.8%, -0.6%)` → `scale(1.06) translate(0.8%, 0.6%)` over 20s, ease-in-out, alternate, infinite.
+- **Hero border + radius.** `borderRadius: 6px`; 1px `solid colorBorder` on all four sides. No `overflow: visible` — `overflow: hidden` clips the poster to the rounded card.
 - **Edge-fade overlay (`heroEdgeFade`).** Same two-gradient pattern as Profiles (top+bottom + right dark edges), with `backgroundSize: 100% 115%, 115% 100%`. Drift animation cycles `backgroundPosition` over 22s (ease-in-out, infinite): `0% 0%, 0% 0%` → `0% 100%, 100% 0%` → back.
-- **Bottom-fade overlay (`heroBottomFade`).** Additional `position: absolute` overlay at the bottom edge, `background: linear-gradient(to top, <page-bg-color>, transparent)`. Bleeds the hero seamlessly into the rows section below — the hero has no visible hard bottom edge.
-- **Left-side gradient (`heroGradient`).** Same as Profiles: `linear-gradient(90deg, colorBg0 0%, rgba(5,7,6,0.85) 30%, transparent 65%)`.
+- **Bottom-fade overlay (`heroBottomFade`).** `position: absolute` overlay that blends the hero into the rows section below. Two-gradient: bottom dark fade + left dark fade (`colorBg0` at 0%, `rgba(5,7,6,0.85)` at 22%, transparent at 55%). Hero has no visible hard bottom edge.
 - **Grain layer.** Shared `.grain-layer` utility class.
-- **Hero body (`heroBody`).** Absolute, inset 0, `padding: 36px 44px`, flex column `justify-content: space-between`, `z-index: 2`:
-  - **Greeting text:** `"Tonight's library."` Anton 84px / `colorText` / `lineHeight: 0.9`.
-  - **Slide dots:** 4 `<button type="button">` in the bottom-left of the hero body. Active: 22×3px, `colorGreen`. Inactive: 6×3px, `colorTextFaint`. `width` + `background-color` transition at `transitionSlow`. Each button: `aria-label="Show <film.title>"`.
+- **Hero body (`heroBody`).** Absolute, inset 0, `paddingTop: 36px`, `paddingBottom: 40px`, `paddingLeft: 44px`, `paddingRight: 44px`, flex column `justify-content: space-between`, `z-index: 2`:
+  - **Greeting text:** `"Tonight's library."` Anton 64px / `colorText` / `lineHeight: 0.92` / `marginTop: 12px`.
+  - **Slide dots:** 4 `<button type="button">` in the bottom-left of the hero body. Active: 26×3px, `colorGreen`. Inactive: 8×3px, `colorTextFaint`. `width` + `background-color` transition at `transitionSlow`. Each button: `aria-label="Show <film.title>"`.
 - **Cycle timing:** `HERO_INTERVAL_MS` = 7 000ms, `HERO_FADE_MS` = 700ms (vs. Profiles' 6 000ms / 600ms).
 - **Canonical poster order:** `["oppenheimer", "barbie", "nosferatu", "civilwar"]`. Falls back to `films.slice(0, 4)` if any id is absent.
 
 ### Search bar (between hero and rows)
 
-Rendered between the hero and the row section. Present in the dash view only (hidden when the overlay is open).
+Rendered between the hero and the row section. Present in the dash view only (hidden when the overlay is open). `marginTop: 20px`; `marginLeft/Right: 0` (page padding provides the horizontal inset).
 
-- **Input container:** mono input, full width (or constrained width — `TODO(redesign): confirm exact width`), `padding: 0 28px` to align with the row tracks.
+- **Input container (`searchBar`):** bordered card (`1px solid colorBorder`, `borderRadius: 4px`, `backgroundColor: colorSurface`, `padding: 10px 16px`). On `:focus-within`: all four border sides switch to `colorGreen` and a `0 0 0 3px colorGreenSoft` box-shadow ring appears.
 - **Input:** JetBrains Mono, `color: var(--text)`, `backgroundColor: transparent` (or a subtle dark fill — see lab source).
 - **Focus ring:** green ring on focus — `outline: 2px solid var(--green)` or equivalent `box-shadow` ring.
 - **Clear button:** `✕` icon button, shown when query is non-empty. Clicking clears the query and resets to the two-row view.
@@ -54,10 +54,11 @@ Rendered between the hero and the row section. Present in the dash view only (hi
 
 ### Row section (below search bar)
 
-Two horizontal-scroll rows (shown when search query is empty). Shared row anatomy:
+Two horizontal-scroll rows (shown when search query is empty). `rowsScroll`: `paddingTop: 16px`, `rowGap: 28px` (between the two rows). Shared row anatomy:
 
-- Track: `display: flex`, `gap: 12px`, `overflow-x: auto`, `padding: 0 28px`. Scrollbar hidden.
-- Section label above each row: JetBrains Mono 9px / 0.28em / `colorTextFaint`, `padding: 0 28px`.
+- **`row`:** flex column, `rowGap: 12px` (between label and track).
+- **`rowHeader`:** JetBrains Mono 11px / 0.22em / uppercase / `colorTextDim`. No horizontal padding — the `.page` padding provides the inset.
+- **`rowTrack`:** `display: flex`, `columnGap: 16px`, `overflow-x: auto`, scrollbar hidden. No horizontal padding — page padding handles the inset.
 
 #### "Continue watching" row
 
@@ -144,8 +145,9 @@ Same state machine as Profiles:
 
 ### Search bar
 
-- [ ] Mono input rendered between hero and rows, aligned with `padding: 0 28px`
-- [ ] Green focus ring on focus
+- [ ] Mono input rendered between hero and rows; `marginTop: 20px`, `marginLeft/Right: 0` (page padding handles inset)
+- [ ] Bordered card container: 1px `solid colorBorder`, `borderRadius: 4px`, `backgroundColor: colorSurface`, `padding: 10px 16px`
+- [ ] `:focus-within` — all four border sides → `colorGreen`, `box-shadow: 0 0 0 3px colorGreenSoft`
 - [ ] Clear (✕) button appears when query is non-empty; click resets to two-row view
 - [ ] Empty query → two default rows (Continue Watching + Watchlist)
 - [ ] Non-empty query → single `"Results · {N}"` row filtered by title / filename / director / genre
@@ -154,23 +156,26 @@ Same state machine as Profiles:
 
 ### Dash view — hero
 
-- [ ] Hero 420px tall, `overflow: hidden`
+- [ ] `.page`: `paddingTop: 24px`, `paddingLeft: 32px`, `paddingRight: 32px`
+- [ ] Hero 340px tall, `overflow: hidden`, `borderRadius: 6px`, 1px `solid colorBorder` on all four sides
 - [ ] `heroSlides` absolute container; all four canonical posters rendered simultaneously
-- [ ] Active slide `opacity: 1`; fading slide `heroImgFading` brings to `opacity: 0`; `transition: opacity 0.7s ease`
-- [ ] Ken Burns: `scale(1.08) translate(-1%, -0.8%)` → `scale(1.08) translate(1%, 0.8%)` over 20s, ease-in-out, alternate, infinite
+- [ ] Active slide `opacity: 1`; fading slide `heroImgFading` brings to `opacity: 0`; `transition: opacity 0.9s ease`
+- [ ] Ken Burns: `scale(1.06) translate(-0.8%, -0.6%)` → `scale(1.06) translate(0.8%, 0.6%)` over 20s, ease-in-out, alternate, infinite
 - [ ] `heroEdgeFade` two-gradient overlay with 22s drift cycle on `backgroundPosition`
 - [ ] `heroBottomFade` overlay — gradient to page bg at bottom edge, no hard seam into rows
-- [ ] `heroGradient` left-side linear-gradient for text legibility
+- [ ] `heroBody`: `paddingTop: 36px`, `paddingBottom: 40px`, `paddingLeft: 44px`, `paddingRight: 44px`
 - [ ] Grain layer
-- [ ] Greeting text `"Tonight's library."` in Anton 84px
-- [ ] 4 slide dots bottom-left: active 22×3px green / inactive 6×3px faint, `width`+`color` transitioning
+- [ ] Greeting text `"Tonight's library."` in Anton 64px, `lineHeight: 0.92`, `marginTop: 12px`
+- [ ] 4 slide dots bottom-left: active 26×3px green / inactive 8×3px faint, `width`+`color` transitioning
 - [ ] `useEffect` interval (7 000ms) + inner timeout (700ms); both refs cleaned up on unmount
 - [ ] `goToHero(idx)` — half-duration (350ms) manual crossfade; no-op if already active
 
 ### Dash view — rows
 
-- [ ] "Continue watching" section label in Mono 9px / 0.28em / faint
-- [ ] Horizontal scroll track: `display: flex`, gap 12, scrollbar hidden, `padding: 0 28px`
+- [ ] `rowsScroll`: `paddingTop: 16px`, `rowGap: 28px` (between the two rows)
+- [ ] `row`: flex column, `rowGap: 12px` (between header label and track)
+- [ ] `rowHeader`: Mono 11px / 0.22em / uppercase / `colorTextDim`; no horizontal padding (page padding handles inset)
+- [ ] `rowTrack`: `display: flex`, `columnGap: 16px`, scrollbar hidden; no horizontal padding (page padding handles inset)
 - [ ] Scroll teaser on mount: 700ms delay → scroll right 240px (smooth), 2 200ms delay → scroll back to 0 (smooth); timers cleaned up on unmount
 - [ ] Tile: 180px wide, 2:3 aspect, poster fill, `border-radius: 2px`
 - [ ] Progress bar: 3px green bar at poster bottom, `width = progress%`
@@ -202,5 +207,5 @@ Same state machine as Profiles:
 
 ## Status
 
-- [x] Designed in `design/Release` lab — hero+rows+overlay layout (2026-05-01, PR #46 commit 04ea22b). Search bar between hero and rows added (2026-05-01, PR #46 commit 787f136). Grid/filter/DetailPane layout superseded. PR #46 on `feat/release-design-omdb-griffel`, not yet merged to main.
+- [x] Designed in `design/Release` lab — hero+rows+overlay layout (2026-05-01, PR #46 commit 04ea22b). Search bar between hero and rows added (2026-05-01, PR #46 commit 787f136). Page-level padding + hero downsized to 340px card + body/greeting/search/row spacing tightened (2026-05-01, PR #46 commit 9cc6d48). Grid/filter/DetailPane layout superseded. PR #46 on `feat/release-design-omdb-griffel`, not yet merged to main.
 - [ ] Production implementation
