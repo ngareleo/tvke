@@ -39,3 +39,9 @@ These items require the OTel metrics SDK (`MeterProvider`) which is not yet wire
 - [ ] **PLAYBACK-001** Concurrent stream limit UI: currently throws `"Too many concurrent streams"` as an error overlay. Consider a friendlier modal that explains the limit (3 tabs) and links to the Settings page.
 
 - [ ] **FLAGS-001** Centralised release-time feature-flag controls: today flags persist per-user in `user_settings` only, so an operator cannot soft-launch a flag to everyone with a single toggle. Add a server-side `feature_flags` table with a precedence model (global override > user setting > `FLAG_REGISTRY.defaultValue`) and an admin UI to flip the global override. `getFlag` / `getEffectiveBufferConfig` should read the resolved value without caller changes. See `docs/client/Feature-Flags/README.md` for the current architecture.
+
+## Migrations / Rust Port
+
+- [x] **OMDB-001** Port `autoMatchLibrary` from `server/src/services/libraryScanner.ts:240-288` to `server-rust/src/services/library_scanner.rs`. Landed in PR #44.
+
+- [ ] **OMDB-002** Port the remaining OMDb surface area: the `match_video` mutation (currently a stub in `server-rust/src/graphql/mutation.rs`) and the `searchOmdb` query (Bun: `server/src/graphql/resolvers/query.ts:95-107`). Both should reuse `services/omdb::OmdbClient` from PR #44 — add `fetch_by_id(imdb_id)` and `search_list(query, year)` methods that mirror `omdbService.ts:fetchOmdbById` and `searchOmdbList`. Tracking pointer: `docs/migrations/rust-rewrite/06-File-Handling-Layer.md` §6.

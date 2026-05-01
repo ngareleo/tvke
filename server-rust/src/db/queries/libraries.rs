@@ -59,6 +59,36 @@ pub fn get_library_by_id(db: &Db, id: &str) -> DbResult<Option<LibraryRow>> {
     })
 }
 
+/// Insert-or-update a library row keyed by `path`. The scanner calls
+/// this from inside `scan_libraries` for every library before walking
+/// it, so a row already created via `create_library` survives unchanged
+/// while still letting the scanner refresh `name`/`media_type`/`env`/
+/// `video_extensions` if a config update happened. Mirrors
+/// `server/src/db/queries/libraries.ts:upsertLibrary`.
+pub fn upsert_library(db: &Db, row: &LibraryRow) -> DbResult<()> {
+    db.with(|c| {
+        c.execute(
+            r#"INSERT INTO libraries
+                 (id, name, path, media_type, env, video_extensions)
+               VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+               ON CONFLICT(path) DO UPDATE SET
+                 name             = excluded.name,
+                 media_type       = excluded.media_type,
+                 env              = excluded.env,
+                 video_extensions = excluded.video_extensions"#,
+            params![
+                row.id,
+                row.name,
+                row.path,
+                row.media_type,
+                row.env,
+                row.video_extensions,
+            ],
+        )?;
+        Ok(())
+    })
+}
+
 pub fn create_library(
     db: &Db,
     name: &str,
@@ -172,6 +202,59 @@ mod tests {
         assert_eq!(row.path, "/home/user/Videos");
         assert_eq!(row.media_type, "movies");
         assert_eq!(row.env, "user");
+    }
+
+    #[test]
+    fn upsert_library_inserts_a_new_row() {
+        let db = fresh_db();
+        let row = LibraryRow {
+            id: "lib-up".to_string(),
+            name: "Upserted".to_string(),
+            path: "/lib/upserted".to_string(),
+            media_type: "movies".to_string(),
+            env: "user".to_string(),
+            video_extensions: r#"[".mkv"]"#.to_string(),
+        };
+        upsert_library(&db, &row).expect("upsert");
+        let fetched = get_library_by_id(&db, "lib-up")
+            .expect("query")
+            .expect("row exists");
+        assert_eq!(fetched.name, "Upserted");
+        assert_eq!(fetched.path, "/lib/upserted");
+    }
+
+    #[test]
+    fn upsert_library_on_path_conflict_replaces_mutable_fields() {
+        let db = fresh_db();
+        let first = LibraryRow {
+            id: "id-original".to_string(),
+            name: "Before".to_string(),
+            path: "/lib/same".to_string(),
+            media_type: "movies".to_string(),
+            env: "dev".to_string(),
+            video_extensions: r#"[".mkv"]"#.to_string(),
+        };
+        upsert_library(&db, &first).expect("first");
+
+        // Same path but every other field changed — name, media_type,
+        // env, extensions all should be overwritten by the conflict.
+        let second = LibraryRow {
+            id: "id-new-but-ignored".to_string(),
+            name: "After".to_string(),
+            path: "/lib/same".to_string(),
+            media_type: "tvShows".to_string(),
+            env: "user".to_string(),
+            video_extensions: r#"[".mp4"]"#.to_string(),
+        };
+        upsert_library(&db, &second).expect("conflict update");
+
+        let fetched = get_library_by_id(&db, "id-original")
+            .expect("query")
+            .expect("original id still wins");
+        assert_eq!(fetched.name, "After");
+        assert_eq!(fetched.media_type, "tvShows");
+        assert_eq!(fetched.env, "user");
+        assert_eq!(fetched.video_extensions, r#"[".mp4"]"#);
     }
 
     #[test]

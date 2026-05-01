@@ -112,20 +112,20 @@ pub fn sha1_hex(input: &str) -> String {
 pub use queries::jobs::{get_job_by_id, TranscodeJobRow};
 pub use queries::libraries::{
     create_library, delete_library, get_all_libraries, get_library_by_id, update_library,
-    LibraryRow, LibraryUpdate,
+    upsert_library, LibraryRow, LibraryUpdate,
 };
 pub use queries::playback_history::{
     get_playback_history, insert_playback_session, PlaybackHistoryRow,
 };
 pub use queries::user_settings::{get_setting, set_setting};
 pub use queries::video_metadata::{
-    count_matched_by_library, delete_video_metadata, get_metadata_by_video_id, has_video_metadata,
-    upsert_video_metadata, VideoMetadataRow,
+    count_matched_by_library, delete_video_metadata, get_metadata_by_video_id,
+    get_unmatched_video_ids, has_video_metadata, upsert_video_metadata, VideoMetadataRow,
 };
 pub use queries::videos::{
     count_videos_by_library, get_streams_by_video_id, get_video_by_id, get_videos,
-    get_videos_by_library, sum_file_size_by_library, VideoFilter, VideoRow, VideoStreamRow,
-    VideosFilter,
+    get_videos_by_library, replace_video_streams, sum_file_size_by_library, upsert_video,
+    NewVideoStream, VideoFilter, VideoRow, VideoStreamRow, VideosFilter,
 };
 pub use queries::watchlist::{
     add_watchlist_item, get_watchlist, get_watchlist_item_by_id, get_watchlist_item_by_video_id,
