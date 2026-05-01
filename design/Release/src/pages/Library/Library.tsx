@@ -4,12 +4,13 @@ import { mergeClasses } from "@griffel/react";
 import {
   type Film,
   type WatchlistItem,
+  films,
   getFilmById,
   user,
   watchlist,
 } from "../../data/mock.js";
 import { Poster } from "../../components/Poster/Poster.js";
-import { ImdbBadge, IconClose, IconPlay } from "../../lib/icons.js";
+import { ImdbBadge, IconClose, IconPlay, IconSearch } from "../../lib/icons.js";
 import { useLibraryStyles } from "./Library.styles.js";
 
 const HERO_FILM_IDS = ["oppenheimer", "barbie", "nosferatu", "civilwar"] as const;
@@ -89,6 +90,26 @@ export const Library: FC = () => {
     () => rowEntries(watchlist.filter((w) => w.progress === undefined)),
     [],
   );
+
+  const [search, setSearch] = useState("");
+  const trimmedQuery = search.trim().toLowerCase();
+  const searching = trimmedQuery.length > 0;
+
+  const searchResults = useMemo<Film[]>(() => {
+    if (!trimmedQuery) return [];
+    return films.filter((f) => {
+      const title = (f.title ?? "").toLowerCase();
+      const filename = f.filename.toLowerCase();
+      const director = (f.director ?? "").toLowerCase();
+      const genre = (f.genre ?? "").toLowerCase();
+      return (
+        title.includes(trimmedQuery) ||
+        filename.includes(trimmedQuery) ||
+        director.includes(trimmedQuery) ||
+        genre.includes(trimmedQuery)
+      );
+    });
+  }, [trimmedQuery]);
 
   const continueRowRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -171,30 +192,75 @@ export const Library: FC = () => {
         </div>
       </div>
 
-      <div className={styles.rowsScroll}>
-        {continueWatching.length > 0 && (
-          <Row title="Continue watching" rowRef={continueRowRef}>
-            {continueWatching.map(({ item, film }) => (
-              <FilmTile
-                key={item.id}
-                film={film}
-                progress={item.progress}
-                onClick={() => openFilm(film.id)}
-              />
-            ))}
-          </Row>
+      <div className={styles.searchBar}>
+        <span className={styles.searchIcon} aria-hidden="true">
+          <IconSearch />
+        </span>
+        <input
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Search films, directors, genres…"
+          className={styles.searchInput}
+          aria-label="Search the library"
+          spellCheck={false}
+          autoComplete="off"
+        />
+        {searching && (
+          <button
+            type="button"
+            onClick={() => setSearch("")}
+            aria-label="Clear search"
+            className={styles.searchClear}
+          >
+            <IconClose width={12} height={12} />
+          </button>
         )}
+      </div>
 
-        {watchlistRest.length > 0 && (
-          <Row title="Watchlist">
-            {watchlistRest.map(({ item, film }) => (
-              <FilmTile
-                key={item.id}
-                film={film}
-                onClick={() => openFilm(film.id)}
-              />
-            ))}
-          </Row>
+      <div className={styles.rowsScroll}>
+        {searching ? (
+          searchResults.length > 0 ? (
+            <Row title={`Results · ${searchResults.length}`}>
+              {searchResults.map((film) => (
+                <FilmTile
+                  key={film.id}
+                  film={film}
+                  onClick={() => openFilm(film.id)}
+                />
+              ))}
+            </Row>
+          ) : (
+            <div className={styles.noResults}>
+              No films match &ldquo;{search.trim()}&rdquo;
+            </div>
+          )
+        ) : (
+          <>
+            {continueWatching.length > 0 && (
+              <Row title="Continue watching" rowRef={continueRowRef}>
+                {continueWatching.map(({ item, film }) => (
+                  <FilmTile
+                    key={item.id}
+                    film={film}
+                    progress={item.progress}
+                    onClick={() => openFilm(film.id)}
+                  />
+                ))}
+              </Row>
+            )}
+
+            {watchlistRest.length > 0 && (
+              <Row title="Watchlist">
+                {watchlistRest.map(({ item, film }) => (
+                  <FilmTile
+                    key={item.id}
+                    film={film}
+                    onClick={() => openFilm(film.id)}
+                  />
+                ))}
+              </Row>
+            )}
+          </>
         )}
       </div>
     </div>
