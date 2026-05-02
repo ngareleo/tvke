@@ -5,17 +5,17 @@ import { fetchQuery, graphql, useMutation, useRelayEnvironment } from "react-rel
 import { Poster } from "~/components/poster/Poster.js";
 import { IconSearch } from "~/lib/icons.js";
 import type {
-  DetailPaneMatchMutation,
-  DetailPaneMatchMutation$data,
-} from "~/relay/__generated__/DetailPaneMatchMutation.graphql.js";
-import type { DetailPaneSearchQuery } from "~/relay/__generated__/DetailPaneSearchQuery.graphql.js";
+  DetailPaneEditMatchMutation,
+  DetailPaneEditMatchMutation$data,
+} from "~/relay/__generated__/DetailPaneEditMatchMutation.graphql.js";
+import type { DetailPaneEditSearchQuery } from "~/relay/__generated__/DetailPaneEditSearchQuery.graphql.js";
 
 import { strings } from "./DetailPane.strings.js";
 import { useDetailPaneStyles } from "./DetailPane.styles.js";
 import { SEARCH_DEBOUNCE_MS, type SearchResult } from "./DetailPaneEdit.utils.js";
 
 const MATCH_MUTATION = graphql`
-  mutation DetailPaneMatchMutation($videoId: ID!, $imdbId: String!) {
+  mutation DetailPaneEditMatchMutation($videoId: ID!, $imdbId: String!) {
     matchVideo(videoId: $videoId, imdbId: $imdbId) {
       id
       title
@@ -25,7 +25,7 @@ const MATCH_MUTATION = graphql`
 `;
 
 const SEARCH_QUERY = graphql`
-  query DetailPaneSearchQuery($query: String!) {
+  query DetailPaneEditSearchQuery($query: String!) {
     searchOmdb(query: $query) {
       imdbId
       title
@@ -50,7 +50,7 @@ export const DetailPaneEdit: FC<DetailPaneEditProps> = ({
 }) => {
   const styles = useDetailPaneStyles();
   const environment = useRelayEnvironment();
-  const [commit, isInFlight] = useMutation<DetailPaneMatchMutation>(MATCH_MUTATION);
+  const [commit, isInFlight] = useMutation<DetailPaneEditMatchMutation>(MATCH_MUTATION);
 
   const [query, setQuery] = useState(initialQuery);
   const [selected, setSelected] = useState<string | null>(null);
@@ -71,7 +71,7 @@ export const DetailPaneEdit: FC<DetailPaneEditProps> = ({
     }
     let cancelled = false;
     const timer = setTimeout(() => {
-      const sub = fetchQuery<DetailPaneSearchQuery>(environment, SEARCH_QUERY, {
+      const sub = fetchQuery<DetailPaneEditSearchQuery>(environment, SEARCH_QUERY, {
         query: trimmed,
       }).subscribe({
         next: (data) => {
@@ -102,7 +102,7 @@ export const DetailPaneEdit: FC<DetailPaneEditProps> = ({
     setError(null);
     commit({
       variables: { videoId, imdbId: selected },
-      onCompleted: (_data: DetailPaneMatchMutation$data, errors) => {
+      onCompleted: (_data: DetailPaneEditMatchMutation$data, errors) => {
         if (errors && errors.length > 0) {
           setError(strings.saveError);
           return;

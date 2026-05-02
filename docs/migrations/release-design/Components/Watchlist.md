@@ -1,6 +1,6 @@
 # Watchlist (page)
 
-> Status: **done** (Spec) · **not started** (Production) · last design change **2026-05-01** (PR #46 commit 5301df6, audited 2026-05-01)
+> Status: **done** (Spec) · **done** (Production, 2026-05-03 — PR M6) · last design change **2026-05-01** (PR #46 commit 5301df6, audited 2026-05-01)
 
 ## Files
 
@@ -89,40 +89,40 @@ Cross-reference: [`Changes.md`](../Changes.md) — "Watchlist" entry.
 
 ### Outer container
 
-- [ ] `paddingTop: calc(${tokens.headerHeight} + 60px)`, `paddingBottom: 80px`, `paddingLeft/Right: 60px`, `boxSizing: border-box` (page owns header clearance)
+- [x] `paddingTop: calc(${tokens.headerHeight} + 60px)`, `paddingBottom: 80px`, `paddingLeft/Right: 60px`, `boxSizing: border-box` (page owns header clearance)
 
 ### Page header
 
-- [ ] Eyebrow `"YOUR WATCHLIST"` in JetBrains Mono 12px / 0.22em / uppercase / `colorGreen`
-- [ ] Title `"{N} films queued."` in Anton 64px, `lineHeight: 0.95`, `letterSpacing: -0.02em`
-- [ ] Count `{N}` is derived from the number of watchlist items (backend query)
-- [ ] Subtitle in JetBrains Mono 12px / `colorTextMuted` below title
-- [ ] Header `display: flex; flex-direction: column; rowGap: 10px; marginBottom: 44px`
+- [x] Eyebrow `"YOUR WATCHLIST"` in JetBrains Mono 12px / 0.22em / uppercase / `colorGreen`
+- [x] Title `"{N} films queued."` in Anton 64px, `lineHeight: 0.95`, `letterSpacing: -0.02em`
+- [x] Count `{N}` is derived from the number of watchlist items (backend query)
+- [x] Subtitle in JetBrains Mono 12px / `colorTextMuted` below title
+- [x] Header `display: flex; flex-direction: column; rowGap: 10px; marginBottom: 44px`
 
 ### Tile grid
 
-- [ ] `repeat(auto-fill, minmax(200px, 1fr))` grid, `gap: 24px`
+- [x] `repeat(auto-fill, minmax(200px, 1fr))` grid, `gap: 24px`
 
 ### Tile
 
-- [ ] Each tile is a `<Link to="/?film={id}">` — navigates to Library overlay for that film
-- [ ] Tile frame: 2:3 aspect ratio, 1px `solid colorBorder` all sides, `overflow: hidden`; `:hover` → green border + `boxShadow`
-- [ ] Tile `translateY(-3px)` on hover
-- [ ] Poster image fills frame, `object-fit: cover`
-- [ ] Optional 3px progress bar: absolute bottom, track `rgba(0,0,0,0.55)`, fill `colorGreen` (only if `progress` defined)
-- [ ] IMDb rating badge: absolute `top: 8px, right: 8px`, black-70 bg, `colorYellow` Mono 10px, `padding: 3px 6px`, `borderRadius: 2px`
-- [ ] Below-poster: title 13px / `colorText` + subtitle Mono 10px / `colorTextMuted` + `tileAdded` Mono 10px / `colorTextFaint`
-- [ ] `addedAt` formatted as a human-readable date/relative string
+- [x] Each tile is a `<Link to="/?film={id}">` — navigates to Library overlay for that film
+- [x] Tile frame: 2:3 aspect ratio, 1px `solid colorBorder` all sides, `overflow: hidden`; `:hover` → green border + `boxShadow`
+- [x] Tile `translateY(-3px)` on hover
+- [x] Poster image fills frame, `object-fit: cover`
+- [x] Optional 3px progress bar: absolute bottom, track `rgba(0,0,0,0.55)`, fill `colorGreen` (only if `progress` defined)
+- [x] IMDb rating badge: absolute `top: 8px, right: 8px`, black-70 bg, `colorYellow` Mono 10px, `padding: 3px 6px`, `borderRadius: 2px`
+- [x] Below-poster: title 13px / `colorText` + subtitle Mono 10px / `colorTextMuted` + `tileAdded` Mono 10px / `colorTextFaint`
+- [x] `addedAt` formatted as a human-readable date/relative string
 
 ### Data + backend
 
-- [ ] Data source is the full `watchlist` array (all 13 entries including those with `progress`) — NOT a filter of films-without-progress
-- [ ] Subtitle copy: `"Saved across sessions. Click a poster to play."` (Mono 12px / `colorTextMuted`)
-- [ ] Derive watchlist items from backend query (filmId, addedAt, optional progress)
-- [ ] Replace mock derivation with Relay query
-- [ ] Clarify overlap rule with Library "Continue watching" row when `progress` is present
+- [x] Data source is the full `watchlist` array (all 13 entries including those with `progress`) — NOT a filter of films-without-progress
+- [x] Subtitle copy: `"Saved across sessions. Click a poster to play."` (Mono 12px / `colorTextMuted`)
+- [x] Derive watchlist items from backend query (filmId, addedAt, optional progress)
+- [x] Replace mock derivation with Relay query
+- [x] Clarify overlap rule with Library "Continue watching" row when `progress` is present
 
 ## Status
 
 - [x] Designed in `design/Release` lab (2026-05-01, PR #46 commit 787f136). Page gains `paddingTop: calc(headerHeight + 60px)` for positioned-shell header clearance; tile and badge specs pinned from source (2026-05-01, PR #46 commit 5301df6). Data derivation corrected: full `watchlist` array (not films-without-progress); subtitle copy resolved (2026-05-01, PR #46 audit). PR #46 on `feat/release-design-omdb-griffel`, not yet merged to main.
-- [ ] Production implementation
+- [x] Production implementation (2026-05-03, M6). `WatchlistPage` thin `Suspense` shell + `WatchlistPageContent` consuming `WatchlistPageContentQuery` (root `watchlist` field). Tiles are `<Link to="/?film=${id}">` so the back button returns to `/watchlist` per spec. Progress bar gated on `progressSeconds > 0` (the schema returns `Float!` with `0` as the no-progress sentinel rather than null). The "clarify overlap with Continue watching" TODO is resolved by deferral — the Library page's existing policy (films with progress appear in both rows) carries forward; revisit if product asks for exclusivity.

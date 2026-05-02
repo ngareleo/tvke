@@ -15,6 +15,13 @@ Entry shape (each entry ends with the divider line described above):
 
 <!-- ENTRIES BELOW — newest first; each ends with a bare `---` line. The architect's next invocation will treat the no-entries state as the first-run case and prepend a bootstrap entry at HEAD. -->
 
+## 3733748 — 2026-05-02 (client-side `.utils.ts` convention — new code-style bullet)
+
+**Files:** `docs/code-style/Client-Conventions/00-Patterns.md`
+**Why:** codified rule that `*.tsx` files house only React components, props, fragments, mutations, queries; constants/formatters/type aliases/helper functions move to colocated `ComponentName.utils.ts`; applied refactor sweep to DetailPane + HomePageContent per user review direction on PR #51
+
+---
+
 ## 931c982 — 2026-05-02 (release-design M0 INDEX row for Plan.md)
 
 **Files:** `docs/INDEX.md`

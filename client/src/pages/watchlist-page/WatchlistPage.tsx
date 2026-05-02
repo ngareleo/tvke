@@ -1,7 +1,11 @@
-import { type FC } from "react";
+import { type FC, Suspense } from "react";
 
-import { PagePlaceholder } from "~/components/page-placeholder/PagePlaceholder.js";
+import { WatchlistPageContent } from "./WatchlistPageContent.js";
 
-const WatchlistPage: FC = () => <PagePlaceholder name="Watchlist" milestone="M6" />;
+const WatchlistPage: FC = () => (
+  <Suspense fallback={null}>
+    <WatchlistPageContent />
+  </Suspense>
+);
 
 export default WatchlistPage;
