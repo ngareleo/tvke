@@ -1,8 +1,9 @@
 import { mergeClasses } from "@griffel/react";
 import { type FC, useCallback, useEffect, useMemo, useState } from "react";
 import { graphql, useLazyLoadQuery } from "react-relay";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { useSearchParams } from "react-router-dom";
 
+import { EmptyLibrariesHero } from "~/components/empty-libraries-hero/EmptyLibrariesHero";
 import { FilmDetailsOverlay } from "~/components/film-details-overlay/FilmDetailsOverlay";
 import { FilmTile } from "~/components/film-tile/FilmTile";
 import { FilterSlide } from "~/components/filter-slide/FilterSlide";
@@ -125,7 +126,6 @@ export const LibraryPageContent: FC = () => {
   const styles = useLibraryStyles();
   const data = useLazyLoadQuery<LibraryPageContentQuery>(LIBRARY_QUERY, {});
   const [params, setParams] = useSearchParams();
-  const navigate = useNavigate();
   const hasLibraries = (data.libraries ?? []).length > 0;
 
   const rows = useMemo<FilterRow[]>(
@@ -222,25 +222,7 @@ export const LibraryPageContent: FC = () => {
   }, [params, setParams]);
 
   if (!hasLibraries) {
-    return (
-      <div className={styles.page}>
-        <div className={mergeClasses(styles.hero, styles.heroActive)}>
-          <div className={styles.heroPanelBg} />
-          <div className={styles.emptyHero}>
-            <div className={styles.greetingEyebrow}>· {strings.emptyEyebrow}</div>
-            <div className={styles.greeting}>{strings.emptyHeading}</div>
-            <div className={styles.emptyBody}>{strings.emptyBody}</div>
-            <button
-              type="button"
-              onClick={() => navigate("/profiles/new")}
-              className={styles.emptyCta}
-            >
-              {strings.emptyCta}
-            </button>
-          </div>
-        </div>
-      </div>
-    );
+    return <EmptyLibrariesHero watermark={strings.emptyWatermark} />;
   }
 
   if (selectedRow) {

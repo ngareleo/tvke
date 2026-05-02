@@ -1,9 +1,10 @@
 import { mergeClasses } from "@griffel/react";
 import { type FC, useEffect, useMemo, useState } from "react";
 import { graphql, useLazyLoadQuery } from "react-relay";
-import { Link, useNavigate, useSearchParams } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 
 import { DetailPane } from "~/components/detail-pane/DetailPane.js";
+import { EmptyLibrariesHero } from "~/components/empty-libraries-hero/EmptyLibrariesHero.js";
 import { FilmRow } from "~/components/film-row/FilmRow.js";
 import { ProfileRow } from "~/components/profile-row/ProfileRow.js";
 import { useSplitResize } from "~/hooks/useSplitResize.js";
@@ -156,26 +157,7 @@ export const ProfilesPageContent: FC = () => {
   // Empty state preview: `/profiles?empty=1` for the design lab. Production
   // also falls back here when there are no libraries at all.
   if (params.get("empty") === "1" || data.libraries.length === 0) {
-    return (
-      <div className={styles.emptyRoot}>
-        <div className={styles.emptyWatermark}>{strings.emptyWatermark}</div>
-        <div className={styles.emptyContent}>
-          <div className={styles.emptyEyebrow}>{strings.emptyEyebrow}</div>
-          <div className={styles.emptyHeadline}>
-            <span className={styles.emptyHeadlineWhite}>{strings.emptyHeadlineWhite}</span>
-            <span className={styles.emptyHeadlineAccent}>{strings.emptyHeadlineAccent}</span>
-          </div>
-          <div className={styles.emptyRule} />
-          <p className={styles.emptyBody}>{strings.emptyBody}</p>
-          <div className={styles.emptyActions}>
-            <Link to="/profiles/new" className={styles.emptyCta}>
-              {strings.emptyCta}
-            </Link>
-            <span className={styles.emptyHint}>{strings.emptyHint}</span>
-          </div>
-        </div>
-      </div>
-    );
+    return <EmptyLibrariesHero watermark={strings.emptyWatermark} />;
   }
 
   return (
