@@ -29,6 +29,14 @@ export const useHomePageStyles = makeStyles({
     left: 0,
     overflow: "hidden",
     zIndex: 0,
+    // Soft elliptical alpha mask so every edge of the poster blends into
+    // the page background instead of showing a hard rectangular cut. The
+    // existing heroEdgeFade / heroBottomFade overlays still tint the
+    // fringe toward bg-0, but the mask is what actually erases the edge.
+    maskImage:
+      "radial-gradient(ellipse 95% 95% at 50% 50%, #000 55%, rgba(0,0,0,0.4) 80%, transparent 100%)",
+    WebkitMaskImage:
+      "radial-gradient(ellipse 95% 95% at 50% 50%, #000 55%, rgba(0,0,0,0.4) 80%, transparent 100%)",
   },
   heroImg: {
     position: "absolute",
