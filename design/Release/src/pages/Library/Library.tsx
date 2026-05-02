@@ -129,13 +129,17 @@ export const Library: FC = () => {
   const searchInputRef = useRef<HTMLInputElement>(null);
   const searchMirrorRef = useRef<HTMLSpanElement>(null);
   const trimmedQuery = search.trim().toLowerCase();
-  const searching = trimmedQuery.length > 0;
+  const hasQuery = trimmedQuery.length > 0;
+  const activeFilterCount = filtersActive(filters);
+  // "searching" stays true while filters are active so the hero keeps
+  // showing the search/filter chrome — clearing filters is the only way
+  // back to the rotating-poster idle state.
+  const showFlatResults = hasQuery || activeFilterCount > 0;
   const heroMode: "idle" | "searching" | "filtering" = filterOpen
     ? "filtering"
-    : searchFocused || searching
+    : searchFocused || showFlatResults
       ? "searching"
       : "idle";
-  const activeFilterCount = filtersActive(filters);
 
   useEffect(() => {
     if (searchMirrorRef.current !== null) {
@@ -143,8 +147,11 @@ export const Library: FC = () => {
     }
   }, [search, searchFocused]);
 
+  // When the query is empty we still expose every film so filters can
+  // narrow the full library; the SearchSlide eyebrow distinguishes
+  // "filtered · N films" from "query · N results".
   const queryMatched = useMemo<Film[]>(() => {
-    if (!trimmedQuery) return [];
+    if (!trimmedQuery) return films;
     return films.filter((f) => {
       const title = (f.title ?? "").toLowerCase();
       const filename = f.filename.toLowerCase();
@@ -283,7 +290,7 @@ export const Library: FC = () => {
               />
             )}
           </div>
-          {(searching || activeFilterCount > 0) && (
+          {showFlatResults && (
             <button
               type="button"
               onClick={clearAll}
@@ -359,11 +366,13 @@ export const Library: FC = () => {
       </div>
 
       <div className={styles.rowsScroll}>
-        {searching ? (
+        {showFlatResults ? (
           searchResults.length > 0 ? (
             <div className={styles.searchResults}>
               <div className={styles.rowHeader}>
-                Results · {searchResults.length}
+                {hasQuery
+                  ? `Results · ${searchResults.length}`
+                  : `Filtered · ${searchResults.length} of ${films.length}`}
               </div>
               <div className={styles.searchGrid}>
                 {searchResults.map((film) => (
@@ -377,7 +386,9 @@ export const Library: FC = () => {
             </div>
           ) : (
             <div className={styles.noResults}>
-              No films match &ldquo;{search.trim()}&rdquo;
+              {hasQuery
+                ? `No films match “${search.trim()}”`
+                : "No films match the active filters"}
             </div>
           )
         ) : (

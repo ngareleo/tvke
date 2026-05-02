@@ -1,5 +1,5 @@
 import { type FC } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import { mergeClasses } from "@griffel/react";
 import { type Film } from "../../data/mock.js";
 import { ImdbBadge } from "../../lib/icons.js";
@@ -9,26 +9,34 @@ import { useFilmRowStyles } from "./FilmRow.styles.js";
 interface FilmRowProps {
   film: Film;
   selected: boolean;
-  onClick: () => void;
+  /** Open the right detail pane in view mode. */
+  onOpen: () => void;
+  /** Open the right detail pane in edit mode. */
+  onEdit: () => void;
 }
 
 /**
- * One film inside an expanded ProfileRow. Click targets split:
+ * One film inside an expanded ProfileRow. Click targets split three ways:
  *  - Poster thumbnail navigates straight to the player.
- *  - Row body opens the right detail pane (parent-controlled via onClick).
- *  - "Play" / "Edit" text actions stop propagation.
+ *  - Row body opens the detail pane (view mode).
+ *  - "Edit" text action opens the detail pane in edit mode (caller wires
+ *    the URL/state plumbing via the `onEdit` callback).
  */
-export const FilmRow: FC<FilmRowProps> = ({ film, selected, onClick }) => {
+export const FilmRow: FC<FilmRowProps> = ({ film, selected, onOpen, onEdit }) => {
   const s = useFilmRowStyles();
   const navigate = useNavigate();
   const playFilm = (e: React.MouseEvent): void => {
     e.stopPropagation();
     navigate(`/player/${film.id}`);
   };
+  const editFilm = (e: React.MouseEvent): void => {
+    e.stopPropagation();
+    onEdit();
+  };
 
   return (
     <div
-      onClick={onClick}
+      onClick={onOpen}
       className={mergeClasses(s.row, selected && s.rowSelected)}
     >
       <button
@@ -71,17 +79,10 @@ export const FilmRow: FC<FilmRowProps> = ({ film, selected, onClick }) => {
           </>
         )}
       </div>
-      <div className={s.playCell}>
-        <Link
-          to={`/player/${film.id}`}
-          onClick={(e) => e.stopPropagation()}
-          className={s.playAction}
-        >
-          Play
-        </Link>
+      <div className={s.editCell}>
         <button
           type="button"
-          onClick={(e) => e.stopPropagation()}
+          onClick={editFilm}
           className={s.editAction}
         >
           Edit

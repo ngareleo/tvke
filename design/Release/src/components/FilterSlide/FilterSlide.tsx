@@ -43,16 +43,13 @@ export const FilterSlide: FC<FilterSlideProps> = ({
   return (
     <div className={s.panel}>
       <div className={s.eyebrow}>
-        · filters{hasQuery && <> · {query.trim()}</>}
-        {hasQuery && (
-          <>
-            {" "}
-            ·{" "}
-            <span className={s.eyebrowAccent}>
-              {totalMatched} → {resultCount}
-            </span>
-          </>
-        )}
+        · filters
+        {hasQuery && <> · {query.trim()}</>}
+        {" "}
+        ·{" "}
+        <span className={s.eyebrowAccent}>
+          {totalMatched} → {resultCount}
+        </span>
       </div>
 
       <div className={s.table}>

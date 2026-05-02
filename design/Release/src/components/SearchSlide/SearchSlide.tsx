@@ -27,14 +27,22 @@ export const SearchSlide: FC<SearchSlideProps> = ({
 }) => {
   const s = useSearchSlideStyles();
   const hasQuery = query.trim().length > 0;
+  const hasFilters = activeFilterCount > 0;
+
+  let eyebrow: string;
+  if (hasQuery) {
+    eyebrow = `query · ${resultCount} ${resultCount === 1 ? "result" : "results"}`;
+  } else if (hasFilters) {
+    eyebrow = `filtered · ${resultCount} ${resultCount === 1 ? "film" : "films"}`;
+  } else {
+    eyebrow = "search";
+  }
+
   return (
     <div className={s.panel}>
       <div className={s.eyebrow}>
-        ·{" "}
-        {hasQuery
-          ? `query · ${resultCount} ${resultCount === 1 ? "result" : "results"}`
-          : "search"}
-        {activeFilterCount > 0 && (
+        · {eyebrow}
+        {hasFilters && hasQuery && (
           <>
             {" "}
             ·{" "}
@@ -65,7 +73,7 @@ export const SearchSlide: FC<SearchSlideProps> = ({
               {profilesMatched}{" "}
               {profilesMatched === 1 ? "profile" : "profiles"}
             </span>
-            {activeFilterCount > 0 && (
+            {hasFilters && (
               <>
                 <span className={s.statusSep}>·</span>
                 <span className={s.statusAccent}>
@@ -73,6 +81,21 @@ export const SearchSlide: FC<SearchSlideProps> = ({
                 </span>
               </>
             )}
+          </>
+        ) : hasFilters ? (
+          <>
+            <span>
+              {resultCount} of {totalMatched} films
+            </span>
+            <span className={s.statusSep}>·</span>
+            <span>
+              {profilesMatched}{" "}
+              {profilesMatched === 1 ? "profile" : "profiles"}
+            </span>
+            <span className={s.statusSep}>·</span>
+            <span className={s.statusAccent}>
+              {activeFilterCount} filter{activeFilterCount === 1 ? "" : "s"} on
+            </span>
           </>
         ) : (
           <span className={s.statusHint}>

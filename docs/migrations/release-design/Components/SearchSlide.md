@@ -24,7 +24,8 @@ TUI-style hero panel for the search-active state. Renders a monospaced prompt ro
 - Text pattern varies by state:
   - No query, no filters: `"· search"`
   - Query but no filters: `"· query · {resultCount} result(s)"`
-  - Filters active (regardless of query): append `" · "` + `<span slideEyebrowAccent>` (white text) `"{activeFilterCount} filter(s)"`
+  - No query, filters active: `"· filtered · {resultCount} films"` (shows filtered result count against the full library)
+  - Query + filters active: append `" · "` + `<span slideEyebrowAccent>` (white text) `"{activeFilterCount} filter(s)"`
 - The accent span uses `color: tokens.colorText` (white).
 
 ### Prompt row (`slidePromptRow`)
@@ -40,9 +41,10 @@ TUI-style hero panel for the search-active state. Renders a monospaced prompt ro
 ### Status row (`slideStatus`)
 - Mono 12px / `letterSpacing: 0.06em` / `colorTextDim`.
 - Flex row with wrap, `columnGap: 10px`, `rowGap: 6px`.
-- Two variants:
-  - **With query:** `"{resultCount} of {totalMatched} match(es)"` + `·` (sep, `colorTextFaint`) + `"{profilesMatched} profile(s)"` + if filters active: `·` (sep) + `<span slideStatusAccent>"filtered ({activeFilterCount})"` (green).
-  - **No query:** `<span slideStatusHint>` (italic, `colorTextMuted`) `"type to search films, directors, genres"`.
+- Three variants:
+  - **With query:** `"{resultCount} of {totalMatched} match(es)"` + `·` (sep, `colorTextFaint`) + `"{profilesMatched} profile(s)"` + if filters active: `·` (sep) + `<span slideStatusAccent>"{activeFilterCount} filter(s)"` (green).
+  - **No query, no filters:** `<span slideStatusHint>` (italic, `colorTextMuted`) `"type to search films, directors, genres"`.
+  - **No query, filters active:** `"{resultCount} of {totalMatched} films · {profilesMatched} profile(s) · {activeFilterCount} filter(s) on"` (all in `colorTextDim`, status text rather than hint).
 
 ### Actions row (`slideActions`)
 - `marginTop: auto` (push to bottom).
@@ -84,9 +86,10 @@ This component is new in Release — no Prerelease equivalent. In Prerelease, th
 - [ ] Cursor: green block `width: 12px`, `height: 0.85em`, `boxShadow: 0 0 6px colorGreen, 0 0 14px colorGreenGlow`; pulsing animation 1.05s ease-in-out (`scaleY(1)` → `scaleY(0.86)` at 50%)
 - [ ] Cursor always visible (no conditional render)
 - [ ] Status row: Mono 12px, `letterSpacing: 0.06em`, flex row wrap, `columnGap: 10px`, `rowGap: 6px`, `colorTextDim`
-- [ ] Status with query: `"{resultCount} of {totalMatched} match(es)" · "{profilesMatched} profile(s)"` + filter indicator if active
-- [ ] Status without query: italic hint text `"type to search films, directors, genres"` in `colorTextMuted`
-- [ ] Status accent span (filtered count): green text
+- [ ] Status with query: `"{resultCount} of {totalMatched} match(es)" · "{profilesMatched} profile(s)"` + filter indicator if active (green accent span)
+- [ ] Status without query, no filters: italic hint text `"type to search films, directors, genres"` in `colorTextMuted`
+- [ ] Status without query, filters active: `"{resultCount} of {totalMatched} films · {profilesMatched} profile(s) · {activeFilterCount} filter(s) on"` (normal text, not hint)
+- [ ] Status accent span (filter count): green text
 - [ ] Actions row: `marginTop: auto`, flex, `columnGap: 20px`, `paddingTop: 16px`, `flexWrap: wrap`
 - [ ] Primary action: `"[F] Filter"` green underlined text (Mono 13px uppercase), hover white; calls `onOpenFilter()`
 - [ ] Secondary action: `"[ESC] Clear"` grey underlined text (Mono 12px uppercase), hover white; calls `onClear()`
@@ -94,5 +97,5 @@ This component is new in Release — no Prerelease equivalent. In Prerelease, th
 
 ## Status
 
-- [x] Designed in `design/Release` lab — SearchSlide component extracted from Library's inline hero-mode panel 2026-05-02, PR #48. TUI-style monospaced prompt, status display, and action buttons. Pulsing green cursor, dynamic eyebrow/status based on query/filter state.
+- [x] Designed in `design/Release` lab — SearchSlide component extracted from Library's inline hero-mode panel 2026-05-02, PR #48. TUI-style monospaced prompt, status display, and action buttons. Pulsing green cursor, dynamic eyebrow/status based on query/filter state. Updated 2026-05-02 (follow-up): three eyebrow branches (no query / query / filters only) and three status branches (no query+no filters / query / no query+filters). Filters now apply against the full library even without a query.
 - [ ] Production implementation

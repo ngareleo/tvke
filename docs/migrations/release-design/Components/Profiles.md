@@ -57,11 +57,15 @@ Flex column, `overflow: hidden`, `position: relative`.
 ## Behaviour
 
 ### URL pane state
-- `?film=<id>` — selected film. `useSearchParams()` reads/writes.
+- `?film=<id>` — selected film in view mode. `useSearchParams()` reads/writes.
+- `?film=<id>&edit=1` — selected film in edit mode (DetailPane shows inline edit form instead of view content).
 - `openFilm(id)`:
-  - If `filmId === id`, clear params (toggle close).
-  - Else `setParams({ film: id })`.
+  - If `filmId === id` and `edit` param absent, clear params (toggle close).
+  - Else `setParams({ film: id })` (no `edit` param, opens in view mode).
+- `editFilm(id)`:
+  - Sets `setParams({ film: id, edit: "1" })` (opens in edit mode).
 - `closePane()` clears params.
+- `onEditChange(editing: boolean)` called when DetailPane exits edit mode; parent syncs URL (`editing=false` removes `edit` param, `editing=true` adds it).
 
 ### Expansion state
 - Local `expandedIds: Set<string>`.
@@ -81,7 +85,7 @@ One library row in the tree. See [`ProfileRow.md`](ProfileRow.md) for the full s
 
 ### **`FilmRow` component** (extracted to `components/FilmRow/`)
 
-One film inside an expanded ProfileRow. See [`FilmRow.md`](FilmRow.md) for the full spec. Same 5-column grid layout. Click targets split: poster → player page; row body → opens DetailPane; Play/Edit text links are right-aligned. Props: `film`, `selected`, `onSelect`, `onOpenDetail`.
+One film inside an expanded ProfileRow. See [`FilmRow.md`](FilmRow.md) for the full spec. Same 5-column grid layout. Click targets split: poster → player page; row body → opens DetailPane; Edit text link in right cell. Props: `film`, `selected`, `onOpen`, `onEdit`.
 
 ## Changes from Prerelease
 
@@ -98,7 +102,7 @@ One film inside an expanded ProfileRow. See [`FilmRow.md`](FilmRow.md) for the f
 
 ## TODO(redesign)
 
-None. The `+ NEW PROFILE` footer button now links to `/profiles/new` (CreateProfile page); the "EDIT" link in the actions cell links to `/profiles/:profileId/edit` (EditProfile page). The empty state is live at `?empty=1`.
+None. The `+ NEW PROFILE` footer button now links to `/profiles/new` (CreateProfile page). The "EDIT" link in FilmRow calls `onEdit(filmId)`, which Profiles passes to `editFilm(id)` → `setParams({ film: id, edit: "1" })`. Production should wire the DetailPane `onSave` callback to an edit-film or update-film GraphQL mutation. The empty state is live at `?empty=1`.
 
 ## Porting checklist (`client/src/pages/Profiles/`)
 
@@ -113,15 +117,17 @@ None. The `+ NEW PROFILE` footer button now links to `/profiles/new` (CreateProf
 - [ ] Poster thumbnail (`filmThumbBtn`): 26×38 button, no visible bg; contains image + hover overlay; `:hover` adds `scale(1.05)` + green shadow
 - [ ] Hover overlay (`filmThumbHover`): absolute fill, flexed center, displays `▶` in green, `backgroundColor: rgba(5, 7, 6, 0.55)`, `opacity: 0` → `1` on parent `:hover`
 - [ ] Poster button navigates to `/player/:id` on click
-- [ ] Right cell: two text-link buttons (`filmPlayAction` + `filmEditAction`) in `columnGap: 12px`
-- [ ] `filmPlayAction`: green Mono 9px underline text, `letterSpacing: 0.16em`, uppercase, `textUnderlineOffset: 3px`; hover green → white; links to `/player/:id`
-- [ ] `filmEditAction`: white Mono 9px underline text, faint white underline; hover white → green; wired to `/profiles/:profileId/edit` (or delete modal)
-- [ ] Both Play and Edit buttons use `e.stopPropagation()` so clicks don't toggle row selection
-- [ ] URL pane state: `?film=<id>` (toggle off on second click)
+- [ ] Right cell: one text-link button (`filmEditAction`) 
+- [ ] `filmEditAction`: white Mono 9px underline text, faint white underline; hover white → green; calls `onEdit(film.id)`
+- [ ] Edit button uses `e.stopPropagation()` so click doesn't toggle row selection
+- [ ] URL pane state: `?film=<id>` (view mode) or `?film=<id>&edit=1` (edit mode); toggle off on second click in view mode
 - [ ] Pre-expand profile containing the deep-linked film
+- [ ] Pass FilmRow props: `onOpen={(id) => openFilm(id)}`, `onEdit={(id) => editFilm(id)}`
+- [ ] Pass DetailPane props: `initialEdit={editParamSet}`, `onEditChange={handleEditModeChange}`, `onSave={saveMutation}`
 - [ ] Footer: counts in Mono uppercase + `+ NEW PROFILE` CTA wired to `/profiles/new` (or create-profile mutation in GraphQL)
 - [ ] Empty state: `?empty=1` design-lab toggle renders watermark + content section with headline/rule/body/CTA + hint
-- [ ] "EDIT" action link wired to `/profiles/:profileId/edit`
+- [ ] `editFilm(id)` helper sets URL params to `{ film: id, edit: "1" }` → DetailPane mounts in edit mode
+- [ ] DetailPane `onEditChange` callback syncs URL: `editing=false` removes `edit` param, `editing=true` adds it
 
 ## Extracted components (2026-05-02, PR #48)
 
@@ -134,5 +140,5 @@ Profiles.tsx owns the split-body grid, `useSplitResize` hook, URL pane state (`?
 
 ## Status
 
-- [x] Designed in `design/Release` lab — components extracted 2026-05-02, PR #48. Profiles became a thinner page shell (~160 lines). ProfileRow handles expansion state, match-bar spinner, EDIT link. FilmRow handles click-target split (poster → player, body → detail pane), hover tints + green border (locked when selected to prevent flicker), Play/Edit text links. Each extracted child component has its own `.tsx` + `.styles.ts` + `.md` spec.
+- [x] Designed in `design/Release` lab — components extracted 2026-05-02, PR #48. Profiles became a thinner page shell (~160 lines). ProfileRow handles expansion state, match-bar spinner, EDIT link. FilmRow handles click-target split (poster → player, body → detail pane), hover tints + green border (locked when selected to prevent flicker), Edit text link only (Play button dropped). DetailPane edit mode added in follow-up 2026-05-02: form with Title / Year / IMDb ID / Plot fields. URL contract: `?film=<id>` (view) vs `?film=<id>&edit=1` (edit). Each extracted child component has its own `.tsx` + `.styles.ts` + `.md` spec.
 - [ ] Production implementation (`client/src/pages/Profiles/` + `client/src/components/` split)

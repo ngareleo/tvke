@@ -21,8 +21,9 @@ TUI-style hero panel for the filter-active state. Renders a monospaced table wit
 
 ### Eyebrow row (`slideEyebrow`)
 - Mono 11px / uppercase / `colorGreen`.
-- Text pattern: `"· filters"` + if query: `" · {query.trim()}"` + if query and results differ from total: `" · "` + `<span slideEyebrowAccent>"{totalMatched} → {resultCount}"` (white).
+- Text pattern: `"· filters"` + if query: `" · {query.trim()}"` + always show arrow: `" · "` + `<span slideEyebrowAccent>"{totalMatched} → {resultCount}"` (white).
 - The accent span uses `color: tokens.colorText` (white).
+- The `totalMatched → resultCount` arrow is now always present (even without a query, since `totalMatched = films.length` and filters narrow from there).
 
 ### TUI table (`tuiTable`)
 - `display: flex`, `flexDirection: column`, `rowGap: 10px`, Mono 13px.
@@ -89,7 +90,7 @@ This component is new in Release — no Prerelease equivalent. In Prerelease, th
 ## Porting checklist (`client/src/components/FilterSlide/`)
 
 - [ ] Container: same as SearchSlide (flexGrow, flex column, Mono)
-- [ ] Eyebrow: Mono 11px uppercase, green, pattern: `"· filters" + optional query + optional count arrow`
+- [ ] Eyebrow: Mono 11px uppercase, green, pattern: `"· filters" + optional query + count arrow` (arrow always shown: `totalMatched → resultCount`)
 - [ ] TUI table: `display: flex`, `flexDirection: column`, `rowGap: 10px`, Mono 13px, semi-transparent dark bg, left border
 - [ ] Four filter rows (or more if more dimensions added): resolution / HDR / codec / decade
 - [ ] Each row: `gridTemplateColumns: 120px 1fr`, dimension label (left), toggle buttons (right)
@@ -112,7 +113,7 @@ This component is new in Release — no Prerelease equivalent. In Prerelease, th
 
 ## Status
 
-- [x] Designed in `design/Release` lab — FilterSlide component extracted from Library's inline filter-mode panel 2026-05-02, PR #48. TUI table with four filter dimensions (resolution / HDR / codec / decade), checkbox toggles, dynamic hint. Filters narrowly query results (AND logic per dimension, OR logic within dimension).
+- [x] Designed in `design/Release` lab — FilterSlide component extracted from Library's inline filter-mode panel 2026-05-02, PR #48. TUI table with four filter dimensions (resolution / HDR / codec / decade), checkbox toggles, dynamic hint. Filters narrowly query results (AND logic per dimension, OR logic within dimension). Updated 2026-05-02 (follow-up): eyebrow `totalMatched → resultCount` arrow always shown (meaningful even without a query, since filters apply against the full library).
 - [ ] Production implementation
 
 ## Notes

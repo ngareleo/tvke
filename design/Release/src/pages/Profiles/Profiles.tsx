@@ -24,6 +24,7 @@ export const Profiles: FC = () => {
   const [params, setParams] = useSearchParams();
 
   const filmId = params.get("film");
+  const editingFilm = params.get("edit") === "1";
   const selectedFilm = filmId ? getFilmById(filmId) : undefined;
   const paneOpen = Boolean(selectedFilm);
 
@@ -48,6 +49,16 @@ export const Profiles: FC = () => {
   const openFilm = (id: string): void => {
     if (filmId === id) setParams({});
     else setParams({ film: id });
+  };
+
+  const editFilm = (id: string): void => {
+    setParams({ film: id, edit: "1" });
+  };
+
+  const handleEditChange = (editing: boolean): void => {
+    if (!filmId) return;
+    if (editing) setParams({ film: filmId, edit: "1" });
+    else setParams({ film: filmId });
   };
 
   const closePane = (): void => setParams({});
@@ -130,7 +141,8 @@ export const Profiles: FC = () => {
                     key={f.id}
                     film={f}
                     selected={filmId === f.id}
-                    onClick={() => openFilm(f.id)}
+                    onOpen={() => openFilm(f.id)}
+                    onEdit={() => editFilm(f.id)}
                   />
                 ))}
               </ProfileRow>
@@ -156,7 +168,12 @@ export const Profiles: FC = () => {
         <>
           <div className={s.resizeHandle} onMouseDown={onResizeMouseDown} />
           {selectedFilm && (
-            <DetailPane film={selectedFilm} onClose={closePane} />
+            <DetailPane
+              film={selectedFilm}
+              initialEdit={editingFilm}
+              onEditChange={handleEditChange}
+              onClose={closePane}
+            />
           )}
         </>
       )}

@@ -47,10 +47,10 @@ One film row nested inside a ProfileRow's expanded children. Uses the same 5-col
 ### Column 4: (empty or reserved)
 - 0.6fr width in the grid. Not visually used in this layout.
 
-### Column 5: Play/Edit text links
+### Column 5: Edit text link
 - Flex row, `columnGap: 12px`, `alignItems: center`, right-aligned.
-- **Play link** (`filmPlayAction`): green Mono 9px underline text, `letterSpacing: 0.16em`, uppercase, `textUnderlineOffset: 3px`. Hover: green → white. `<Link to="/player/:id">` with label `▶ Play`. **Stops propagation** on click.
-- **Edit button** (`filmEditAction`): white Mono 9px underline text, `letterSpacing: 0.16em`, uppercase, faint white underline (4px offset). Hover: white → green. Navigates to `/profiles/:profileId/edit` (currently a mock). **Stops propagation** on click.
+- **Edit button** (`filmEditAction`): white Mono 9px underline text, `letterSpacing: 0.16em`, uppercase, faint white underline (4px offset). Hover: white → green. Calls `onEdit(filmId)` callback (for wiring to edit-film mutation). **Stops propagation** on click.
+- The Play text button has been removed. Clicking the poster thumbnail provides sufficient "play" affordance (green hover overlay with ▶ icon).
 
 ## Behaviour
 
@@ -58,15 +58,14 @@ One film row nested inside a ProfileRow's expanded children. Uses the same 5-col
 
 - `film: FilmShape` — the film object (title, posterUrl, year, duration, genre, rating, hdr, codec, resolution).
 - `selected: boolean` — whether this row is currently selected (detail pane open).
-- `onSelect: (filmId: string) => void` — callback when the row body is clicked (toggle selection / open detail pane).
-- `onOpenDetail?: (filmId: string) => void` — optional callback; parent may differentiate between selection and detail-pane opening. If not provided, `onSelect` is used for both.
+- `onOpen: (filmId: string) => void` — callback when the row body is clicked (toggle selection / open detail pane).
+- `onEdit: (filmId: string) => void` — callback when the Edit text link is clicked (for wiring to edit-film or profile edit flow).
 
 ### Click behaviour split
 
 1. **Poster button (`filmThumbBtn`):** navigates to `/player/:id}` (no row selection toggle).
-2. **Row body (metadata):** calls `onSelect(film.id)` → toggles row selection / opens detail pane. **Clicking the row body does NOT navigate to the player.**
-3. **Play link:** navigates to `/player/:id}` (no row selection toggle). Uses `e.stopPropagation()`.
-4. **Edit link:** navigates to `/profiles/:profileId/edit`. Uses `e.stopPropagation()`.
+2. **Row body (metadata):** calls `onOpen(film.id)` → toggles row selection / opens detail pane. **Clicking the row body does NOT navigate to the player.**
+3. **Edit link:** calls `onEdit(film.id)` (for wiring to edit-film mutation or profile edit flow in production). Uses `e.stopPropagation()`.
 
 ### Selection state
 - When `selected === true`, the row gets the green-soft background + green border, and `:hover` state is locked to prevent flicker.
@@ -102,24 +101,23 @@ One film row nested inside a ProfileRow's expanded children. Uses the same 5-col
     - [ ] Sub-line: `{genre.toUpperCase()} · {duration}` (Mono 10px muted)
     - [ ] Chip group: resolution (green) + HDR (if present)
     - [ ] Rating: IMDb badge + yellow number (if present)
-  - [ ] Metadata click: `onSelect(film.id)` (no navigation)
+  - [ ] Metadata click: `onOpen(film.id)` (no navigation)
 - [ ] Column 3 & 4 (spacers): not visually used
-- [ ] Column 5 (Play/Edit links):
+- [ ] Column 5 (Edit link only):
   - [ ] Flex row, `columnGap: 12px`, `alignItems: center`, right-aligned
-  - [ ] `filmPlayAction`: green Mono 9px, `letterSpacing: 0.16em`, uppercase, underline 3px offset, hover white. `<Link to="/player/:id}">` label `▶ Play`, `e.stopPropagation()`
-  - [ ] `filmEditAction`: white Mono 9px, uppercase, underline 4px offset (faint), hover green. Navigates to `/profiles/:profileId/edit`, `e.stopPropagation()`
-- [ ] Poster click and Play link: navigate to `/player/:id}`
-- [ ] Row body (metadata) click: toggle selection / open detail pane (call `onSelect`)
-- [ ] Edit link: navigate to `/profiles/:profileId/edit` (wire to edit-profile mutation in production)
+  - [ ] `filmEditAction`: white Mono 9px, uppercase, underline 4px offset (faint), hover green. Calls `onEdit(film.id)`, `e.stopPropagation()`
+- [ ] Poster click: navigate to `/player/:id}`
+- [ ] Row body (metadata) click: toggle selection / open detail pane (call `onOpen`)
+- [ ] Edit link: call `onEdit(film.id)` (wire to edit-film or profile edit mutation in production)
 - [ ] Wire to real Film data model (replace mock data)
 
 ## TODO(redesign)
 
-- Edit link target: confirm whether `/profiles/:profileId/edit` is the correct destination or if a modal/drawer is preferred.
+None — the two-callback contract (`onOpen` + `onEdit`) is now locked. Edit link wiring to the production edit flow is deferred to the porting step.
 
 ## Status
 
-- [x] Designed in `design/Release` lab — FilmRow component extracted from Profiles page inline 2026-05-02, PR #48. Click targets split: poster → player (green hover overlay), metadata → detail pane, Play/Edit links separate. Green selection state (locked on hover to prevent flicker). Grid layout shared with ProfileRow via `PROFILE_GRID_COLUMNS` constant.
+- [x] Designed in `design/Release` lab — FilmRow component extracted from Profiles page inline 2026-05-02, PR #48. Click targets split: poster → player (green hover overlay), metadata → detail pane. Play text button dropped in follow-up (2026-05-02); now only Edit link remains in right cell. Callback contract finalized (`onOpen` + `onEdit`). Green selection state (locked on hover to prevent flicker). Grid layout shared with ProfileRow via `PROFILE_GRID_COLUMNS` constant.
 - [ ] Production implementation
 
 ## Notes

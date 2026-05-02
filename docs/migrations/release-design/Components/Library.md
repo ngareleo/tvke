@@ -104,13 +104,22 @@ Core state variables and derived values:
 - `queryMatched = useMemo(...)` — all films whose title/filename/director/genre contains `trimmedQuery` (case-insensitive).
 - `searchResults = useMemo(...)` — `applyFilters(queryMatched, filters)`. **Filters always apply on top of query matches; they never broaden the result set.**
 
-#### Filter application
+#### Filter application — filters now apply to full library
+
+**Key design change (2026-05-02):** Filters now apply against the **full library** (`films`) when there is no query, rather than narrowing an empty result set. This means toggling a filter chip produces a visible effect even with an empty search box.
 
 **`applyFilters(list: Film[], filters: Filters): Film[]`** — if no filters active, return list unchanged. Otherwise, exclude films that don't match **all** active filter dimensions:
 - If `filters.resolutions.size > 0` and film's resolution not in set, exclude.
 - If `filters.hdrs.size > 0` and film's HDR value (or `"—"` if null) not in set, exclude.
 - If `filters.codecs.size > 0` and film's codec not in set, exclude.
 - If `filters.decades.size > 0`, exclude if film's year is null OR `Math.floor(film.year / 10) * 10` not in set.
+
+**Implementation pattern:**
+```
+queryMatched = trimmedQuery.length > 0 ? films.filter(...) : films  // Empty query → full library
+searchResults = applyFilters(queryMatched, filters)
+showFlatResults = hasQuery || activeFilterCount > 0  // Show filtered grid when query OR filters active
+```
 
 #### ESC keybind
 
@@ -168,13 +177,19 @@ Rendered as `<FilterSlide ... />` when `heroMode === "filtering"`. A TUI-style t
 
 ### Search results display (rowsScroll section)
 
-When `heroMode === "searching"`:
+The `showFlatResults = hasQuery || activeFilterCount > 0` flag determines whether to show the flat grid (search/filter results) or the carousel rows (home view).
 
-- **With results:** `trimmedQuery.length > 0` AND `searchResults.length > 0` → `rowsScroll` renders a `<div searchResults>` (flex column `rowGap: 16px`) with a `<div rowHeader>` reading `"Results · {N}"` (Mono 11px / `colorTextDim`) + `<div searchGrid>`.
-  - **`searchGrid`:** `display: grid`, `gridTemplateColumns: repeat(auto-fill, 200px)`, `justifyContent: start`, `columnGap: 16px`, `rowGap: 24px`. Reuses `<FilmTile>` (same 200px component as the rows).
-- **No matches:** `trimmedQuery.length > 0` AND `searchResults.length === 0` → `<div noResults>` (Mono 12px / `letterSpacing: 0.18em` / uppercase / `colorTextMuted` / `textAlign: center` / `paddingTop/Bottom: 40px`) with text `"No films match "{search.trim()}""`.
+When `showFlatResults === true` (query present OR filters active):
 
-When `heroMode === "idle"` (empty query, filters inactive):
+- **With results:** `searchResults.length > 0` → `rowsScroll` renders a `<div searchResults>` (flex column `rowGap: 16px`) with a `<div rowHeader>` reading:
+  - `"Results · {N}"` if query is present (Mono 11px / `colorTextDim`)
+  - `"Filtered · {N} of {totalMatched}"` if query is absent but filters are active (shows the narrowing effect)
+  - `<div searchGrid>`: `display: grid`, `gridTemplateColumns: repeat(auto-fill, 200px)`, `justifyContent: start`, `columnGap: 16px`, `rowGap: 24px`. Reuses `<FilmTile>` (same 200px component as the rows).
+- **No matches:** `searchResults.length === 0` → `<div noResults>` (Mono 12px / `letterSpacing: 0.18em` / uppercase / `colorTextMuted` / `textAlign: center` / `paddingTop/Bottom: 40px`) with text:
+  - `"No films match "{search.trim()}""` if query is present
+  - `"No films match the selected filters"` if query is absent and filters active
+
+When `showFlatResults === false` (empty query, no filters):
 - Show the three default rows (Continue Watching, New Releases, Watchlist) as documented in the Row section below.
 
 ### Row section (below hero)
@@ -383,9 +398,10 @@ Fallback on browsers without View Transitions support (e.g., Safari < 18): plain
 - **Page purpose:** OLD — flat catalogue browser (grid or list view of all films). NEW — Netflix-style home page with hero + horizontal-scroll rows + full-bleed overlay.
 - **Layout model:** OLD — `split-body` grid (`1fr / 4px / 360px`), right-rail `DetailPane` at 360px via `?film=<id>`. NEW — flex column with 75vh inset hero + `rowsScroll` rows below; tile click opens full-bleed `FilmDetailsOverlay` (replaces entire page output). No split-body, no resize handle.
 - **Hero:** OLD — no hero on the Library page (hero existed on Dashboard/Profiles). NEW — `height: 75vh`, `borderRadius: 6px`, inset 40px from page edges. B&W cycling poster slideshow (four canonical posters, 7 000ms interval, 0.9s opacity crossfade) with Ken Burns pan. 3D-tilted greeting (Anton 64px, `±9°` mouse-tilt, `perspective(800px) rotateX/rotateY`). Floating ghost search bar top-right inside hero.
-- **Filter bar:** OLD — horizontal filter strip: search input, profile chip row, type select, grid/list toggle. NEW — no filter bar. Search is a ghost pill inside the hero, client-side only against `films` array.
+- **Filter bar:** OLD — horizontal filter strip: search input, profile chip row, type select, grid/list toggle. NEW — no filter bar. Search is a ghost pill inside the hero, client-side only against `films` array. Filters are now TUI toggles inside the FilterSlide panel (triggered by `[F] Filter` button in SearchSlide).
 - **Search:** OLD — standard `<input>` in the filter bar, filters by title/genre/filename. NEW — ghost search bar inside hero (absolute positioned, `width: 320px`, horizontal gradient background, `caretColor: transparent`, custom pulsing green caret via mirror-span measurement). Same filter fields (title, filename, director, genre). Results render as a vertical CSS grid (`repeat(auto-fill, 200px)`, `justifyContent: start`) instead of a horizontal row.
-- **Rows:** OLD — no horizontal-scroll rows. NEW — three rows: "Continue watching" (watchlist items with `progress`), "New releases" (curated `newReleaseIds`), "Watchlist" (watchlist items without `progress`). Arrow-driven RAF-eased pagination (`easeInOutCubic` 720ms, page = `Math.floor(clientWidth/216)*216` px).
+- **Filters (2026-05-02):** **Key change — filters now apply to the full library when there is no query.** `queryMatched` returns all `films` when `trimmedQuery.length === 0` (so toggling a filter chip has a visible effect even without typing a search). The `showFlatResults` flag `= hasQuery || activeFilterCount > 0` so the carousel rows disappear the moment a filter flips. The grid header fork between `"Results · N"` (with query) and `"Filtered · N of M"` (filters only) makes the distinction clear.
+- **Rows:** OLD — no horizontal-scroll rows. NEW — three rows: "Continue watching" (watchlist items with `progress`), "New releases" (curated `newReleaseIds`), "Watchlist" (watchlist items without `progress`). Arrow-driven RAF-eased pagination (`easeInOutCubic` 720ms, page = `Math.floor(clientWidth/216)*216` px). Rows only shown when `showFlatResults === false` (no query and no filters active).
 - **Tile size:** OLD — `<PosterCard>` in Prerelease Library used a `posterImg` div sized by the grid (approx. 180px wide). NEW — `<FilmTile>` `width: 200px`, `aspectRatio: 2/3`, `scrollSnapAlign: start`.
 - **Tile hover:** OLD — gray `border-color` change + `box-shadow`. NEW — bottom-up green border wipe via `tileFrame::after` `clipPath: inset(100% 0 0 0)` → `inset(0 0 0 0)` + `translateY(-3px)` lift + `boxShadow: 0 8px 20px colorGreenGlow`.
 - **Click → detail:** OLD — tile click sets `?film=<id>`, slides in a 360px `DetailPane` on the right (the `<DetailPane>` component). NEW — tile click sets `?film=<id>`, renders full-bleed `FilmDetailsOverlay` (replaces the whole page). The overlay has a Back pill (top-left) and Close button (top-right), both calling `onClose`.
@@ -393,6 +409,7 @@ Fallback on browsers without View Transitions support (e.g., Safari < 18): plain
 - **View transitions:** OLD — no view transitions. NEW — `PlayCTA` calls `document.startViewTransition(() => navigate("/player/{id}"))`. `.overlayPoster` carries `viewTransitionName: "film-backdrop"` (must match Player `.backdrop`).
 - **Play CTA:** OLD — `<Link to="/player/:id">` (standard navigation). NEW — `<button onClick={playWithTransition}>` wrapping `startViewTransition` with plain-navigate fallback.
 - **Play CTA visual (2026-05-02):** OLD — solid green button (`backgroundColor: colorGreen`, `color: colorGreenInk`, `borderRadius: 3px`). NEW — **glass pill** (iOS-26 Liquid Glass inspired): translucent white bg, `border-radius: 999px`, `backdrop-filter: blur(20px) saturate(180%)`, beveled-light borders, inset highlights + drop shadow + on-hover lift. Matches the Player big-play button and the DetailPane play button — green is no longer the action-button identity colour.
+- **Search slide clarity (2026-05-02):** The SearchSlide eyebrow now distinguishes three states: no query (hint text), with query (count), and filters only (counts from full library). Status row similarly has three variants to clarify whether results are query-driven or filter-driven.
 - **Mock data:** OLD — 4 canonical films with `gradient` string fields. NEW — 13 films with `posterUrl: string | null` (real OMDb JPGs). `watchlist` grows to 13 entries (12 with `progress`). `newReleaseIds` curated array is new.
 
 ## TODO(redesign)
