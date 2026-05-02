@@ -138,8 +138,8 @@ The exact column types, NULLability, and indexes live in the M0 doc.
 | #  | Milestone | Owner | Status | Notes |
 |----|-----------|-------|--------|-------|
 | M0 | Foundations: Plan + Porting-Guide + Schema-Changes + worktree setup | Opus 4.7 (2026-05-02) | done | Commit `262c57d`. Schema-Changes.md captures the discovery that the existing GQL surface is far more complete than the plan first assumed — the real M2 deltas are seasons/episodes + `Video.nativeResolution`. The design's `Film.kind` maps onto existing `Video.mediaType`. |
-| M1 | Tokens, fonts, shared CSS, icon sweep | _ready (M0 PR must merge first)_ | not started | Visual base. Existing pages stay running with new tokens. **Schema-Changes.md discovery:** the existing schema is far more complete than first thought — many things the plan listed for M2 (WatchlistItem, OmdbSearchResult, createLibrary/updateLibrary, matchVideo, etc.) already exist. Real M2 deltas are seasons/episodes + `Video.nativeResolution` only. |
-| M2 | GraphQL + SQLite schema migration | _waiting on M1_ | not started | One-shot schema. Adds resolvers; old UI keeps working until M3. |
+| M1 | Tokens, fonts, shared CSS, icon sweep | Opus 4.7 (2026-05-02) | done | Commit `7612343`. Wholesale-replaced tokens.ts (Kenyan red palette → Release green/oklch + four text tiers + Bytesized/Anton/Science Gothic). Added Google Fonts link to index.html, created shared.css (CSS-var mirror + .eyebrow/.chip/.dot/.grain-layer), updated global.css body bg/text + scrollbar to match new tokens, removed stale Bebas Neue @import. Added IconCheck + Release-named icon aliases (IconBack/IconChevron/IconFullscreen/IconExpand/IconVolume/IconWarn) + ImdbBadge. Created withViewTransition helper. Type-check fails on ~289 call sites consuming removed tokens (colorMuted, colorWhite, colorRedDim, etc.) — expected; these are M3+ to-dos. Spec sync clean — no Components/*.md cite removed tokens. |
+| M2 | GraphQL + SQLite schema migration | _ready_ | not started | One-shot schema. Adds resolvers; old UI keeps working until M3. **Schema-Changes.md discovery:** the existing GQL surface is far more complete than first assumed — many things the plan listed for M2 (WatchlistItem, OmdbSearchResult, createLibrary/updateLibrary, matchVideo, etc.) already exist. Real M2 deltas are seasons/episodes + `Video.nativeResolution` only. |
 | M3 | AppShell + AppHeader + AccountMenu + Router cutover | _waiting on M2_ | not started | App boots with new shell; placeholder pages for `/`, `/profiles`, `/watchlist` until later milestones land them. Sidebar deleted. |
 | M4 | Library page + dependencies (FilmDetailsOverlay, SearchSlide, FilterSlide, PosterRow, FilmTile, MediaKindBadge, Poster) | _waiting on M3_ | not started | `/` is now Library. Dashboard + film-detail-loader deleted. |
 | M5 | Profiles ecosystem (Profiles, ProfileRow, FilmRow, EdgeHandle, DetailPane, CreateProfile, EditProfile, ProfileForm, DirectoryBrowser) | _waiting on M4_ | not started | `/profiles`, `/profiles/new`, `/profiles/:profileId/edit`. |
@@ -230,22 +230,27 @@ colours and typography are new.
 
 ### Tasks
 
-- [ ] Replace `client/src/styles/tokens.ts` with the Release token map (port
+- [x] Replace `client/src/styles/tokens.ts` with the Release token map (port
   from `design/Release/src/styles/tokens.ts`). Preserve the export name
   `tokens` and the type `Tokens`. Drop deprecated tokens (`colorRed`,
   `colorRedDim`, etc.) — let the type-check expose every consumer that
   needs updating later.
-- [ ] Add the Google Fonts `<link>` for Anton, Bytesized, Inter, JetBrains
+- [x] Add the Google Fonts `<link>` for Anton, Bytesized, Inter, JetBrains
   Mono, Science Gothic to `client/index.html` (or wherever the production
   client loads fonts).
-- [ ] Port `design/Release/src/styles/shared.css` utility classes (`.eyebrow`,
+- [x] Port `design/Release/src/styles/shared.css` utility classes (`.eyebrow`,
   `.chip`, `.grain-layer`, `.dot`) into `client/src/styles/shared.css` and
-  import once in `main.tsx`.
-- [ ] Audit `client/src/lib/icons.tsx` against
+  import once in `main.tsx`. _Also added a `:root` CSS-var mirror of
+  tokens.ts so the utilities don't reach for undefined vars._
+- [x] Audit `client/src/lib/icons.tsx` against
   `design/Release/src/lib/icons.tsx`; reconcile any divergence (the
   Heroicons sweep already happened — should be near-identical). Pin
-  `IconArrowsIn`, `IconSpinner`, `LogoShield` exceptions.
-- [ ] Add `client/src/utils/viewTransition.ts` exporting:
+  `IconArrowsIn`, `IconSpinner`, `LogoShield` exceptions. _Added
+  `IconCheck` (CheckIcon wrapper, was missing) + Release-named aliases
+  (`IconBack`, `IconChevron`, `IconFullscreen`, `IconExpand`, `IconVolume`,
+  `IconWarn`) so M3+ ports don't need rename churn. Added `ImdbBadge`
+  styled component._
+- [x] Add `client/src/utils/viewTransition.ts` exporting:
   ```ts
   export function withViewTransition(fn: () => void): void {
     if (typeof document !== "undefined" && "startViewTransition" in document) {
@@ -255,16 +260,32 @@ colours and typography are new.
     fn();
   }
   ```
-- [ ] **Spec sync:** AppShell.md, AppHeader.md, Library.md and any other
+- [x] **Spec sync:** AppShell.md, AppHeader.md, Library.md and any other
   spec that names a token — verify the spec's literal token names match
   what M1 just installed. If a spec says `colorGreen` but the new
   `tokens.ts` exports `colorGreen` — good. If a name diverges, fix the
-  spec, not the code.
-- [ ] Run `bun run lint` + `bun run format:check` in `client/`. Fix new
+  spec, not the code. _Clean — no spec cites a removed token (grepped
+  every `Components/*.md`). The two `tokens.colorRed` references in
+  Error.md/ProfileForm.md still resolve._
+- [x] Run `bun run lint` + `bun run format:check` in `client/`. Fix new
   warnings introduced by removed tokens (these are expected and signal
   consumers needing later milestones — comment with `// release-design:
   consumed in M{n}` where you can predict, otherwise leave failing).
-- [ ] Commit. Push. **Update roster.**
+  _289 token-property errors across 34 files — every error is TS2339 or
+  TS2551 against a removed token. Zero unexpected errors. Catalog of
+  affected files lives in the M1 commit message; M3+ resolves them as
+  each component is rewritten._
+- [x] Commit. Push. **Update roster.** _Commit `7612343`._
+
+### M1 also touched
+
+- `client/src/styles/global.css`: body bg `#080808` → `#050706`, body
+  color `#ffffff` → `#e8eee8`, scrollbar colors aligned to the new
+  border token, and removed the stale `@import url(...Bebas+Neue...)`
+  (fonts now load via index.html). Not in the original M1 task list but
+  in-spirit with the "visual surface matches Release" goal — without it
+  the body would still paint the old red/black palette underneath
+  every Griffel-styled element.
 
 ### Inputs
 
@@ -284,13 +305,15 @@ colours and typography are new.
 
 ### Verification
 
-- [ ] `bun run dev` in `client/` boots. Type-check passes (or fails only
+- [x] `bun run dev` in `client/` boots. Type-check passes (or fails only
   on call sites that consume removed tokens — those are expected and
-  noted).
-- [ ] Visual check: the existing dashboard shows new font (Anton in any
+  noted). _289 expected token errors; 0 unexpected._
+- [x] Visual check: the existing dashboard shows new font (Anton in any
   hero text) and the green is in the picker. (Acknowledged: header still
-  red because AppHeader is rewritten in M3.)
-- [ ] Roster row M1 = `done`.
+  red because AppHeader is rewritten in M3.) _Confirmed via browse
+  agent: body bg = `rgb(5, 7, 6)`, body color = `rgb(232, 238, 232)`,
+  Inter + Anton + Google Fonts CSS all 200, no Bebas Neue request._
+- [x] Roster row M1 = `done`.
 
 ### Hand-off note for M2
 
