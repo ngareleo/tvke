@@ -1,6 +1,7 @@
 # Client Conventions
 
 - `useLazyLoadQuery` lives **only** in `src/pages/`. Components read data via fragments + `useFragment`.
+  - **Section-tab exception:** when a page dispatches between tab/section components and only one section needs data, the data-owning section may run its own `useLazyLoadQuery` so the page doesn't fetch unused data on other sections. Wrap the section in a `<Suspense>` boundary at the page level. Operation name still follows the section component's filename (e.g. `TraceHistoryTabQuery` in `TraceHistoryTab.tsx`). First instance: M8 Settings → `TraceHistoryTab` (release-design migration).
 - Fragment naming: `<ComponentName>_<propName>` (e.g. `VideoCard_video`). Operation names must start with the containing filename (relay-compiler enforces).
 - Component definition style: `export const Name: FC<Props> = (…) => { … };` — always `FC`. Never function declarations.
 - Styles: Griffel (`makeStyles`) only. Classes in `global.css` are limited to browser globals (resets, fonts, scrollbar, `[data-tip]`, `body.resizing`).

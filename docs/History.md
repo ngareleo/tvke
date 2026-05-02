@@ -35,6 +35,15 @@ Entry shape (the entry ends with a single line containing exactly three hyphens 
 
 <!-- ENTRIES BELOW — newest first; each ends with a bare three-hyphen divider line. -->
 
+## 2026-05-03 — M8 Settings: section-tab Relay exception
+
+The Settings page originally fetched data from multiple section components at the page level (`SettingsPageContentQuery` spreading fragments from every tab). This created an upfront cost even when the user navigated directly to Library or Metadata — the Trace section's history data was fetched but unused. M8 pushes the trace query down into `TraceHistoryTab` itself via `useLazyLoadQuery`, wrapping the section in a `<Suspense>` boundary at the page level. This breaks the documented "pages only" rule for `useLazyLoadQuery`, so the exception was formally documented in `Client-Conventions/00-Patterns.md` with the preconditions (dispatched tab/section components, data needed by only one section, section wrapped in Suspense). The rule change is narrow and intentional: it solves the "fetch on entry, don't use" antipattern by making data ownership precise. No other Settings sections are affected; this pattern is expected to be rare. Updated SUMMARY.md pointer to flag the exception so future agents don't see a blanket "pages only" rule that later surprises them.
+
+**Files:** `docs/code-style/Client-Conventions/00-Patterns.md`, `docs/SUMMARY.md`
+**Related Commit.md entry:** `2026-05-03` (M8 Settings section-tab Relay exception)
+
+---
+
 ## 2026-05-03 — PR #54 — boot-pack reorg + Principles/Tooling subtrees + History.md
 
 CLAUDE.md had grown to inline four content sections (engineering principles, code-style pointers, code-quality tooling, observability rules) that duplicated or risked-duplicating canonical homes elsewhere. The risk was drift: the literal `kill_reason` enum, the ESLint rule list, and the engineering meta-rules each had a source of truth that CLAUDE.md was repeating. This session moved every duplicated rule into the canonical doc, replaced the CLAUDE.md sections with one-line pointers, and upgraded the session-start directive to name the boot pack explicitly: `SUMMARY.md` + `code-style/README.md` + `Observability/01-Logging-Policy.md`. Two new sub-trees landed: `code-style/Principles/` (which previously had no canonical home for "fix root causes" + "don't weaken safety timeouts") and `code-style/Tooling/` (linting + formatting per language: Rust, TS/React, SQL). The session also added this `History.md` file as a counterpart to `Commit.md` — `Commit.md` answers *did the docs sync at this SHA*, `History.md` answers *what's been changing and why*. Future agents reading the boot pack now see the four engineering principles as one-liners directly in `SUMMARY.md`, with the deep rationale a single click away.

@@ -15,6 +15,13 @@ Entry shape (each entry ends with the divider line described above):
 
 <!-- ENTRIES BELOW — newest first; each ends with a bare `---` line. The architect's next invocation will treat the no-entries state as the first-run case and prepend a bootstrap entry at HEAD. -->
 
+## 2026-05-03 — M8 Settings section-tab Relay exception
+
+**Files:** `docs/code-style/Client-Conventions/00-Patterns.md`, `docs/SUMMARY.md`
+**Why:** M8 Settings ships `TraceHistoryTab` with its own `useLazyLoadQuery` to avoid fetching playback history on other Settings sections; documented exception to "pages-only" rule + updated SUMMARY.md pointer
+
+---
+
 ## 2026-05-03 — storybook testing policy (console.error, play assertions, resolver patterns)
 
 **Files:** `docs/code-style/Client-Conventions/01-Storybook-Testing.md` (new), `docs/code-style/Client-Conventions/README.md`, `docs/INDEX.md`

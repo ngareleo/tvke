@@ -35,7 +35,7 @@ Inline subcomponents (ProfileRow, FilmRow, ProfileChip, PosterCard, ListRow, Vid
 | [MediaKindBadge component](MediaKindBadge.md) | `components/MediaKindBadge/MediaKindBadge.{tsx,styles.ts}` | done | not started |
 | [Watchlist page](Watchlist.md) | `pages/Watchlist/Watchlist.{tsx,styles.ts}` | done | done |
 | [Player page](Player.md) | `pages/Player/Player.tsx` | done | done |
-| [Settings page](Settings.md) | `pages/Settings/Settings.tsx` | baseline | not started |
+| [Settings page](Settings.md) | `pages/Settings/Settings.tsx` | done | done |
 | [DevPanel](DevPanel.md) | `components/DevPanel/DevPanel.{tsx,styles.ts}` | baseline | n/a — lab only |
 | [DesignSystem page](DesignSystem.md) | `pages/DesignSystem/DesignSystem.tsx` | baseline | n/a — lab only |
 | [Error page](Error.md) | `pages/Error/Error.{tsx,styles.ts}` | baseline | not started |

@@ -1,7 +1,7 @@
-import { mergeClasses } from "@griffel/react";
 import { type FC, useState } from "react";
 
 import { useSettingsTabStyles } from "~/components/settings-tabs/SettingsTabs.styles.js";
+import { SettingsToggle } from "~/components/settings-toggle/SettingsToggle.js";
 import {
   FLAG_REGISTRY,
   type FlagCategory,
@@ -75,7 +75,11 @@ const FlagRow: FC<{ flag: FlagDescriptor }> = ({ flag }) => {
       </div>
       <div className={styles.flagControl}>
         {flag.valueType === "boolean" ? (
-          <BooleanToggle value={value as boolean} onChange={(v) => setValue(v)} />
+          <SettingsToggle
+            on={value as boolean}
+            onChange={(v) => setValue(v)}
+            ariaLabel={flag.name}
+          />
         ) : (
           <NumberInput
             value={value as number}
@@ -87,24 +91,6 @@ const FlagRow: FC<{ flag: FlagDescriptor }> = ({ flag }) => {
         )}
       </div>
     </div>
-  );
-};
-
-const BooleanToggle: FC<{ value: boolean; onChange: (v: boolean) => void }> = ({
-  value,
-  onChange,
-}) => {
-  const styles = useFlagsTabStyles();
-  return (
-    <button
-      type="button"
-      role="switch"
-      aria-checked={value}
-      className={mergeClasses(styles.toggle, value && styles.toggleOn)}
-      onClick={() => onChange(!value)}
-    >
-      <span className={mergeClasses(styles.toggleThumb, value && styles.toggleThumbOn)} />
-    </button>
   );
 };
 

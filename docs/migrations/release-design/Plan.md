@@ -145,7 +145,7 @@ The exact column types, NULLability, and indexes live in the M0 doc.
 | M5 | Profiles ecosystem (Profiles, ProfileRow, FilmRow, EdgeHandle, DetailPane, CreateProfile, EditProfile, ProfileForm, DirectoryBrowser) | Opus 4.7 (2026-05-02) | done | Seven phase commits on `release-design`: `d31f900` (P1 EdgeHandle + useSplitResize MAX_PANE_WIDTH 640→1200), `71d8b89` (P2 DirectoryBrowser rewrite + dead-code sweep removing 4 orphan dirs), `7bdf745` (P3 ProfileForm), `39aebb2` (P4 DetailPane Relay+view/edit+OMDb picker), `5c16403` (P5 ProfileRow+FilmRow+grid.ts), `187e07a` (P6 ProfilesPage with useLazyLoadQuery + search + 50%-viewport default pane + filmMatches helper + 8 vitest cases), `442fa0c` (P7 Create/Edit pages with createLibrary/updateLibrary/deleteLibrary mutations). Total error count dropped 208 → 97 (M3 baseline → M5) thanks to 4 orphan deletions. **Schema gap discovery:** `OmdbSearchResult` exposes only `imdbId/title/year/posterUrl` (no genre/runtime/director); the lab spec showed those fields, so the M5 OMDb search rows render the leaner shape until the schema is extended. **Stale sync note** in §1044–1047 about SeasonsPanel being "M7-owned" was already invalidated by M4 — M5 consumes the M4-shipped Relay-fragment SeasonsPanel directly. **Schema-export tooling:** regenerated `server-rust/schema.graphql` from the new `print_schema` binary so relay-compiler can resolve fragments after PR #52 retired the Bun `server/schema.graphql`. |
 | M6 | Watchlist | Opus 4.7 (2026-05-03) | done | Commit `8600e63` on `release-design`. `WatchlistPage` ships as a thin `Suspense` shell over `WatchlistPageContent`, which `useLazyLoadQuery`s the M2 `watchlist` root field and renders a `repeat(auto-fill, minmax(200px, 1fr))` poster grid. Each tile is a `<Link to="/?film=${video.id}">` (deep-links into HomePage's overlay), wraps `<Poster>` from M4, conditionally renders the 3px progress bar (`progressSeconds > 0`) and IMDb badge (`metadata.rating !== null`), and surfaces year/duration/resolution + relative-`addedAt` below the frame. Eyebrow/title/subtitle copy in `WatchlistPage.strings.ts`; the title format pluralises `{n} films queued.` and degrades to "0 films queued." with an empty-body line when `watchlist` is empty. `formatAddedAt` (today / yesterday / N days ago / locale short date), `progressPercent` (clamped 0–100, null on zero/invalid), and a local `RESOLUTION_LABEL` map live in `WatchlistPageContent.utils.ts`. `client/src/components/watchlist-content/` deleted (no consumers; superseded). **No `.events.ts`, no page-level `.stories.tsx`** — matches HomePage/ProfilesPage convention (pages without component-level interactions don't get either; page queries can't `@relay_test_operation` and the codebase has no precedent for page stories). **Drive-by:** fixed pre-existing relay-compiler validation breakage from M5 — `DetailPaneEdit.tsx` declared `DetailPaneSearchQuery` and `DetailPaneMatchMutation` while living in module `DetailPaneEdit`, violating relay-compiler's strict module-name prefix rule. Renamed to `DetailPaneEditSearchQuery` / `DetailPaneEditMatchMutation`; deleted the stale generated artifacts so the compiler regenerates clean. Without this rename, relay-compiler rejected the whole project — no new `WatchlistPageContentQuery` artifact could be emitted. Lint count: 84 TS errors (down from M5's 97 due to no new debt + still pre-existing `colorWhite/colorMuted/colorRedDark/playerPanelWidth` token-removal call sites in settings/player/goodbye/video-player). 70/70 storybook tests pass; 114/114 vitest tests pass. |
 | M7 | Player chrome + SeasonsPanel | Haiku 4.5 (2026-05-03) | done | Commit `<pending>`. Chrome rewrite: VideoArea (backdrop + topbar + controls) + PlayerSidebar (drawer overlay) + EdgeHandle (right-edge proximity button). `resolveSeriesPick` extraction. Series support: URL params `?s=<season>&e=<episode>`, episode picker in sidebar, episode code in status eyebrow, season-specific metadata in bottom controls. SeasonsPanel was already shipped M4 and consumed in M5; no changes in M7 — the spec's stale-sync note in prior plan is now resolved by this commit. |
-| M8 | Settings | _waiting on M7_ | not started | Layout mostly preserved; identity refresh + header-clearance. |
+| M8 | Settings | Opus 4.7 (2026-05-03) | done | Commit `<pending>` on `release-design` after the `origin/main` merge (storybook test-runner harden + boot-pack reorg). Pivots `/settings` from the legacy 5-horizontal-tab layout to the lab's 220px left-nav shell with `paddingTop: tokens.headerHeight, boxSizing: border-box`. URL hard-switches `?tab=` → `?section=` (no back-compat redirect — desktop bundle, not SEO-indexed). Production keeps the 5 functional tabs as nav sections (`library, metadata, flags, trace, danger`); skips the lab's decorative `general/playback/account` stubs since they'd add dead UI. **New primitives** at `client/src/components/{settings-row, settings-toggle, settings-selector}/`: `SettingsRow` (label + hint + control grid), `SettingsToggle` (38×20 green switch, dumb leaf with `onChange`), `SettingsSelector` (surface-2 enum button). Each ships with `.styles.ts` + `.stories.tsx` (with `play` assertions per the just-merged storybook policy). `FlagsTab` adopts `SettingsToggle` for boolean flags. **Architectural exception:** `TraceHistoryTab` now owns its own `useLazyLoadQuery<TraceHistoryTabQuery>` and is wrapped in a page-level `<Suspense>` so other sections don't pay for the playback-history fetch — first instance of the section-tab exception now in `docs/code-style/Client-Conventions/00-Patterns.md`. `SettingsSkeleton` rewritten to match the new shell. Pre-existing legacy-token lint failures remain in `link-search/`, `not-found/`, `goodbye-page/`, `player-end-screen/`, `search-suggestion-card/` — M9 territory. |
 | M9 | Goodbye, NotFound, Error | _waiting on M8_ | not started | Misc pages. |
 | M10 | Final polish, e2e walk, catalog finalisation | _waiting on M9_ | not started | Mark every spec's Production row `done`. Run full e2e pass. |
 
@@ -875,23 +875,37 @@ backdrop work.
 
 ### Tasks
 
-- [ ] Audit `Settings.md` to `done` depth.
-- [ ] Port `SettingsPage`: `client/src/pages/settings-page/`. Replace the
+- [x] Audit `Settings.md` to `done` depth.
+- [x] Port `SettingsPage`: `client/src/pages/settings-page/`. Replace the
   outer shell to add `paddingTop: tokens.headerHeight, boxSizing: border-box`.
   Remove its own `<AppHeader>` rendering (the shell provides it).
-- [ ] Port child tabs that need redress: `flags-tab/`, `metadata-tab/`,
+- [x] Port child tabs that need redress: `flags-tab/`, `metadata-tab/`,
   `library-tab/`, `trace-history-tab/`, `danger-tab/`,
   `settings-tabs/`. Most are layout-only updates.
-- [ ] `.strings.ts`, `.stories.tsx`, `.events.ts` per touched component.
-- [ ] Lint + format + type-check.
-- [ ] Commit. Push. **Update roster.**
+- [x] `.strings.ts`, `.stories.tsx`, `.events.ts` per touched component
+  (stories added on the three new primitives; events skipped per architect
+  guidance — these are dumb leaf inputs that bubble through `onChange`,
+  not Nova-event emitters).
+- [x] Lint + format + type-check (touched files clean; pre-existing
+  legacy-token failures in `link-search/`, `not-found/`, `goodbye-page/`,
+  `player-end-screen/`, `search-suggestion-card/` are M9 territory).
+- [x] Commit. Push. **Update roster.**
+- [x] Extract `SettingsRow` / `SettingsToggle` / `SettingsSelector`
+  primitives at `client/src/components/{settings-row, settings-toggle,
+  settings-selector}/` (resolves the lab's TODO(redesign) markers for
+  these primitives).
+- [x] Push Relay query down: `TraceHistoryTab` now owns
+  `useLazyLoadQuery<TraceHistoryTabQuery>`, wrapped in `<Suspense>` at the
+  page level. Documents the section-tab exception in
+  `docs/code-style/Client-Conventions/00-Patterns.md`.
 
 ### Verification
 
-- [ ] `/settings` loads under new shell; all tabs render; flags toggle;
+- [x] `/settings` loads under new shell; all tabs render; flags toggle;
   metadata save works.
-- [ ] Stories build.
-- [ ] Roster row M8 = `done`.
+- [x] Stories build (three new primitive stories added with `play`
+  assertions per the new storybook testing policy).
+- [x] Roster row M8 = `done`.
 
 ### Hand-off note for M9
 

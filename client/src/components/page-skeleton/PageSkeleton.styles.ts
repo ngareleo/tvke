@@ -114,32 +114,40 @@ export const usePageSkeletonStyles = makeStyles({
     gap: "6px",
   },
   // ── Settings skeletons ────────────────────────────────────────────────────
-  tabBar: {
-    display: "flex",
-    alignItems: "center",
-    borderBottom: `1px solid ${tokens.colorBorder}`,
-    flexShrink: "0",
-    backgroundColor: tokens.colorSurface,
-    padding: "0 4px",
+  settingsShell: {
+    height: "100%",
+    display: "grid",
+    gridTemplateColumns: "220px 1fr",
+    paddingTop: tokens.headerHeight,
+    boxSizing: "border-box",
   },
-  tab: {
-    padding: "0 18px",
-    height: "44px",
+  settingsNav: {
+    borderRight: `1px solid ${tokens.colorBorder}`,
+    backgroundColor: tokens.colorBg1,
+    padding: "20px",
     display: "flex",
-    alignItems: "center",
+    flexDirection: "column",
+    gap: "12px",
+  },
+  settingsNavItem: {
+    paddingTop: "9px",
+    paddingBottom: "9px",
+    paddingLeft: "12px",
+    paddingRight: "12px",
   },
   settingsBody: {
-    padding: "28px",
+    overflowY: "auto",
+    padding: "32px 40px",
     display: "flex",
     flexDirection: "column",
-    gap: "24px",
+    gap: "16px",
   },
-  settingsSection: {
+  settingsRow: {
     display: "flex",
     flexDirection: "column",
-    gap: "10px",
-    paddingBottom: "24px",
-    borderBottom: `1px solid ${tokens.colorBorder}`,
+    gap: "8px",
+    paddingBottom: "14px",
+    borderBottom: `1px solid ${tokens.colorBorderSoft}`,
   },
   // ── Layout helpers ────────────────────────────────────────────────────────
   root: {

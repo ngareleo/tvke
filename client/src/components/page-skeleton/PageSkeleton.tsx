@@ -118,22 +118,24 @@ export const WatchlistSkeleton: FC = () => {
 export const SettingsSkeleton: FC = () => {
   const s = usePageSkeletonStyles();
   return (
-    <div className={s.root}>
-      {/* Tab bar */}
-      <div className={s.tabBar}>
-        {[60, 70, 90].map((w, i) => (
-          <div key={i} className={s.tab}>
-            <div className={s.skeleton} style={{ width: w, height: 13 }} />
+    <div className={s.settingsShell}>
+      {/* Left nav */}
+      <div className={s.settingsNav}>
+        <div className={s.skeleton} style={{ width: 64, height: 11, marginBottom: 6 }} />
+        {[60, 70, 50, 80, 75].map((w, i) => (
+          <div key={i} className={s.settingsNavItem}>
+            <div className={s.skeleton} style={{ width: w, height: 12 }} />
           </div>
         ))}
       </div>
       {/* Body */}
       <div className={s.settingsBody}>
-        {[1, 2, 3].map((i) => (
-          <div key={i} className={s.settingsSection}>
-            <div className={s.skeleton} style={{ width: 200, height: 14 }} />
-            <div className={s.skeleton} style={{ width: "60%", height: 11 }} />
-            <div className={s.skeleton} style={{ width: "100%", height: 36 }} />
+        <div className={s.skeleton} style={{ width: 80, height: 11 }} />
+        <div className={s.skeleton} style={{ width: 220, height: 36, marginBottom: 12 }} />
+        {[260, 200, 240].map((w, i) => (
+          <div key={i} className={s.settingsRow}>
+            <div className={s.skeleton} style={{ width: w, height: 13 }} />
+            <div className={s.skeleton} style={{ width: w * 0.7, height: 11 }} />
           </div>
         ))}
       </div>
