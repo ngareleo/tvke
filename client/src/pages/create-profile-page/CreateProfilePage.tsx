@@ -1,6 +1,6 @@
 import { type FC } from "react";
 import { fetchQuery, graphql, useMutation, useRelayEnvironment } from "react-relay";
-import { useLocation, useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 
 import { ProfileForm, type ProfileFormValues } from "~/components/profile-form/ProfileForm.js";
 import { PROFILES_QUERY } from "~/pages/profiles-page/ProfilesPageContent.js";
@@ -22,21 +22,19 @@ const CREATE_LIBRARY = graphql`
   }
 `;
 
-interface LocationState {
-  from?: string;
-}
-
 const CreateProfilePage: FC = () => {
   const navigate = useNavigate();
-  const location = useLocation();
+  const [searchParams] = useSearchParams();
   const environment = useRelayEnvironment();
   const [commit, isInFlight] = useMutation<CreateProfilePageMutation>(CREATE_LIBRARY);
 
-  // Callers pass `state: { from: <path> }` when navigating here so that
-  // post-create we land back where the user started instead of always
-  // dropping them at /profiles. Falls back to /profiles for direct URL
-  // visits.
-  const returnTo = (location.state as LocationState | null)?.from ?? "/profiles";
+  // Callers tack `?return_to=<encoded path>` onto the URL so post-create
+  // we land back where the user started instead of always dumping them
+  // at /profiles. Falls back to /profiles for direct URL visits.
+  const rawReturn = searchParams.get("return_to");
+  // Only honour same-origin paths to avoid being weaponised as an open
+  // redirect.
+  const returnTo = rawReturn && rawReturn.startsWith("/") ? rawReturn : "/profiles";
 
   const handleSubmit = (values: ProfileFormValues): void => {
     commit({

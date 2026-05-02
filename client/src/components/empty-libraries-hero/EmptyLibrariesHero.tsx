@@ -17,10 +17,12 @@ interface EmptyLibrariesHeroProps {
 export const EmptyLibrariesHero: FC<EmptyLibrariesHeroProps> = ({ watermark }) => {
   const styles = useEmptyLibrariesHeroStyles();
   const location = useLocation();
-  // Pass the current path as `from` so CreateProfilePage can route the
-  // user back here after the mutation lands instead of dumping them on
-  // /profiles.
-  const fromState = { from: location.pathname + location.search };
+  // Encode the current URL into ?return_to= so CreateProfilePage knows
+  // where to send the user back after the mutation lands. URL-based
+  // (rather than Link state) so it survives HMR + browser refresh and
+  // is visible in the URL bar.
+  const returnTo = encodeURIComponent(location.pathname + location.search);
+  const createHref = `/profiles/new?return_to=${returnTo}`;
 
   return (
     <div className={styles.root}>
@@ -34,7 +36,7 @@ export const EmptyLibrariesHero: FC<EmptyLibrariesHeroProps> = ({ watermark }) =
         <div className={styles.rule} />
         <p className={styles.body}>{strings.body}</p>
         <div className={styles.actions}>
-          <Link to="/profiles/new" state={fromState} className={styles.cta}>
+          <Link to={createHref} className={styles.cta}>
             {strings.cta}
           </Link>
           <span className={styles.hint}>{strings.hint}</span>
