@@ -3,8 +3,16 @@
 > Catalog of every GraphQL + SQLite change M2 lands. UI milestones (M3+)
 > consume these via Relay fragments only — no schema work after M2.
 >
-> **TL;DR — the schema is already mostly there.** The current SDL covers
-> Library, Video (with full `metadata` including `posterUrl`),
+> **Backend target: Rust.** As of 2026-05-02 the Bun server (`server/`) is
+> retired for new feature work — M2 lands directly in `server-rust/`.
+> Bun-side paths that previously appeared in this doc have been swapped
+> to their Rust counterparts (`migrate.rs`, `types/video.rs`, `scalars.rs`,
+> `queries/seasons.rs`, …). The Rust server is async-graphql code-first
+> (no separate SDL file), so the GraphQL "schema" lives in the
+> `#[Object]` / `#[SimpleObject]` macros on `server-rust/src/graphql/types/`.
+>
+> **TL;DR — the schema is already mostly there.** The current schema
+> covers Library, Video (with full `metadata` including `posterUrl`),
 > WatchlistItem, OMDb search, mutations for create/update/delete library,
 > match/unmatch video, watchlist add/remove, scan progress with per-library
 > done/total counts, listDirectory for the DirectoryBrowser, and
@@ -26,8 +34,10 @@
 
 ## What's already there (no change needed)
 
-The following are already in `server/src/graphql/schema.ts` and the
-production DB. Release-design milestones consume them as-is:
+The following are already exposed by `server-rust/src/graphql/` (typed
+via async-graphql `#[Object]` / `#[SimpleObject]` in
+`server-rust/src/graphql/types/`) and the production DB. Release-design
+milestones consume them as-is:
 
 | Surface | Where it satisfies |
 |---|---|
@@ -96,18 +106,21 @@ extend type Video {
 }
 ```
 
-**Notes for the M2 implementer:**
+**Notes for the M2 implementer (ratified during M2 implementation, 2026-05-02):**
 
 - A "show" is a `Video` row whose `mediaType = TV_SHOWS`. The "show"
   itself has no playable file; its `videoId` exists so the show has a
   Relay node ID. Episodes are separate `Video`-shaped rows pointed back
   to the show.
-- Two layouts are viable: either a separate `episodes` table referencing
-  `videos.id` for the show + `videos.id` for the episode file, **or**
-  `episodes` as the canonical row and `videos.id` is the episode itself
-  (the show is a synthetic aggregate). M2 picks one and documents it
-  here in this section before implementing — update this paragraph
-  during M2.
+- **Chosen layout (M2):** episodes are first-class `Video` rows; the
+  `episodes` join table links them to seasons via
+  `(show_video_id, season_number, episode_number)` with
+  `episode_video_id` pointing back to the episode's `Video.id`. The
+  "show" is its own `Video` row with `mediaType = TV_SHOWS` and a
+  synthetic id (no playable file). The alternative ("episodes as the
+  canonical row, show as a synthetic aggregate") was rejected because
+  it duplicates Video state and breaks the existing Relay node-ID
+  contract.
 - `Episode.videoId` is what the Player URL `/player/:videoId?s=&e=`
   resolves to: clicking an episode chip navigates to the episode's
   `Video.id`.
@@ -149,8 +162,9 @@ design requires. M3+ wire to them as-is.
 
 ## SQLite migrations (M2)
 
-Single migration file added to the migrations list in
-`server/src/db/migrate.ts`. Order:
+Extend the existing `execute_batch` block in `server-rust/src/db/migrate.rs`.
+Migrations are idempotent (`CREATE TABLE IF NOT EXISTS`); the column-add
+is guarded by a `PRAGMA table_info(videos)` introspection. Order:
 
 ```sql
 -- Migration N: release-design-tv-shows-and-native-res
@@ -207,21 +221,30 @@ episodes-as-videos) at implementation time, lands the migration, and
 
 ## Resolver / mapper / presenter pointers
 
+In Rust, async-graphql is code-first: there is no separate SDL,
+resolvers, presenters, and types live together inside the type files'
+`#[Object]` / `#[ComplexObject]` impl blocks, and what Bun called a
+"presenter" is the `from_row` impl on each GraphQL struct.
+
 | Schema element | Files to touch |
 |---|---|
-| `Video.nativeResolution` resolver | `server/src/graphql/resolvers/video.ts` (new field resolver) + `server/src/graphql/mappers.ts` (height→enum mapper) |
-| `Video.seasons` resolver | `server/src/graphql/resolvers/video.ts` (new field resolver) + new `server/src/db/queries/seasons.ts` |
-| `Season`, `Episode` types + presenters | `server/src/graphql/presenters.ts` (presenters return objects with `__typename` if union-shaped — these are plain types, no `__typename` required) |
-| Episode → Video link | `server/src/graphql/resolvers/video.ts` for `Episode.videoId` if not auto-resolved by graphql-tools |
-| Backfill on scan | `server/src/services/libraryScanner.ts` — extend the per-file probe path |
+| `Video.nativeResolution` field | `server-rust/src/graphql/types/video.rs` (add field + populate in `Video::from_row`) + `server-rust/src/graphql/scalars.rs` (`Resolution::from_height` mapper) |
+| `Video.seasons` field resolver | `server-rust/src/graphql/types/video.rs` (new async fn on `#[ComplexObject]`) + new `server-rust/src/db/queries/seasons.rs` |
+| `Season`, `Episode` types | New files `server-rust/src/graphql/types/season.rs` and `episode.rs` (each a `#[derive(SimpleObject)]` or `#[Object]`) — re-export from `server-rust/src/graphql/types/mod.rs` |
+| Episode → Video link | `Episode.videoId` is a struct field on `Episode`; populated when the row's `episode_video_id` is non-null. No async resolver needed for the ID itself. |
+| Backfill on scan | `server-rust/src/services/library_scanner.rs` — extend the per-file probe path to compute `native_resolution` from probed height; one-shot backfill at scanner startup for `WHERE native_resolution IS NULL`. |
 
 ---
 
 ## Tests M2 ships (pure-logic only, per the porting policy)
 
-- `server/src/graphql/__tests__/mappers.test.ts` — height→Resolution mapping cases.
-- `server/src/db/queries/__tests__/seasons.test.ts` — listing + grouping by season.
-- (Existing tests under `server/src/db/queries/__tests__/` continue to pass.)
+Rust test idiom: `#[cfg(test)] mod tests { ... }` colocated at the bottom
+of each source file (matches the existing pattern in
+`server-rust/src/db/queries/videos.rs` and `jobs.rs`).
+
+- `server-rust/src/graphql/scalars.rs` — `Resolution::from_height` boundary cases.
+- `server-rust/src/db/queries/seasons.rs` — listing + grouping by season.
+- (Existing 250 tests across `server-rust/` continue to pass.)
 
 Component-level resolver tests are not required (the existing test suite
 already covers query/mutation routing).
@@ -255,7 +278,7 @@ If a milestone in M3+ discovers a missing schema field:
 
 | Date | Field | Commit | Reason |
 |---|---|---|---|
-| _(none yet)_ | | | |
+| 2026-05-02 | TV-show grouping in scanner | _(deferred)_ | M2 lands the schema, GraphQL surface, and `videos.native_resolution` backfill via the periodic scanner. The TV-show filename-parsing + show-row synthesis algorithm is deferred to a focused follow-up: real layouts vary (`Show/S01E01.mkv` vs `Show/Season 1/S01E01.mkv` vs flat) and `Components/ProfileForm.md` only describes user-facing copy, not an algorithm. M3+ component work renders against the schema using mocked TV data via Storybook until the patch lands. Tracking task: open follow-up PR before M3 ships any TV-show UI. |
 
 ---
 
@@ -263,6 +286,7 @@ If a milestone in M3+ discovers a missing schema field:
 
 - Schema surface (current): `docs/server/GraphQL-Schema/00-Surface.md`
 - DB schema docs: `docs/server/DB-Schema/`
+- Rust DB conventions: `docs/migrations/rust-rewrite/05-Database-Layer.md`
 - Native-resolution full design: `docs/migrations/rust-rewrite/06-File-Handling-Layer.md` § 5
 - Per-component consumers: `docs/migrations/release-design/Components/<Name>.md`
-- Plan (out-of-repo): `docs/migrations/release-design/Plan.md`
+- Plan (in-repo): `docs/migrations/release-design/Plan.md`

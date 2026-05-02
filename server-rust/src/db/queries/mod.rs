@@ -5,6 +5,7 @@
 pub mod jobs;
 pub mod libraries;
 pub mod playback_history;
+pub mod seasons;
 pub mod segments;
 pub mod user_settings;
 pub mod video_metadata;

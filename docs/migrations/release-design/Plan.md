@@ -329,25 +329,42 @@ colours and typography are new.
 **Goal:** Schema is in its v1 shape. Old UI keeps booting against it; new
 UI (M3+) consumes the new fields directly.
 
+> **Backend target:** Rust. As of 2026-05-02 the Bun server (`server/`) is
+> retired for new work — every M2+ schema, resolver, and scanner change
+> lands in `server-rust/`. The Bun tree is left in place but no longer
+> receives feature work; references below have been swapped to their Rust
+> counterparts.
+
 ### Tasks
 
 - [ ] Read `Schema-Changes.md` (created in M0) end-to-end.
-- [ ] Write SQLite migration script (next file in
-  `server/src/db/migrate.ts` migration list). Land all schema deltas in one
-  migration: ADD/ALTER/DROP for tables and columns named in §schema-preview.
-- [ ] Update `server/src/graphql/schema.ts` (or whatever holds the SDL) for
-  every GQL change. Add new types (`VideoKind` enum, `Season`, `Episode`,
-  `WatchlistItem`, etc.) and remove the dropped ones.
-- [ ] Update `server/src/graphql/mappers.ts`, `presenters.ts`, and
-  `resolvers/` to source the new fields. Each resolver follows the
-  one-resolver-per-field rule.
-- [ ] Update `server/src/db/queries/` with new per-table query files for
-  any new tables (`watchlist.ts`, `seasons.ts`, `episodes.ts`).
-- [ ] Drop server code for deleted surface (`feedback*` queries, mutations,
-  etc.). Search-and-destroy.
+- [ ] Write SQLite migration in `server-rust/src/db/migrate.rs` (extend the
+  existing `execute_batch` block). Land all schema deltas in one
+  migration: ADD/ALTER for tables and columns named in §schema-preview.
+- [ ] Update `server-rust/src/graphql/types/video.rs` (Video field
+  additions) and add new files `server-rust/src/graphql/types/season.rs`
+  and `server-rust/src/graphql/types/episode.rs`. async-graphql is
+  code-first via `#[Object]` / `#[ComplexObject]` — there is no separate
+  SDL file. Re-export the new types from `server-rust/src/graphql/types/mod.rs`.
+- [ ] Update `server-rust/src/graphql/scalars.rs` (the equivalent of the
+  Bun mapper module) with `Resolution::from_height(h)` round-down mapping.
+  Existing `Resolution::from_internal` / `to_internal` pattern is the
+  template.
+- [ ] Add `Video::from_row` field updates so DB → GraphQL conversion
+  populates `native_resolution`. The `from_row` impl pattern in
+  `server-rust/src/graphql/types/video.rs` is the equivalent of the Bun
+  presenter layer.
+- [ ] Update `server-rust/src/db/queries/` with new per-table query file
+  `seasons.rs` (covers both `seasons` and `episodes` tables). Inline
+  `#[cfg(test)] mod tests` for insert/list/group, matching the existing
+  `videos.rs` tests pattern.
+- [ ] Add `native_resolution: Option<Resolution>` field to `VideoRow` in
+  `server-rust/src/db/queries/videos.rs` and update the SELECT/UPSERT
+  statements + `from_row` to include it.
 - [ ] Add resolver-level tests for the new fields (allowed under the
-  "tests for pure logic" rule — schema mappers ARE pure logic).
-- [ ] Run `bun run test` in `server/`. All green.
+  "tests for pure logic" rule — schema mappers ARE pure logic). Tests live
+  inline as `#[cfg(test)] mod tests` next to the source.
+- [ ] Run `cargo test -p xstream-server`. All green.
 - [ ] **Spec sync:** if any new GQL field name diverged during
   implementation from what `Schema-Changes.md` predicted, update the
   schema doc to match the implemented surface (code wins, doc follows).
@@ -358,30 +375,33 @@ UI (M3+) consumes the new fields directly.
 - `docs/migrations/release-design/Schema-Changes.md`
 - `docs/server/GraphQL-Schema/00-Surface.md`
 - `docs/server/DB-Schema/`
-- `server/src/db/migrate.ts`, `server/src/db/queries/`
-- `server/src/graphql/`
+- `docs/migrations/rust-rewrite/05-Database-Layer.md` — Rust DB query
+  conventions (raw SQL, `params!`, `from_row` pattern, `execute_batch`
+  for migrations)
+- `server-rust/src/db/migrate.rs`, `server-rust/src/db/queries/`
+- `server-rust/src/graphql/` (`types/`, `scalars.rs`)
 
 ### Cross-cutting notes for M3+ (load-bearing)
 
 > After M2, the schema has these new fields/types ready to consume:
-> `Video.kind`, `Video.seasons`, `Video.nativeResolution`, `Video.posterUrl`,
-> `Watchlist`, `Library.scanProgress`. The old `Film.gradient`, `feedback*`
-> are gone. Components in M3+ reference these in their Relay fragments.
+> `Video.seasons`, `Video.nativeResolution` (the existing schema already
+> covers `Video.mediaType`, `Video.metadata.posterUrl`, `Watchlist`,
+> `LibraryScanProgress` — see Schema-Changes.md "What's already there").
+> Components in M3+ reference these in their Relay fragments.
 
 ### Verification
 
-- [ ] `bun run dev` in `server/` boots cleanly. SQLite migration runs once
-  on a fresh DB.
-- [ ] GraphQL Playground queries resolve for `Video.kind`, `Video.seasons`,
-  `Watchlist`, etc.
-- [ ] Server tests green.
-- [ ] **Existing client at `bun run dev` in `client/`** — DashboardPage,
-  LibraryPage etc. should still load. Old field references that were
-  dropped will fail their queries; FIX or temporarily stub those query
-  files in this milestone (the milestone that replaces them is responsible
-  for proper reconciliation, but the old surfaces should not 500). If a
-  page can't be made to load, leave a `// release-design-temporary` stub
-  and document it in the M2 hand-off note.
+- [ ] `cargo run -p xstream-server` boots cleanly against a fresh DB
+  (`tmp/xstream-rust.db` deleted before launch). SQLite migration runs
+  idempotently.
+- [ ] GraphQL Playground at the Rust origin resolves
+  `{ videos { edges { node { id title nativeResolution seasons { seasonNumber episodes { episodeNumber title onDisk videoId } } } } } }`.
+- [ ] `cargo test -p xstream-server` green (existing 250 tests + the new
+  seasons + height-mapper tests).
+- [ ] **Existing client at `bun run dev` in `client/`** with
+  `useRustBackend` flag enabled — DashboardPage, LibraryPage, etc. still
+  load. Old field references continue to resolve; new fields appear
+  alongside.
 - [ ] Roster row M2 = `done`.
 
 ### Hand-off note for M3

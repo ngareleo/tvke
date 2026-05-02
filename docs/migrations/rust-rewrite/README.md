@@ -80,6 +80,16 @@ Smoke test verified: `xstream-server listening addr=127.0.0.1:38511`, `Hardware 
 5. Segment cache eviction policy (currently unbounded).
 6. OTLP endpoint stays at `localhost:5341` — user-facing telemetry settings are Step 4.
 
+**Bun retirement (2026-05-02):** with the streaming + library-scanner
+PRs (#41, #44) merged, the Bun server is retired for new feature work.
+Every backend change going forward — including the parallel
+[release-design migration](../release-design/) (M2 schema, M3+ resolver
+patches, scanner extensions) — lands directly in `server-rust/` only.
+The Bun tree (`server/`) stays in the repo as a reference until Step 4
+deletes it, but receives no new feature commits. Any planning doc that
+still says "land it in both backends" predates this decision and should
+be read with that swap in mind.
+
 **Library scanner port** in flight on `feat/rust-library-scanner` (PR #44, awaiting user review). Implements `library_scanner.rs` (`walkdir` + `for_each_concurrent(4)` + SHA-1 fingerprint + ffprobe via `FfmpegFile` + DB upserts), `scan_state.rs` (`RwLock<ScanSnapshot>` + `tokio::sync::broadcast`), wires `libraryScanUpdated` / `libraryScanProgress` subscriptions, and boots a 30 s `spawn_periodic_scan` on server start. **OMDb auto-match folded in** (commit `27dea4c`): `OmdbClient` (`server-rust/src/services/omdb.rs`), `library_scanner::auto_match_library` running post-scan at concurrency 4, `AppConfig.omdb_api_key: Option<String>` + `AppContext.omdb: Option<OmdbClient>`. 250 tests total (15 omdb + 13 scanner + 2 scan_state + 6 DB new). Still deferred: `SCAN_INTERVAL_MS` env override; `match_video` mutation + `searchOmdb` GraphQL surfaces (OMDB-002 in `docs/todo.md`; pointer → `06-File-Handling-Layer.md §6`). This PR was slated in `06-File-Handling-Layer.md` as part of the file-handling layer and was backfilled into Step 3 because `scan_libraries` was a stub in the Step-3 Tauri binary — adding a library or clicking Scan All with Rust backend on produced no scan, no UI feedback, and no DB writes.
 
 Step 4 (release) has not started.

@@ -72,6 +72,28 @@ impl Resolution {
             Resolution::R4k => "4k",
         }
     }
+
+    /// Map a probed pixel height to the closest Resolution rung, rounding
+    /// DOWN (i.e. floor to the highest rung whose threshold is ≤ the
+    /// input). Heights below 240 clamp up to `R240p` — the lowest rung is
+    /// the floor, not a typed error, because we'd rather expose a low-res
+    /// source than refuse to play it.
+    pub fn from_height(height: i64) -> Self {
+        const RUNGS: &[(i64, Resolution)] = &[
+            (2160, Resolution::R4k),
+            (1080, Resolution::R1080p),
+            (720, Resolution::R720p),
+            (480, Resolution::R480p),
+            (360, Resolution::R360p),
+            (240, Resolution::R240p),
+        ];
+        for (threshold, label) in RUNGS {
+            if height >= *threshold {
+                return *label;
+            }
+        }
+        Resolution::R240p
+    }
 }
 
 #[derive(Enum, Copy, Clone, Eq, PartialEq, Debug)]
@@ -152,6 +174,39 @@ mod tests {
         assert!(Resolution::from_internal("8k").is_none());
         assert!(Resolution::from_internal("").is_none());
         assert!(Resolution::from_internal("RESOLUTION_240P").is_none()); // wrong direction
+    }
+
+    #[test]
+    fn resolution_from_height_exact_rungs() {
+        for (h, expected) in [
+            (240, Resolution::R240p),
+            (360, Resolution::R360p),
+            (480, Resolution::R480p),
+            (720, Resolution::R720p),
+            (1080, Resolution::R1080p),
+            (2160, Resolution::R4k),
+        ] {
+            assert_eq!(Resolution::from_height(h), expected, "h={h}");
+        }
+    }
+
+    #[test]
+    fn resolution_from_height_rounds_down_between_rungs() {
+        assert_eq!(Resolution::from_height(700), Resolution::R480p); // 480 ≤ 700 < 720
+        assert_eq!(Resolution::from_height(1079), Resolution::R720p); // 720 ≤ 1079 < 1080
+        assert_eq!(Resolution::from_height(1440), Resolution::R1080p); // 1080 ≤ 1440 < 2160
+        assert_eq!(Resolution::from_height(2159), Resolution::R1080p);
+    }
+
+    #[test]
+    fn resolution_from_height_clamps_below_240_up_to_r240p() {
+        assert_eq!(Resolution::from_height(144), Resolution::R240p);
+        assert_eq!(Resolution::from_height(0), Resolution::R240p);
+    }
+
+    #[test]
+    fn resolution_from_height_treats_above_4k_as_4k() {
+        assert_eq!(Resolution::from_height(4320), Resolution::R4k); // 8K probed
     }
 
     #[test]

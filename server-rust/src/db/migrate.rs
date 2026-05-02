@@ -98,7 +98,42 @@ pub fn run(conn: &Connection) -> rusqlite::Result<()> {
           started_at  TEXT NOT NULL
         );
         CREATE INDEX IF NOT EXISTS playback_history_started_at ON playback_history(started_at DESC);
+        CREATE TABLE IF NOT EXISTS seasons (
+          show_video_id TEXT    NOT NULL REFERENCES videos(id) ON DELETE CASCADE,
+          season_number INTEGER NOT NULL CHECK (season_number > 0),
+          PRIMARY KEY (show_video_id, season_number)
+        );
+        CREATE TABLE IF NOT EXISTS episodes (
+          show_video_id    TEXT    NOT NULL REFERENCES videos(id) ON DELETE CASCADE,
+          season_number    INTEGER NOT NULL,
+          episode_number   INTEGER NOT NULL CHECK (episode_number > 0),
+          title            TEXT,
+          episode_video_id TEXT             REFERENCES videos(id) ON DELETE SET NULL,
+          PRIMARY KEY (show_video_id, season_number, episode_number),
+          FOREIGN KEY (show_video_id, season_number)
+            REFERENCES seasons(show_video_id, season_number) ON DELETE CASCADE
+        );
+        CREATE INDEX IF NOT EXISTS idx_episodes_show ON episodes(show_video_id);
+        CREATE INDEX IF NOT EXISTS idx_episodes_video ON episodes(episode_video_id);
         COMMIT;
         "#,
-    )
+    )?;
+
+    if !column_exists(conn, "videos", "native_resolution")? {
+        conn.execute("ALTER TABLE videos ADD COLUMN native_resolution TEXT", [])?;
+    }
+
+    Ok(())
+}
+
+fn column_exists(conn: &Connection, table: &str, column: &str) -> rusqlite::Result<bool> {
+    let mut stmt = conn.prepare(&format!("PRAGMA table_info({table})"))?;
+    let mut rows = stmt.query([])?;
+    while let Some(row) = rows.next()? {
+        let name: String = row.get("name")?;
+        if name == column {
+            return Ok(true);
+        }
+    }
+    Ok(false)
 }

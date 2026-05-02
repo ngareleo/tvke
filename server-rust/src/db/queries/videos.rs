@@ -18,6 +18,11 @@ pub struct VideoRow {
     pub bitrate: i64,
     pub scanned_at: String,
     pub content_fingerprint: String,
+    /// Native resolution rung as the internal lowercase string ("240p", "1080p", "4k").
+    /// Null for rows scanned before the column existed and for synthetic show rows.
+    /// The scanner derives this from the first video-stream height via
+    /// `Resolution::from_height`; the GraphQL boundary maps it via `Resolution::from_internal`.
+    pub native_resolution: Option<String>,
 }
 
 impl VideoRow {
@@ -33,6 +38,7 @@ impl VideoRow {
             bitrate: r.get("bitrate")?,
             scanned_at: r.get("scanned_at")?,
             content_fingerprint: r.get("content_fingerprint")?,
+            native_resolution: r.get("native_resolution")?,
         })
     }
 }
@@ -104,8 +110,9 @@ pub fn upsert_video(db: &Db, row: &VideoRow) -> DbResult<()> {
         c.execute(
             r#"INSERT INTO videos
                  (id, library_id, path, filename, title, duration_seconds,
-                  file_size_bytes, bitrate, scanned_at, content_fingerprint)
-               VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)
+                  file_size_bytes, bitrate, scanned_at, content_fingerprint,
+                  native_resolution)
+               VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)
                ON CONFLICT(path) DO UPDATE SET
                  library_id          = excluded.library_id,
                  filename            = excluded.filename,
@@ -114,7 +121,8 @@ pub fn upsert_video(db: &Db, row: &VideoRow) -> DbResult<()> {
                  file_size_bytes     = excluded.file_size_bytes,
                  bitrate             = excluded.bitrate,
                  scanned_at          = excluded.scanned_at,
-                 content_fingerprint = excluded.content_fingerprint"#,
+                 content_fingerprint = excluded.content_fingerprint,
+                 native_resolution   = COALESCE(excluded.native_resolution, native_resolution)"#,
             params![
                 row.id,
                 row.library_id,
@@ -126,6 +134,7 @@ pub fn upsert_video(db: &Db, row: &VideoRow) -> DbResult<()> {
                 row.bitrate,
                 row.scanned_at,
                 row.content_fingerprint,
+                row.native_resolution,
             ],
         )?;
         Ok(())
@@ -520,6 +529,7 @@ mod tests {
             bitrate: 100_000,
             scanned_at: "2026-01-01T00:00:00.000Z".to_string(),
             content_fingerprint: "1000:abc".to_string(),
+            native_resolution: None,
         }
     }
 

@@ -194,15 +194,21 @@ export function withViewTransition(fn: () => void): void {
 
 ### 12. Playback is OFF-LIMITS
 
-The streaming pipeline ships unchanged in this PR. **No agent may modify**:
+The streaming pipeline ships unchanged in this PR. The backend lives in
+**Rust** (`server-rust/`) as of 2026-05-02; the Bun tree (`server/`) is
+retired for new feature work and not the target of any release-design
+edit. **No agent may modify**:
 
 - `client/src/services/*.ts` (BufferManager, ChunkPipeline,
   PlaybackController, etc.)
 - `client/src/hooks/useChunkedPlayback.ts`
 - `client/src/hooks/useVideoPlayback.ts`
 - `client/src/hooks/useVideoSync.ts`
-- `server/src/services/chunker.ts`, `ffmpegFile.ts`, `hwAccel.ts`
-- `server/src/routes/stream.ts`
+- `server-rust/src/services/chunker.rs`, `ffmpeg_file.rs`,
+  `ffmpeg_pool.rs`, `hw_accel.rs`
+- `server-rust/src/routes/stream.rs`
+- The retired Bun mirror under `server/src/services/` and
+  `server/src/routes/stream.ts` is also off-limits — no Bun edits at all.
 
 Only the **wrapping** changes: Player chrome, side panel, controls
 layout, SeasonsPanel for series, view transitions, episode-driven URL
