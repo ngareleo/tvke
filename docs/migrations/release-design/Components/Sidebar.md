@@ -73,4 +73,4 @@ Cross-reference: [`Changes.md`](../Changes.md) — "Sidebar — deleted".
 ## Status
 
 - [x] Designed in `design/Release` lab — **deleted** (2026-05-01, PR #46 commit 787f136, `feat/release-design-omdb-griffel`, not yet merged to main)
-- [ ] Production implementation — N/A (do not port; component removed)
+- [x] Production implementation — N/A (component removed). `client/src/components/sidebar/` deleted in M3 (release-design branch). `client/src/components/sign-out-dialog/` (sole consumer was Sidebar) removed at the same time.

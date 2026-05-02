@@ -1,6 +1,6 @@
 # AppShell
 
-> Status: **done** (Spec) · **not started** (Production) · last design change **2026-05-01** (PR #46 commit 5301df6)
+> Status: **done** (Spec) · **done** (Production) · last design change **2026-05-01** (PR #46 commit 5301df6)
 
 ## Files
 
@@ -53,14 +53,14 @@ The prior note about `TODO(redesign)` overlay-glass is now resolved — this com
 - **LoadingBar / DevPanel removed:** Prerelease AppShell wrapped children in `<DevToolsProvider>` + `<LoadingBarProvider>`, rendered `<LoadingBar>` and `<DevPanel>`. These are absent from the Release shell.
 - **`collapsed` state removed:** The sidebar-collapse boolean and the `rootCollapsed` style class do not exist in Release.
 
-## Porting checklist (`client/src/components/Layout/AppShell/`)
+## Porting checklist (`client/src/components/app-shell/`)
 
-- [ ] `.shell`: `position: relative`, full-viewport (100vw × 100vh), `overflow: hidden`, `colorBg0` bg, `colorText` color. No grid.
-- [ ] `.main`: `position: absolute`, `top: 0`, `left: 0`, `right: 0`, `bottom: 0`, `overflow: hidden`
-- [ ] Composition: `<AppHeader>` (absolute, z=10) + `<main>` slot (absolute, inset 0). No `<Sidebar>`.
-- [ ] No header-clearance padding on the shell. Each page manages its own `paddingTop`.
+- [x] `.shell`: `position: relative`, full-viewport (100vw × 100vh), `overflow: hidden`, `colorBg0` bg, `colorText` color. No grid.
+- [x] `.main`: `position: absolute`, `top: 0`, `left: 0`, `right: 0`, `bottom: 0`, `overflow: hidden`
+- [x] Composition: `<AppHeader>` (absolute, z=10) + `<main>` slot (absolute, inset 0). No `<Sidebar>`.
+- [x] No header-clearance padding on the shell. Each page manages its own `paddingTop`.
 
 ## Status
 
 - [x] Designed in `design/Release` lab — sidebar removed, single-column grid (2026-05-01, PR #46 commit 787f136). Grid replaced with positioned-layer model — shell `relative`, main `absolute inset:0`, header `absolute top/left/right` (2026-05-01, PR #46 commit 5301df6). PR #46 on `feat/release-design-omdb-griffel`, not yet merged to main.
-- [ ] Production implementation
+- [x] Production implementation — M3 (release-design branch). `useHeaderActions`, `useLibraries`, `useProvideLibraries`, `LibraryInfo` exports dropped from AppShell; the shell is now a thin presentational layer (header + main only). LoadingBar/RouterNavigationLoader/DevPanelAsync no longer mounted. Sidebar component deleted.

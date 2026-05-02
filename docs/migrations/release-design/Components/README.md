@@ -10,10 +10,10 @@ Inline subcomponents (ProfileRow, FilmRow, ProfileChip, PosterCard, ListRow, Vid
 
 | Component | Files (lab) | Spec | Production |
 |---|---|---|---|
-| [AppShell](AppShell.md) | `components/Layout/AppShell.{tsx,styles.ts}` | done | not started |
-| [AppHeader](AppHeader.md) | `components/AppHeader/AppHeader.{tsx,styles.ts}` | done | not started |
-| [AccountMenu](AccountMenu.md) | `components/AccountMenu/AccountMenu.{tsx,styles.ts}` | done | not started |
-| [Sidebar](Sidebar.md) | ~~`components/Sidebar/Sidebar.{tsx,styles.ts}`~~ **deleted** | tombstone | n/a — deleted |
+| [AppShell](AppShell.md) | `components/Layout/AppShell.{tsx,styles.ts}` | done | done |
+| [AppHeader](AppHeader.md) | `components/AppHeader/AppHeader.{tsx,styles.ts}` | done | done |
+| [AccountMenu](AccountMenu.md) | `components/AccountMenu/AccountMenu.{tsx,styles.ts}` | done | done |
+| [Sidebar](Sidebar.md) | ~~`components/Sidebar/Sidebar.{tsx,styles.ts}`~~ **deleted** | tombstone | done — deleted |
 | [DetailPane](DetailPane.md) | `components/DetailPane/DetailPane.tsx` | baseline | not started |
 | [EdgeHandle](EdgeHandle.md) | `components/EdgeHandle/EdgeHandle.{tsx,styles.ts}` | done | not started |
 | [Poster](Poster.md) | `components/Poster/Poster.tsx` | baseline | done |

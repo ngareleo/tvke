@@ -3,25 +3,21 @@ import { makeStyles } from "@griffel/react";
 import { tokens } from "~/styles/tokens";
 
 export const useAppShellStyles = makeStyles({
-  root: {
-    display: "grid",
-    gridTemplateRows: `${tokens.headerHeight} 1fr`,
-    gridTemplateColumns: `${tokens.sidebarWidth} 1fr`,
-    gridTemplateAreas: '"header header" "sidebar main"',
+  shell: {
+    position: "relative",
+    width: "100vw",
     height: "100vh",
-    overflow: "hidden",
-    transitionProperty: "grid-template-columns",
-    transitionDuration: "0.22s",
-    transitionTimingFunction: "ease",
-  },
-  rootCollapsed: {
-    gridTemplateColumns: `${tokens.sidebarCollapsedWidth} 1fr`,
+    backgroundColor: tokens.colorBg0,
+    color: tokens.colorText,
+    overflowX: "hidden",
+    overflowY: "hidden",
   },
   main: {
-    gridArea: "main",
-    display: "flex",
-    flexDirection: "column",
-    minHeight: "0",
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
     overflow: "hidden",
   },
 });

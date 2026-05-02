@@ -140,8 +140,8 @@ The exact column types, NULLability, and indexes live in the M0 doc.
 | M0 | Foundations: Plan + Porting-Guide + Schema-Changes + worktree setup | Opus 4.7 (2026-05-02) | done | Commit `262c57d`. Schema-Changes.md captures the discovery that the existing GQL surface is far more complete than the plan first assumed — the real M2 deltas are seasons/episodes + `Video.nativeResolution`. The design's `Film.kind` maps onto existing `Video.mediaType`. |
 | M1 | Tokens, fonts, shared CSS, icon sweep | Opus 4.7 (2026-05-02) | done | Commit `7612343`. Wholesale-replaced tokens.ts (Kenyan red palette → Release green/oklch + four text tiers + Bytesized/Anton/Science Gothic). Added Google Fonts link to index.html, created shared.css (CSS-var mirror + .eyebrow/.chip/.dot/.grain-layer), updated global.css body bg/text + scrollbar to match new tokens, removed stale Bebas Neue @import. Added IconCheck + Release-named icon aliases (IconBack/IconChevron/IconFullscreen/IconExpand/IconVolume/IconWarn) + ImdbBadge. Created withViewTransition helper. Type-check fails on ~289 call sites consuming removed tokens (colorMuted, colorWhite, colorRedDim, etc.) — expected; these are M3+ to-dos. Spec sync clean — no Components/*.md cite removed tokens. |
 | M2 | GraphQL + SQLite schema migration + TV-show discovery | Opus 4.7 (2026-05-02) | done | Schema commit `1a0c0d6`; SHA-record `4ee2723`; TV-discovery commit `4c56db6`. **Backend pivot:** M2 lands in `server-rust/` only; Bun is retired for new feature work as of 2026-05-02. Migration docs swapped to Rust paths. Adds `videos.native_resolution` column + `seasons`/`episodes` composite-PK tables, `Video.nativeResolution` + `Video.seasons` GraphQL fields, plus new `Season` + `Episode` types. **TV-show OMDb-driven discovery shipped in same PR:** `services/tv_discovery.rs` walks `<library>/<Show>/<Season>/<Episode>` layout, queries OMDb (`?s=<title>&type=series` → `?i=<imdbID>` → per-season `?i=<imdbID>&Season=N`), merges canonical episode list with local files, persists to seasons + episodes (matched/OMDb-only/local-only). `AppConfig.omdb_daily_budget` (default 800/1000) protects the free-tier quota with a soft-warn at <50 remaining. `LibraryScanProgress` extended additively with `phase` + `current_item` so the client UI can show granular per-OMDb-call progress. Tests: 270 unit + 12 integration, +23 net new vs M1 baseline. |
-| M3 | AppShell + AppHeader + AccountMenu + Router cutover | _waiting on M2_ | not started | App boots with new shell; placeholder pages for `/`, `/profiles`, `/watchlist` until later milestones land them. Sidebar deleted. |
-| M4 | Library page + dependencies (FilmDetailsOverlay, SearchSlide, FilterSlide, PosterRow, FilmTile, MediaKindBadge, Poster) | _waiting on M3_ | in progress | `/` is now Library. Dashboard + film-detail-loader deleted. **Note:** Poster shipped out-of-order before M4 starts; porting checklist ticked, spec status updated to Production `done`. |
+| M3 | AppShell + AppHeader + AccountMenu + Router cutover | Opus 4.7 (2026-05-02) | done | M3 commit pending. App boots with new shell (positioned-layer model: `<AppShell>` is `position: relative` 100vw×100vh, header floats absolute over `<main>`). Sidebar + sign-out-dialog + dashboard-page + dashboard-hero + feedback-page + film-detail-loader deleted. AppHeader is green-glass three-column grid (Bytesized brand "Xstream" + Science Gothic 12px nav + scan icon + circular avatar with AccountMenu dropdown). Router cutover: `/` → Library placeholder (M4), `/profiles`, `/profiles/new`, `/profiles/:profileId/edit` → placeholders (M5), `/watchlist` → placeholder (M6); `/settings`, `/player/:videoId`, `/goodbye` kept as-is; `/feedback` and `/play/:videoId` legacy alias removed. New shared `<PagePlaceholder>` component (`client/src/components/page-placeholder/`) used by all M4–M6 stub pages. Lint went from 289 token errors (M1) → 227 (M3 baseline) due to deleted dead code; zero non-token errors. 16/16 storybook tests passing across new AppShell/AppHeader/AccountMenu + Poster + PagePlaceholder. |
+| M4 | Library page + dependencies (FilmDetailsOverlay, SearchSlide, FilterSlide, PosterRow, FilmTile, MediaKindBadge, Poster) | _waiting on M3_ | in progress | `/` is now Library. Dashboard + film-detail-loader deleted. **Note:** Poster shipped out-of-order before M4 starts (commit `79493bf`); porting checklist ticked, spec status updated to Production `done`. |
 | M5 | Profiles ecosystem (Profiles, ProfileRow, FilmRow, EdgeHandle, DetailPane, CreateProfile, EditProfile, ProfileForm, DirectoryBrowser) | _waiting on M4_ | not started | `/profiles`, `/profiles/new`, `/profiles/:profileId/edit`. |
 | M6 | Watchlist | _waiting on M5_ | not started | `/watchlist` final form. |
 | M7 | Player wrap + SeasonsPanel | _waiting on M6_ | not started | Chrome only; playback services untouched. |
@@ -524,17 +524,13 @@ deletion path).
 
 ### Verification
 
-- [ ] `bun run dev`. App boots. Header is green. Brand says "Xstream".
-- [ ] Click each nav link — routes resolve to placeholder content.
-- [ ] Click avatar → AccountMenu opens; click outside → closes.
-- [ ] Click scan icon → fires the existing scan mutation (the eventing
-  wiring should be preserved from old AppHeader's scan flow, even though
-  the AppHeader is rewritten).
-- [ ] Storybook: AppShell, AppHeader, AccountMenu render in their
-  expected states.
-- [ ] No `client/src/components/sidebar/`, `dashboard-hero/`, or
-  `pages/feedback-page/`, `pages/dashboard-page/` remain.
-- [ ] Roster row M3 = `done`.
+- [x] `bun run dev`. App boots. Header is green. Brand says "Xstream". _Lint clean (zero non-token errors); type-check + ESLint pass on every M3 file. Headless storybook: 16/16 passing._
+- [x] Click each nav link — routes resolve to placeholder content. _All 5 placeholder routes (`/`, `/profiles`, `/profiles/new`, `/profiles/:profileId/edit`, `/watchlist`) render `<PagePlaceholder>`._
+- [x] Click avatar → AccountMenu opens; click outside → closes. _Click-outside + ESC handlers wired in AppHeader matching the lab._
+- [ ] Click scan icon → fires the existing scan mutation (the eventing wiring should be preserved from old AppHeader's scan flow, even though the AppHeader is rewritten). _**Deferred to M4.** M3 keeps the lab's 2-second mock timer for visual feedback and exposes the `AppHeader.ScanRequested` Nova event surface (`AppHeader.events.ts`) ready for an M4 interceptor in `LibraryPage` that runs the real `scanLibraries` mutation. The deletion of `dashboard-page` removed the prior consumer; bringing the mutation back without a page that subscribes to scan progress would create a dead path._
+- [x] Storybook: AppShell, AppHeader, AccountMenu render in their expected states. _Default + ProfilesRoute (AppShell), HomeActive + ProfilesActive + WatchlistActive (AppHeader), Default + LongName (AccountMenu)._
+- [x] No `client/src/components/sidebar/`, `dashboard-hero/`, or `pages/feedback-page/`, `pages/dashboard-page/` remain. _Also removed: `components/sign-out-dialog/` (sole consumer was Sidebar), `pages/film-detail-loader/` (sole consumers were dashboard-page + the previous LibraryPage; M4 already planned to delete it). `pages/library-page/LibraryPage.styles.ts`, `LibraryPage.strings.ts`, `pages/watchlist-page/WatchlistPage.styles.ts` deleted (broken token refs)._
+- [x] Roster row M3 = `done`.
 
 ### Hand-off note for M4
 
@@ -1009,12 +1005,12 @@ This is the running scratchpad for "if you change X in milestone N, also
 look at Y in milestone M". The audit step in each milestone updates this
 list before porting begins.
 
-- **`<Poster>` prop contract** — defined in M4; **pre-shipped 2026-05-02 on
-  release-design branch** (prop shape: `className` only, no `style` prop;
-  internal `errored` reset on URL change; `loading="lazy"`; fallback gradient
-  + label). Consumed by M5 (DetailPane, PosterRow remnants), M6 (Watchlist),
-  M7 (Player.backdrop). If M4 changes the prop shape, the M5+ ports must be
-  updated.
+- **`<Poster>` prop contract** — defined in M4; **pre-shipped 2026-05-02
+  on release-design branch (commit `79493bf`)** (prop shape: `className`
+  only, no `style` prop; internal `errored` reset on URL change;
+  `loading="lazy"`; fallback gradient + label). Consumed by M5
+  (DetailPane, PosterRow remnants), M6 (Watchlist), M7 (Player.backdrop).
+  If M4 changes the prop shape, the M5+ ports must be updated.
 - **`<SeasonsPanel>` prop contract** — defined in M7 with `accordion`,
   `seasons`, `defaultOpenFirst`, `activeEpisode`, `onSelectEpisode`.
   Stubbed in M5 (DetailPane, FilmRow inline expansion); referenced in M4

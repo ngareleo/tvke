@@ -1,6 +1,6 @@
 # AppHeader
 
-> Status: **done** (Spec) · **not started** (Production) · last design change **2026-05-01** (PR #46 commit 558da06)
+> Status: **done** (Spec) · **done** (Production) · last design change **2026-05-01** (PR #46 commit 558da06)
 
 ## Files
 
@@ -115,35 +115,35 @@ Top header strip — brand wordmark on the left, three centred navigation links,
 - Avatar button: `aria-label` for the user identity (e.g. `aria-label="Account — {user.initials}"`).
 - Nav links: standard React Router `<NavLink>`; active state conveyed via colour change and `::after` underline (not `aria-current` override needed — NavLink sets it automatically).
 
-## Porting checklist (`client/src/components/AppHeader/`)
+## Porting checklist (`client/src/components/app-header/`)
 
-- [ ] **GOTCHA: Background layer split.** Chrome lives on a sibling `.headerBg` div (`position: absolute; inset: 0; zIndex: -1; pointerEvents: none`), not on `<header>` itself. This prevents `mask-image` from clipping descendant popovers (e.g., account dropdown). Structure: `<header><div className={s.headerBg} aria-hidden /></header>`. The `<header>` element only handles layout grid; all background, filters, shadows, and mask move to `.headerBg`.
-- [ ] `<header>` positioning: `position: absolute`, `top: 0`, `left: 0`, `right: 0`, `height: tokens.headerHeight` (`52px`), `zIndex: 10`
-- [ ] `<header>` layout: Three-column grid `gridTemplateColumns: 1fr auto 1fr`, `alignItems: center`, `display: grid`
-- [ ] `.headerBg` glass treatment: `backgroundImage: linear-gradient(180deg, rgba(20,28,24,0.55) 0%, rgba(8,11,10,0.78) 100%)`, `backgroundColor: rgba(8,11,10,0.62)`, `backdropFilter: blur(20px) saturate(1.6)` (+ `-webkit-` prefix), `borderBottom: 1px solid rgba(37,48,42,0.45)`, `boxShadow: inset 0 1px 0 rgba(255,255,255,0.05), inset 0 -1px 0 rgba(0,0,0,0.18), 0 6px 22px rgba(0,0,0,0.42)`, optional `maskImage: linear-gradient(to bottom, #000 0%, #000 60%, transparent 100%)` (+ `-webkit-` prefix) for soft bottom fade
-- [ ] Brand cell: `paddingLeft: 24px`, `paddingRight: 24px`, `justifySelf: start`
-- [ ] Brand: `<Link to="/">` inline-flex `alignItems: baseline`, Bytesized 34px, `letterSpacing: 0.04em`; two spans: `<brandX>X</brandX>` in green with green-glow text-shadow, `<brandWord>stream</brandWord>` in `colorText`
-- [ ] Brand link `aria-label="Xstream — home"`
-- [ ] Three `<NavLink>` centred: Home `/` (with `end` prop), Profiles `/profiles`, Watchlist `/watchlist`
-- [ ] Nav font: **Science Gothic**, 12px, `letterSpacing: 0.04em`, `text-transform: lowercase`, `paddingTop/Bottom: 6px`
-- [ ] Nav at rest: `color: colorTextDim`; hover: `color: colorText`
-- [ ] Nav active (`navLinkActive`): `color: colorGreen`, `textShadow: 0 0 10px colorGreenGlow`
-- [ ] Nav `::after` (underline): `position: absolute`, `left/right: 0`, `bottom: -2px`, `height: 2px`, `backgroundColor: colorGreen`; `transform: scaleX(0)` at rest, `scaleX(1)` when active; `transformOrigin: center`; transition `transform 0.15s`
-- [ ] `tokens.fontDisplay` (`'Bytesized'`) and `tokens.fontNav` (`'Science Gothic'`) registered in token file
-- [ ] Google Fonts `<link>` in HTML `<head>` loads: Anton, Bytesized, Inter, JetBrains Mono, **Science Gothic** (not Bowlby One)
-- [ ] Right cluster (`actionsCell`): `justifySelf: end`, flex row, `columnGap: 14px`, `paddingLeft: 24px`, `paddingRight: 24px`
-- [ ] Scan button (`scanBtn`): 38×38, transparent bg, no border; contains `<span scanIcon><IconRefresh 22×22></span>`
-- [ ] Scan icon (`scanIconSpinning`): `animationName: { to: rotate(360deg) }`, `1.1s`, `linear`, `infinite`
-- [ ] `aria-busy={scanning}`, dynamic `aria-label`: `"Scanning library"` / `"Scan library"`
-- [ ] Scan button wired to `scanLibraries` mutation (replaces 2s mock timer)
-- [ ] Avatar: 34×34 button, `border-radius: 50%` (circular), `backgroundImage: linear-gradient(140deg, colorGreenDeep, colorGreen)`, `color: colorGreenInk`, fontMono 700 12px; hover: `translateY(-1px)` + `boxShadow: 0 4px 14px colorGreenSoft`
-- [ ] Account menu:
-  - [ ] `accountWrap` relative container around avatar
-  - [ ] Avatar gets `avatarOpen` class on menu open: `borderColor: colorGreen` + `boxShadow: 0 0 8px colorGreen, 0 0 16px colorGreenGlow`
-  - [ ] Click avatar opens/closes menu; click-outside and ESC close
-  - [ ] Render `<AccountMenu initials={} name={} email={} onSettings={handleSettings} onSignOut={handleSignOut} />` — see [`AccountMenu.md`](AccountMenu.md) for full component spec
-  - [ ] Wire callbacks: `onSettings` → navigate to `/settings`, `onSignOut` → navigate to `/goodbye`
-- [ ] No search form in the header (search is inside the Library/home hero)
+- [x] **GOTCHA: Background layer split.** Chrome lives on a sibling `.headerBg` div (`position: absolute; inset: 0; zIndex: -1; pointerEvents: none`), not on `<header>` itself. This prevents `mask-image` from clipping descendant popovers (e.g., account dropdown). Structure: `<header><div className={s.headerBg} aria-hidden /></header>`. The `<header>` element only handles layout grid; all background, filters, shadows, and mask move to `.headerBg`.
+- [x] `<header>` positioning: `position: absolute`, `top: 0`, `left: 0`, `right: 0`, `height: tokens.headerHeight` (`52px`), `zIndex: 10`
+- [x] `<header>` layout: Three-column grid `gridTemplateColumns: 1fr auto 1fr`, `alignItems: center`, `display: grid`
+- [x] `.headerBg` glass treatment: `backgroundImage: linear-gradient(180deg, rgba(20,28,24,0.55) 0%, rgba(8,11,10,0.78) 100%)`, `backgroundColor: rgba(8,11,10,0.62)`, `backdropFilter: blur(20px) saturate(1.6)` (+ `-webkit-` prefix), `borderBottom: 1px solid rgba(37,48,42,0.45)`, `boxShadow: inset 0 1px 0 rgba(255,255,255,0.05), inset 0 -1px 0 rgba(0,0,0,0.18), 0 6px 22px rgba(0,0,0,0.42)`, optional `maskImage: linear-gradient(to bottom, #000 0%, #000 60%, transparent 100%)` (+ `-webkit-` prefix) for soft bottom fade
+- [x] Brand cell: `paddingLeft: 24px`, `paddingRight: 24px`, `justifySelf: start`
+- [x] Brand: `<Link to="/">` inline-flex `alignItems: baseline`, Bytesized 34px, `letterSpacing: 0.04em`; two spans: `<brandX>X</brandX>` in green with green-glow text-shadow, `<brandWord>stream</brandWord>` in `colorText`
+- [x] Brand link `aria-label="Xstream — home"`
+- [x] Three `<NavLink>` centred: Home `/` (with `end` prop), Profiles `/profiles`, Watchlist `/watchlist`
+- [x] Nav font: **Science Gothic**, 12px, `letterSpacing: 0.04em`, `text-transform: lowercase`, `paddingTop/Bottom: 6px`
+- [x] Nav at rest: `color: colorTextDim`; hover: `color: colorText`
+- [x] Nav active (`navLinkActive`): `color: colorGreen`, `textShadow: 0 0 10px colorGreenGlow`
+- [x] Nav `::after` (underline): `position: absolute`, `left/right: 0`, `bottom: -2px`, `height: 2px`, `backgroundColor: colorGreen`; `transform: scaleX(0)` at rest, `scaleX(1)` when active; `transformOrigin: center`; transition `transform 0.15s`
+- [x] `tokens.fontDisplay` (`'Bytesized'`) and `tokens.fontNav` (`'Science Gothic'`) registered in token file
+- [x] Google Fonts `<link>` in HTML `<head>` loads: Anton, Bytesized, Inter, JetBrains Mono, **Science Gothic** (not Bowlby One)
+- [x] Right cluster (`actionsCell`): `justifySelf: end`, flex row, `columnGap: 14px`, `paddingLeft: 24px`, `paddingRight: 24px`
+- [x] Scan button (`scanBtn`): 38×38, transparent bg, no border; contains `<span scanIcon><IconRefresh 22×22></span>`
+- [x] Scan icon (`scanIconSpinning`): `animationName: { to: rotate(360deg) }`, `1.1s`, `linear`, `infinite`
+- [x] `aria-busy={scanning}`, dynamic `aria-label`: `"Scanning library"` / `"Scan library"`
+- [ ] Scan button wired to `scanLibraries` mutation (replaces 2s mock timer) — **deferred to M4** when the Library page consumes scan progress; M3 emits `AppHeader.ScanRequested` Nova event surface (see `AppHeader.events.ts`) and keeps the 2s mock timer for visual feedback
+- [x] Avatar: 34×34 button, `border-radius: 50%` (circular), `backgroundImage: linear-gradient(140deg, colorGreenDeep, colorGreen)`, `color: colorGreenInk`, fontMono 700 12px; hover: `translateY(-1px)` + `boxShadow: 0 4px 14px colorGreenSoft`
+- [x] Account menu:
+  - [x] `accountWrap` relative container around avatar
+  - [x] Avatar gets `avatarOpen` class on menu open: `borderColor: colorGreen` + `boxShadow: 0 0 8px colorGreen, 0 0 16px colorGreenGlow`
+  - [x] Click avatar opens/closes menu; click-outside and ESC close
+  - [x] Render `<AccountMenu initials={} name={} email={} onSettings={handleSettings} onSignOut={handleSignOut} />` — see [`AccountMenu.md`](AccountMenu.md) for full component spec
+  - [x] Wire callbacks: `onSettings` → navigate to `/settings`, `onSignOut` → navigate to `/goodbye`
+- [x] No search form in the header (search is inside the Library/home hero)
 
 ## Changes from Prerelease
 
@@ -186,4 +186,4 @@ All other values (three-column grid, glass treatment, nav font/links, scan butto
 ## Status
 
 - [x] Designed in `design/Release` lab — full rewrite (2026-05-01, PR #46 commit 787f136). Converted from grid-row to `position: absolute` floating over page content (2026-05-01, PR #46 commit 5301df6). Nav font swapped to Bowlby One (2026-05-01, PR #46 commit 773681e). Nav font swapped again from Bowlby One to **Science Gothic** at 12px (2026-05-01, PR #46 commit 558da06). PR #46 on `feat/release-design-omdb-griffel`, merged to main 2026-05-01. **Latest (2026-05-02, PR #48):** avatar made circular (`border-radius: 50%`); account dropdown menu added with identity row + Settings / Sign out items; Settings navigates to `/settings`, Sign out navigates to `/goodbye`; click-outside and ESC close the menu; green ring + glow state when menu is open; Sign out item tinted red on hover. **AccountMenu extracted to own component** (2026-05-02, PR #48 commit b633ae3) — now a separate reusable `.tsx` with portable spec in [`AccountMenu.md`](AccountMenu.md).
-- [ ] Production implementation
+- [x] Production implementation — M3 (release-design branch). `actions` prop dropped from `<AppHeader>`; pages no longer inject buttons via `useHeaderActions`. Scan-button mutation wiring deferred to M4 — current implementation matches the lab's 2s mock timer and emits `AppHeader.ScanRequested` Nova event surface (`AppHeader.events.ts`) ready for an M4 interceptor. User identity hard-coded with TODO; Relay viewer fragment deferred. Brand uses Bytesized 34px ("Xstream"), nav uses Science Gothic 12px lowercase with `::after` underline, scan button + circular avatar + AccountMenu wired per spec.

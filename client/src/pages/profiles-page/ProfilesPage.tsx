@@ -2,6 +2,6 @@ import { type FC } from "react";
 
 import { PagePlaceholder } from "~/components/page-placeholder/PagePlaceholder.js";
 
-const WatchlistPage: FC = () => <PagePlaceholder name="Watchlist" milestone="M6" />;
+const ProfilesPage: FC = () => <PagePlaceholder name="Profiles" milestone="M5" />;
 
-export default WatchlistPage;
+export default ProfilesPage;
