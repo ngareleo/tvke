@@ -1,20 +1,22 @@
-@import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Inter:wght@400;500;600;700&display=swap');
-
-*, *::before, *::after {
+*,
+*::before,
+*::after {
   box-sizing: border-box;
   margin: 0;
   padding: 0;
 }
 
-html, body, #root {
+html,
+body,
+#root {
   height: 100%;
   overflow: hidden;
 }
 
 body {
-  font-family: 'Inter', sans-serif;
-  background: #080808;
-  color: #ffffff;
+  font-family: "Inter", sans-serif;
+  background: #050706;
+  color: #e8eee8;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
@@ -28,11 +30,11 @@ body {
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: #2E2E2E;
+  background: #25302a;
   border-radius: 2px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: #3E3E3E;
+  background: rgba(37, 48, 42, 0.5);
 }
 
 a {
@@ -41,15 +43,27 @@ a {
 }
 
 @keyframes spin {
-  to { transform: rotate(360deg); }
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 @keyframes gradient-drift {
-  0%   { background-position: 0%   0%;   }
-  25%  { background-position: 80%  20%;  }
-  50%  { background-position: 60%  100%; }
-  75%  { background-position: 20%  60%;  }
-  100% { background-position: 0%   0%;   }
+  0% {
+    background-position: 0% 0%;
+  }
+  25% {
+    background-position: 80% 20%;
+  }
+  50% {
+    background-position: 60% 100%;
+  }
+  75% {
+    background-position: 20% 60%;
+  }
+  100% {
+    background-position: 0% 0%;
+  }
 }
 
 button {
@@ -76,7 +90,7 @@ button {
   transform: translateX(-50%) translateY(3px);
   white-space: nowrap;
   font-size: 10px;
-  font-family: 'Inter', sans-serif;
+  font-family: "Inter", sans-serif;
   letter-spacing: 0.04em;
   font-weight: 500;
   background: #1a1a1a;
@@ -86,7 +100,9 @@ button {
   border-radius: 3px;
   pointer-events: none;
   opacity: 0;
-  transition: opacity 0.12s ease, transform 0.12s ease;
+  transition:
+    opacity 0.12s ease,
+    transform 0.12s ease;
   z-index: 9999;
 }
 [data-tip]:hover::after {
@@ -106,7 +122,7 @@ button {
   transform: translateY(-50%) translateX(-3px);
   white-space: nowrap;
   font-size: 10px;
-  font-family: 'Inter', sans-serif;
+  font-family: "Inter", sans-serif;
   letter-spacing: 0.04em;
   font-weight: 500;
   background: #1a1a1a;
@@ -116,7 +132,9 @@ button {
   border-radius: 3px;
   pointer-events: none;
   opacity: 0;
-  transition: opacity 0.12s ease, transform 0.12s ease;
+  transition:
+    opacity 0.12s ease,
+    transform 0.12s ease;
   z-index: 9999;
 }
 [data-tip-right]:hover::after {

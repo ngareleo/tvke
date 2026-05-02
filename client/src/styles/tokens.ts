@@ -1,63 +1,66 @@
 /**
- * Design tokens — the single source of truth for the Moran visual language.
- * Used by all Griffel makeStyles() calls so that colour and spacing are
- * centrally defined and easy to update.
+ * Design tokens — single source of truth for the Xstream visual language.
+ * Mirrors the CSS custom properties declared in shared.css so Griffel
+ * makeStyles() calls can reference values directly without indirection.
  *
- * Colour palette is inspired by the Kenyan flag: red (#CE1126), black (#080808),
- * and white, with dark surface neutrals for the app shell.
+ * Token names match the inline `--*` references in the Figma JSX
+ * (`/home/dag/Downloads/app-mockups.jsx`, `logos.jsx`) so a future
+ * port stays a one-to-one mapping.
  */
-
 export const tokens = {
-  // ── Colours ───────────────────────────────────────────────────────────────
-  colorRed: "#CE1126",
-  colorRedDark: "#A50D1E",
-  colorRedDim: "rgba(206, 17, 38, 0.12)",
-  colorRedBorder: "rgba(206, 17, 38, 0.28)",
+  // Backgrounds
+  colorBg0: "#050706",
+  colorBg1: "#0a0d0c",
+  colorSurface: "#14181a",
+  colorSurface2: "#1a1f1c",
 
-  colorBlack: "#080808",
-  colorSurface: "#0F0F0F",
-  colorSurface2: "#161616",
-  colorSurface3: "#1C1C1C",
-  colorBorder: "#222222",
-  colorBorder2: "#2E2E2E",
+  // Borders
+  colorBorder: "#25302a",
+  colorBorderSoft: "rgba(37, 48, 42, 0.5)",
 
-  colorWhite: "#FFFFFF",
-  colorOffWhite: "#F0EEEB",
-  colorMuted: "#666666",
-  colorMuted2: "#3E3E3E",
+  // Green accent (primary)
+  colorGreen: "oklch(0.78 0.20 150)",
+  colorGreenDeep: "oklch(0.45 0.13 150)",
+  colorGreenSoft: "oklch(0.78 0.20 150 / 0.12)",
+  colorGreenGlow: "oklch(0.78 0.20 150 / 0.35)",
+  colorGreenInk: "#050706",
 
-  colorGreen: "#27AE60",
-  colorYellow: "#F5C518",
+  // Foreground
+  colorText: "#e8eee8",
+  colorTextDim: "#9aa6a0",
+  colorTextMuted: "#6a766f",
+  colorTextFaint: "#46504b",
 
-  // ── Typography ────────────────────────────────────────────────────────────
-  fontHead: "'Bebas Neue', sans-serif",
+  // Status
+  colorYellow: "#f5c518",
+  colorRed: "#ff5d6c",
+
+  // Type
+  fontHead: "'Anton', sans-serif",
   fontBody: "'Inter', sans-serif",
-  fontMono: "'JetBrains Mono', 'Fira Code', monospace",
+  fontMono: "'JetBrains Mono', ui-monospace, monospace",
+  fontDisplay: "'Bytesized', system-ui, sans-serif",
+  fontNav: "'Science Gothic', system-ui, sans-serif",
 
-  // ── Border radius ─────────────────────────────────────────────────────────
-  radiusSm: "4px",
-  radiusMd: "8px",
-  radiusLg: "12px",
-  radiusFull: "9999px",
-
-  // ── Spacing ───────────────────────────────────────────────────────────────
+  // Geometry
+  radiusSm: "2px",
+  radiusMd: "4px",
+  radiusFull: "999px",
   space1: "4px",
   space2: "8px",
   space3: "12px",
   space4: "16px",
-  space5: "20px",
-  space6: "24px",
+  space5: "24px",
+  space6: "32px",
 
-  // ── Transitions ───────────────────────────────────────────────────────────
-  transition: "0.15s ease",
-  transitionSlow: "0.25s ease",
+  // Animation
+  transition: "0.15s",
+  transitionSlow: "0.25s",
 
-  // ── Layout dimensions ─────────────────────────────────────────────────────
+  // Layout
   headerHeight: "52px",
   sidebarWidth: "220px",
   sidebarCollapsedWidth: "52px",
-  rightPaneWidth: "360px",
-  playerPanelWidth: "290px",
 } as const;
 
 export type Tokens = typeof tokens;
