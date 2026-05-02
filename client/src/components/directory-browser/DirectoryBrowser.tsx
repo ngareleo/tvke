@@ -1,14 +1,13 @@
 import { mergeClasses } from "@griffel/react";
-import { useNovaEventing } from "@nova/react";
-import { type FC, useCallback, useEffect, useState } from "react";
+import { type FC, Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import { fetchQuery, graphql, useRelayEnvironment } from "react-relay";
 
+import { IconFolder } from "~/lib/icons.js";
 import type {
   DirectoryBrowserQuery,
   DirectoryBrowserQuery$data,
 } from "~/relay/__generated__/DirectoryBrowserQuery.graphql.js";
 
-import { createFolderSelectedEvent } from "./DirectoryBrowser.events.js";
 import { strings } from "./DirectoryBrowser.strings.js";
 import { useDirectoryBrowserStyles } from "./DirectoryBrowser.styles.js";
 
@@ -23,24 +22,52 @@ const DIRECTORY_QUERY = graphql`
 
 type DirectoryEntry = DirectoryBrowserQuery$data["listDirectory"][number];
 
-interface Props {
-  initialPath: string;
+interface DirectoryBrowserProps {
+  initialPath?: string;
+  onSelect: (path: string) => void;
+  onCancel: () => void;
 }
 
-export const DirectoryBrowser: FC<Props> = ({ initialPath }) => {
+function parentPath(path: string): string {
+  if (path === "/" || path === "") return "/";
+  const parent = path.replace(/\/?[^/]+$/, "");
+  return parent || "/";
+}
+
+interface Crumb {
+  label: string;
+  path: string;
+}
+
+function buildCrumbs(path: string): Crumb[] {
+  if (path === "/" || path === "") return [{ label: "/", path: "/" }];
+  const parts = path.split("/").filter(Boolean);
+  const crumbs: Crumb[] = [{ label: "/", path: "/" }];
+  let acc = "";
+  for (const part of parts) {
+    acc += `/${part}`;
+    crumbs.push({ label: part, path: acc });
+  }
+  return crumbs;
+}
+
+export const DirectoryBrowser: FC<DirectoryBrowserProps> = ({
+  initialPath = "/",
+  onSelect,
+  onCancel,
+}) => {
   const styles = useDirectoryBrowserStyles();
-  const { bubble } = useNovaEventing();
   const environment = useRelayEnvironment();
 
-  const [browsePath, setBrowsePath] = useState(initialPath || "/");
+  const [path, setPath] = useState<string>(initialPath || "/");
   const [entries, setEntries] = useState<DirectoryEntry[]>([]);
   const [loading, setLoading] = useState(true);
 
   const navigate = useCallback(
-    (path: string): void => {
-      setBrowsePath(path);
+    (next: string): void => {
+      setPath(next);
       setLoading(true);
-      fetchQuery<DirectoryBrowserQuery>(environment, DIRECTORY_QUERY, { path }).subscribe({
+      fetchQuery<DirectoryBrowserQuery>(environment, DIRECTORY_QUERY, { path: next }).subscribe({
         next: (data) => {
           setEntries([...(data.listDirectory ?? [])]);
           setLoading(false);
@@ -56,25 +83,42 @@ export const DirectoryBrowser: FC<Props> = ({ initialPath }) => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const navigateUp = (): void => {
-    const parent = browsePath.replace(/\/?[^/]+$/, "") || "/";
-    navigate(parent);
-  };
+  const crumbs = useMemo(() => buildCrumbs(path), [path]);
 
   return (
-    <div className={styles.panel}>
-      <div className={styles.breadcrumb}>{browsePath}</div>
+    <div className={styles.panel} role="dialog" aria-label={strings.a11yLabel}>
+      <div className={styles.breadcrumb}>
+        {crumbs.map((c, i) => {
+          const last = i === crumbs.length - 1;
+          return (
+            <Fragment key={c.path}>
+              {i > 0 && <span className={styles.crumbSep}>/</span>}
+              <button
+                type="button"
+                className={mergeClasses(styles.crumbBtn, last && styles.crumbCurrent)}
+                onClick={() => navigate(c.path)}
+              >
+                {c.label}
+              </button>
+            </Fragment>
+          );
+        })}
+      </div>
+
       <div className={styles.list}>
         {loading ? (
           <div className={styles.empty}>{strings.loading}</div>
         ) : (
           <>
-            {browsePath !== "/" && (
+            {path !== "/" && (
               <button
-                className={mergeClasses(styles.entry, styles.entryUp)}
-                onClick={navigateUp}
                 type="button"
+                className={mergeClasses(styles.entry, styles.entryUp)}
+                onClick={() => navigate(parentPath(path))}
               >
+                <span className={styles.entryIcon} aria-hidden="true">
+                  ↑
+                </span>
                 {strings.up}
               </button>
             )}
@@ -84,26 +128,30 @@ export const DirectoryBrowser: FC<Props> = ({ initialPath }) => {
               entries.map((entry) => (
                 <button
                   key={entry.path}
+                  type="button"
                   className={styles.entry}
                   onClick={() => navigate(entry.path)}
-                  type="button"
                 >
-                  📁 {entry.name}
+                  <span className={styles.entryIcon} aria-hidden="true">
+                    <IconFolder />
+                  </span>
+                  {entry.name}
                 </button>
               ))
             )}
           </>
         )}
       </div>
+
       <div className={styles.actions}>
-        <button
-          className={styles.selectBtn}
-          onClick={(e) => {
-            void bubble({ reactEvent: e, event: createFolderSelectedEvent(browsePath) });
-          }}
-          type="button"
-        >
-          {strings.selectFolder}
+        <span className={styles.actionsHint} title={path}>
+          {path}
+        </span>
+        <button type="button" className={styles.cancelBtn} onClick={onCancel}>
+          {strings.cancel}
+        </button>
+        <button type="button" className={styles.selectBtn} onClick={() => onSelect(path)}>
+          {strings.select}
         </button>
       </div>
     </div>
