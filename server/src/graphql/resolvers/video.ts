@@ -56,5 +56,15 @@ export const videoResolvers = {
         sampleRate: as_.sample_rate,
       };
     },
+
+    // M2 fields. Real implementations live in `server-rust/` (Bun is retired for
+    // new feature work as of 2026-05-02); these stubs keep the legacy Bun
+    // runtime unblocked while the schemas stay in sync.
+    nativeResolution(): null {
+      return null;
+    },
+    seasons(): [] {
+      return [];
+    },
   },
 };

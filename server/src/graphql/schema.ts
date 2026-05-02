@@ -62,6 +62,23 @@ export const typeDefs = /* GraphQL */ `
     metadata: VideoMetadata
     videoStream: VideoStreamInfo
     audioStream: AudioStreamInfo
+    nativeResolution: Resolution
+    seasons: [Season!]!
+  }
+
+  type Season {
+    seasonNumber: Int!
+    episodes: [Episode!]!
+  }
+
+  type Episode {
+    episodeNumber: Int!
+    seasonNumber: Int!
+    title: String
+    durationSeconds: Float
+    onDisk: Boolean!
+    nativeResolution: Resolution
+    videoId: ID
   }
 
   type VideoStreamInfo {
