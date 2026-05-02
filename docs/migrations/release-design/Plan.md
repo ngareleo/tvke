@@ -1,0 +1,994 @@
+# Release-Design Port — Shared Plan & Roster
+
+> **Single source of truth for the Release-design migration.** The
+> `migrations-lead` subagent reads this file to know which milestone is next
+> and how to brief the agent picking it up. Every agent updates the
+> checklists in their milestone before handing off. One PR, one branch.
+
+## Context
+
+`design/Release/` is the finalised design lab for the first xstream release
+(Xstream identity: green `oklch(0.78 0.20 150)`, Anton + Inter + JetBrains
+Mono + Bytesized + Science Gothic). The production client at `client/src/`
+still wears the Prerelease "Moran" identity (red, Bebas Neue) and an older
+shell composition (CSS grid + 220px sidebar). We are porting the entire
+Release lab into production in a single PR, milestone-by-milestone, with a
+sequential chain of stateless agents driven by `migrations-lead`.
+
+**Out of scope for this PR:** the streaming pipeline (`client/src/services/`
+plus `useChunkedPlayback`, `useVideoPlayback`, `useVideoSync`) — only the
+visual + structural wrapping around it changes.
+
+**Schema posture:** v1 — break freely on both GraphQL and SQLite where the
+new design supersedes the old surface (drop `Film.gradient`, drop `feedback`
+types, rename if the design copy demands it).
+
+**No feature flag.** Routes flip during their owning milestone.
+
+**Confirmed decisions** (from session that produced this plan):
+1. **Tests + Stories:** every ported component ships a `.stories.tsx`. Tests
+   only when pure logic exists (e.g. `filters.ts`, `filmMatches`). E2E in
+   the final milestone.
+2. **Strings:** colocated `<name>.strings.ts` per component.
+3. **Schema:** all GQL + SQL changes land in **Milestone 2** (one shot,
+   breakages allowed).
+4. **Cleanup:** the agent that lands a replacement deletes the superseded
+   files in the same milestone (no dead-code lingering across milestones).
+5. **Spec audit:** done per page/milestone, **not** as a single upfront
+   pass. When a port spans multiple specs (e.g. Library pulls in 8
+   components), add cross-page sync notes inside this plan so agents stay
+   aligned.
+6. **View transitions:** ship `document.startViewTransition()` with a tiny
+   `withViewTransition(fn)` helper that gracefully no-ops on browsers that
+   lack the API. (Works in current Firefox + Chromium.)
+7. **Porting-Guide doc:** new file
+   `docs/migrations/release-design/Porting-Guide.md` is the agent-facing how-to.
+
+## How this plan is used
+
+- `migrations-lead` is the orchestrator. The user spawns one high-perf agent
+  per milestone; before that agent starts, `migrations-lead` reads this
+  plan, finds the next un-done milestone, briefs the agent with its scope +
+  inputs + verification checklist + hand-off notes.
+- Each agent **updates this plan** as their final action: tick the
+  milestone's `Status` row to `done`, record the commit SHA, and append any
+  cross-cutting notes that the next agent needs.
+- This plan + `docs/migrations/release-design/Porting-Guide.md` together are
+  the agent's only briefing. Both are read first, every time.
+- The PR branch is the persistent global state. `git push` after every
+  milestone so the next agent picks up a clean working tree.
+
+## Reference docs (read once, then keep open)
+
+| Doc | Why | When |
+|---|---|---|
+| `docs/migrations/release-design/README.md` | Migration scope + contract | Every agent, first read |
+| `docs/migrations/release-design/Changes.md` | Cross-cutting Prerelease → Release diff | Every agent, first read |
+| `docs/migrations/release-design/Components/README.md` | Catalog of all 30 specs | Every agent |
+| `docs/migrations/release-design/Components/<Name>.md` | Per-component spec | The agent owning that component |
+| `docs/migrations/release-design/Porting-Guide.md` | **Created in M0** — agent how-to | Every agent after M0 |
+| `docs/migrations/release-design/Schema-Changes.md` | **Created in M0** — schema delta catalog | M2 (implementation), M3+ (consumers) |
+| `docs/code-style/Client-Conventions/00-Patterns.md` | Relay, Griffel, Nova, Heroicons | Every UI-porting agent |
+| `docs/code-style/Invariants/00-Never-Violate.md` | Hard rules (URL-encoded Relay IDs, MSE order, etc.) | Every agent |
+| `docs/architecture/Relay/00-Fragment-Contract.md` | `useLazyLoadQuery` only on pages, fragment naming | Page + fragment work |
+| `docs/server/GraphQL-Schema/00-Surface.md` | Current schema, forward-notes | M2 |
+| `design/Release/src/` | The visual + behavioural truth | Always |
+
+## Engineering invariants (any agent that violates these has bugged) {#invariants}
+
+These are sourced from `docs/code-style/`. The Porting-Guide
+(written in M0) restates them with examples. Until that file exists, this
+section is the canonical brief.
+
+1. **Relay fragments:** `useLazyLoadQuery` lives in pages only. Components
+   consume `<Name>_<propName>` fragments. Never extract a query into a
+   reusable component.
+2. **Griffel:** every component has `<Name>.styles.ts` exporting
+   `useStyles()` from `makeStyles({...})`. No inline `style=` props except
+   for animated values (drag pane width, view-transition names).
+3. **Nova eventing:** every interactive component has an `<Name>.events.ts`
+   colocated. User interactions emit Nova events; components don't directly
+   call services.
+4. **No `../` imports:** every cross-module import uses the `~/` alias;
+   colocated siblings use `./`.
+5. **No non-null `!`** outside post-`expect` test blocks.
+6. **Tokens only:** import from `~/styles/tokens.ts`. No hard-coded hex,
+   spacing, or fonts in `.styles.ts`.
+7. **Heroicons via `~/lib/icons`:** never import from
+   `@heroicons/react/...` directly.
+8. **Strings:** colocated `<name>.strings.ts` (English only for now).
+   Components consume `import { strings } from "./<name>.strings.js"`.
+9. **Stories:** every ported component gets `<Name>.stories.tsx`. Use
+   `withRelay` decorator for fragment components, `withLayout` for things
+   that need the AppShell wrapper.
+10. **Tests:** only for extracted pure logic (e.g. `filters.ts`, helpers).
+    Tests live in `__tests__/` subfolder next to the source, never as a
+    sibling `*.test.ts`.
+11. **View transitions:** wrap any morph navigation in the
+    `withViewTransition(fn)` helper introduced in M3. Never call
+    `document.startViewTransition` directly.
+12. **Playback untouchable:** no agent in this PR may modify
+    `client/src/services/`, `client/src/hooks/useChunkedPlayback.ts`,
+    `useVideoPlayback.ts`, or `useVideoSync.ts`. Player wrapping (chrome,
+    side panel, controls layout) is fair game; the streaming pipeline is
+    not.
+13. **One PR.** Push, don't open new branches. Update this plan and the
+    catalog as the only persistent state.
+
+## Schema-change preview {#schema-preview}
+
+The full catalog lands in `docs/migrations/release-design/Schema-Changes.md`
+during M0; M2 implements it. The known set as of plan-write:
+
+| Domain | GQL | SQLite | Notes |
+|---|---|---|---|
+| TV-show kind | `Video.kind: VideoKind!` (`MOVIE` / `SERIES`) | `videos.kind TEXT NOT NULL DEFAULT 'movie'` | Drives FilmTile/FilmRow badges, SeasonsPanel surfaces |
+| Seasons + episodes | `Video.seasons: [Season!]!` with `Season.episodes: [Episode!]!` | `seasons` + `episodes` tables, FK on `videos.id` | Per-episode `onDisk: Boolean!`, `nativeResolution: Resolution`, `episodeNumber INTEGER` |
+| Native resolution | `Video.nativeResolution: Resolution!` (movies) / per-episode (series) | `videos.native_resolution_w INTEGER`, `..._h INTEGER` | Forward-noted in `docs/server/GraphQL-Schema/00-Surface.md`; client picker clamped to `[240p … native]` |
+| Watchlist | `Watchlist` root field returning `[WatchlistItem!]!`; `addToWatchlist`, `removeFromWatchlist` mutations | `watchlist_items(user_id, video_id, added_at, progress_seconds)` | New table; old `watchlist-content/` removal mutation rewires |
+| OMDb posters | `Video.posterUrl: String` (real OMDb URL or null) | `videos.poster_url TEXT` | `Film.gradient` field is dropped |
+| Profile scan progress | `Library.scanProgress: ScanProgress` (status enum + counts) | already in `library_scans`; presenter extends | Profiles page footer `{N} SHOWS ({M} EPS)` aggregation |
+| Drops | `feedback` types, `Film.gradient`, anything dashboard-only | DROP TABLE for unused, keep migration in same SQL file | Resolvers + UI references go in same milestone they're consumed |
+| Renames | If lab copy says "profile", but schema says "library" → align | column rename via `ALTER TABLE` | Verify against `Components/Profiles.md` + `Components/ProfileForm.md` lab strings |
+
+The exact column types, NULLability, and indexes live in the M0 doc.
+
+## Milestone roster {#roster}
+
+| #  | Milestone | Owner | Status | Notes |
+|----|-----------|-------|--------|-------|
+| M0 | Foundations: Porting-Guide + Schema-Changes + worktree setup | this agent (Opus 4.7, 2026-05-02) | in progress | Worktree created at `../xstream-release-design`; Porting-Guide.md + Schema-Changes.md written; README index updated. PR pending. |
+| M1 | Tokens, fonts, shared CSS, icon sweep | _ready (M0 PR must merge first)_ | not started | Visual base. Existing pages stay running with new tokens. **Schema-Changes.md discovery:** the existing schema is far more complete than first thought — many things the plan listed for M2 (WatchlistItem, OmdbSearchResult, createLibrary/updateLibrary, matchVideo, etc.) already exist. Real M2 deltas are seasons/episodes + `Video.nativeResolution` only. |
+| M2 | GraphQL + SQLite schema migration | _waiting on M1_ | not started | One-shot schema. Adds resolvers; old UI keeps working until M3. |
+| M3 | AppShell + AppHeader + AccountMenu + Router cutover | _waiting on M2_ | not started | App boots with new shell; placeholder pages for `/`, `/profiles`, `/watchlist` until later milestones land them. Sidebar deleted. |
+| M4 | Library page + dependencies (FilmDetailsOverlay, SearchSlide, FilterSlide, PosterRow, FilmTile, MediaKindBadge, Poster) | _waiting on M3_ | not started | `/` is now Library. Dashboard + film-detail-loader deleted. |
+| M5 | Profiles ecosystem (Profiles, ProfileRow, FilmRow, EdgeHandle, DetailPane, CreateProfile, EditProfile, ProfileForm, DirectoryBrowser) | _waiting on M4_ | not started | `/profiles`, `/profiles/new`, `/profiles/:profileId/edit`. |
+| M6 | Watchlist | _waiting on M5_ | not started | `/watchlist` final form. |
+| M7 | Player wrap + SeasonsPanel | _waiting on M6_ | not started | Chrome only; playback services untouched. |
+| M8 | Settings | _waiting on M7_ | not started | Layout mostly preserved; identity refresh + header-clearance. |
+| M9 | Goodbye, NotFound, Error | _waiting on M8_ | not started | Misc pages. |
+| M10 | Final polish, e2e walk, catalog finalisation | _waiting on M9_ | not started | Mark every spec's Production row `done`. Run full e2e pass. |
+
+Update this table after each milestone: change `not started` → `in progress`
+→ `done`, append the commit SHA, and any inter-milestone notes.
+
+---
+
+## Milestone 0 — Foundations {#m0}
+
+**Goal:** Scaffold the porting infrastructure. No production code touched.
+
+**Branch + worktree:** Per session memory, set up a worktree for the
+migration: `git worktree add ../xstream-release-design release-design` from
+the project root. All milestones land on the `release-design` branch in
+that worktree. Open a draft PR against `main` after this milestone.
+
+### Tasks
+
+- [x] Create `docs/migrations/release-design/Porting-Guide.md` covering:
+  - The "Engineering invariants" section above (verbatim, then deepened).
+  - The `withViewTransition(fn)` helper signature + where it lives
+    (`client/src/utils/viewTransition.ts`).
+  - `.strings.ts` template (one default export `strings` of named keys).
+  - `.stories.tsx` template (Relay, Layout, plain decorator examples).
+  - `__tests__/` placement reminder.
+  - Token mapping table: every Prerelease token → Release equivalent (or
+    "removed").
+  - "When porting page X, also re-read these specs because they share
+    components" cross-reference table for the multi-spec milestones.
+  - "How to brief the next agent" section that `migrations-lead` follows.
+- [x] Create `docs/migrations/release-design/Schema-Changes.md` with the
+  full table from §schema-preview above, expanded to include:
+  - Exact SQL types, NULLability, indexes.
+  - Exact GQL types (`type Season { ... }` etc.) including
+    enum definitions.
+  - Migration ordering (which `ALTER TABLE` runs first, which `INSERT`
+    backfills, which `DROP` runs last).
+  - Resolver mapping notes (which presenter, which mapper).
+  - Mutation contracts (`createLibrary`, `updateLibrary`,
+    `addToWatchlist`, `removeFromWatchlist`, etc.).
+  - Per-row "consumed by" pointer to the milestone that consumes the field.
+- [x] Set up git worktree at `../xstream-release-design` on branch
+  `release-design`. Open draft PR titled "release-design: port lab → client".
+- [ ] Commit Porting-Guide + Schema-Changes in M0's commit. Push.
+- [ ] **Update this plan**: tick M0 row, set M1 `not started` → next.
+
+### Inputs
+
+- `docs/migrations/release-design/README.md`
+- `docs/migrations/release-design/Changes.md`
+- `docs/migrations/release-design/Components/README.md` (catalog)
+- `docs/migrations/release-design/Components/AppShell.md`,
+  `AppHeader.md`, `Library.md`, `Watchlist.md`, `Player.md` (the `done` specs
+  — read for spec-depth template)
+- `docs/architecture/Relay/00-Fragment-Contract.md`
+- `docs/code-style/Client-Conventions/00-Patterns.md`
+- `docs/server/GraphQL-Schema/00-Surface.md`
+
+### Verification
+
+- [ ] Both new docs render in the docs index without dead links.
+- [ ] Worktree exists; PR is open and builds (no code changes yet, so CI
+  should pass on docs-only).
+- [ ] Roster row M0 = `done` in this plan.
+
+### Hand-off note for M1
+
+> Tokens land in M1 first because M3's AppShell rewrite needs the green
+> identity already wired. M1 must NOT alter routes or shell composition —
+> it changes `tokens.ts`, font loading, icon helpers, and shared CSS only.
+> Dashboard/Library/Player should still load (in their old shape) at the
+> end of M1, just with the new colours and fonts.
+
+---
+
+## Milestone 1 — Tokens, fonts, shared CSS, icon sweep {#m1}
+
+**Goal:** Production token + font + icon surface matches the Release lab.
+The app remains visually old-shaped (grid shell, dashboard at `/`) but the
+colours and typography are new.
+
+### Tasks
+
+- [ ] Replace `client/src/styles/tokens.ts` with the Release token map (port
+  from `design/Release/src/styles/tokens.ts`). Preserve the export name
+  `tokens` and the type `Tokens`. Drop deprecated tokens (`colorRed`,
+  `colorRedDim`, etc.) — let the type-check expose every consumer that
+  needs updating later.
+- [ ] Add the Google Fonts `<link>` for Anton, Bytesized, Inter, JetBrains
+  Mono, Science Gothic to `client/index.html` (or wherever the production
+  client loads fonts).
+- [ ] Port `design/Release/src/styles/shared.css` utility classes (`.eyebrow`,
+  `.chip`, `.grain-layer`, `.dot`) into `client/src/styles/shared.css` and
+  import once in `main.tsx`.
+- [ ] Audit `client/src/lib/icons.tsx` against
+  `design/Release/src/lib/icons.tsx`; reconcile any divergence (the
+  Heroicons sweep already happened — should be near-identical). Pin
+  `IconArrowsIn`, `IconSpinner`, `LogoShield` exceptions.
+- [ ] Add `client/src/utils/viewTransition.ts` exporting:
+  ```ts
+  export function withViewTransition(fn: () => void): void {
+    if (typeof document !== "undefined" && "startViewTransition" in document) {
+      document.startViewTransition(fn);
+      return;
+    }
+    fn();
+  }
+  ```
+- [ ] **Spec sync:** AppShell.md, AppHeader.md, Library.md and any other
+  spec that names a token — verify the spec's literal token names match
+  what M1 just installed. If a spec says `colorGreen` but the new
+  `tokens.ts` exports `colorGreen` — good. If a name diverges, fix the
+  spec, not the code.
+- [ ] Run `bun run lint` + `bun run format:check` in `client/`. Fix new
+  warnings introduced by removed tokens (these are expected and signal
+  consumers needing later milestones — comment with `// release-design:
+  consumed in M{n}` where you can predict, otherwise leave failing).
+- [ ] Commit. Push. **Update roster.**
+
+### Inputs
+
+- `design/Release/src/styles/tokens.ts`
+- `design/Release/src/styles/shared.css`
+- `design/Release/src/lib/icons.tsx`
+- `design/Release/index.html` (font `<link>`)
+- `client/src/styles/tokens.ts`
+- `client/src/lib/icons.tsx`
+- `client/src/styles/` and `main.tsx`
+
+### Cross-cutting notes for M3+
+
+> When AppShell/AppHeader land in M3, they assume the new tokens and the
+> shared CSS utilities are already importable. Same for the
+> `withViewTransition` helper.
+
+### Verification
+
+- [ ] `bun run dev` in `client/` boots. Type-check passes (or fails only
+  on call sites that consume removed tokens — those are expected and
+  noted).
+- [ ] Visual check: the existing dashboard shows new font (Anton in any
+  hero text) and the green is in the picker. (Acknowledged: header still
+  red because AppHeader is rewritten in M3.)
+- [ ] Roster row M1 = `done`.
+
+### Hand-off note for M2
+
+> M2 lands the schema. It does NOT touch UI; it adds GQL types,
+> resolvers, presenters, and SQL migration. UI components currently
+> reading the old fields keep working. The dashboard query still
+> resolves; just new fields appear alongside.
+
+---
+
+## Milestone 2 — GraphQL + SQLite schema migration {#m2}
+
+**Goal:** Schema is in its v1 shape. Old UI keeps booting against it; new
+UI (M3+) consumes the new fields directly.
+
+### Tasks
+
+- [ ] Read `Schema-Changes.md` (created in M0) end-to-end.
+- [ ] Write SQLite migration script (next file in
+  `server/src/db/migrate.ts` migration list). Land all schema deltas in one
+  migration: ADD/ALTER/DROP for tables and columns named in §schema-preview.
+- [ ] Update `server/src/graphql/schema.ts` (or whatever holds the SDL) for
+  every GQL change. Add new types (`VideoKind` enum, `Season`, `Episode`,
+  `WatchlistItem`, etc.) and remove the dropped ones.
+- [ ] Update `server/src/graphql/mappers.ts`, `presenters.ts`, and
+  `resolvers/` to source the new fields. Each resolver follows the
+  one-resolver-per-field rule.
+- [ ] Update `server/src/db/queries/` with new per-table query files for
+  any new tables (`watchlist.ts`, `seasons.ts`, `episodes.ts`).
+- [ ] Drop server code for deleted surface (`feedback*` queries, mutations,
+  etc.). Search-and-destroy.
+- [ ] Add resolver-level tests for the new fields (allowed under the
+  "tests for pure logic" rule — schema mappers ARE pure logic).
+- [ ] Run `bun run test` in `server/`. All green.
+- [ ] **Spec sync:** if any new GQL field name diverged during
+  implementation from what `Schema-Changes.md` predicted, update the
+  schema doc to match the implemented surface (code wins, doc follows).
+- [ ] Commit. Push. **Update roster.**
+
+### Inputs
+
+- `docs/migrations/release-design/Schema-Changes.md`
+- `docs/server/GraphQL-Schema/00-Surface.md`
+- `docs/server/DB-Schema/`
+- `server/src/db/migrate.ts`, `server/src/db/queries/`
+- `server/src/graphql/`
+
+### Cross-cutting notes for M3+ (load-bearing)
+
+> After M2, the schema has these new fields/types ready to consume:
+> `Video.kind`, `Video.seasons`, `Video.nativeResolution`, `Video.posterUrl`,
+> `Watchlist`, `Library.scanProgress`. The old `Film.gradient`, `feedback*`
+> are gone. Components in M3+ reference these in their Relay fragments.
+
+### Verification
+
+- [ ] `bun run dev` in `server/` boots cleanly. SQLite migration runs once
+  on a fresh DB.
+- [ ] GraphQL Playground queries resolve for `Video.kind`, `Video.seasons`,
+  `Watchlist`, etc.
+- [ ] Server tests green.
+- [ ] **Existing client at `bun run dev` in `client/`** — DashboardPage,
+  LibraryPage etc. should still load. Old field references that were
+  dropped will fail their queries; FIX or temporarily stub those query
+  files in this milestone (the milestone that replaces them is responsible
+  for proper reconciliation, but the old surfaces should not 500). If a
+  page can't be made to load, leave a `// release-design-temporary` stub
+  and document it in the M2 hand-off note.
+- [ ] Roster row M2 = `done`.
+
+### Hand-off note for M3
+
+> M3 does the structural cutover: AppShell becomes positioned-layer,
+> AppHeader is rewritten, AccountMenu lands, Sidebar is deleted, and
+> `client/src/router.tsx` switches to the Release route table — but with
+> placeholder pages where M4–M9 will land real content. The brand
+> wordmark uses Bytesized 34px (font already loaded by M1).
+
+---
+
+## Milestone 3 — AppShell + AppHeader + AccountMenu + Router cutover {#m3}
+
+**Goal:** App boots with the Release shell. Header is green-glass with
+three centered nav links. Avatar dropdown works. Router has every Release
+route wired (some pointing to placeholder pages until M4–M9 land).
+
+### Specs to audit + bring to `done` depth
+
+`AppShell.md` (already `done`), `AppHeader.md` (already `done`),
+`AccountMenu.md` (already `done`), `Sidebar.md` (tombstone — confirm
+deletion path).
+
+> Even though those three specs are `done`, the audit step still happens:
+> tick the porting checklist as you implement, and if any literal value in
+> the spec proves wrong against the lab, fix the spec (lab wins).
+
+### Tasks
+
+- [ ] Port `AppShell` to positioned-layer model. Production path:
+  `client/src/components/app-shell/AppShell.tsx` + `.styles.ts` +
+  `.strings.ts` + `.stories.tsx`. Keep the directory; rewrite the contents.
+- [ ] Port `AppHeader` (green-glass three-column grid, brand wordmark,
+  three NavLinks, scan + avatar buttons). Path:
+  `client/src/components/app-header/`.
+- [ ] Port `AccountMenu` as a sibling component:
+  `client/src/components/account-menu/`. AppHeader owns open/close state.
+- [ ] Delete `client/src/components/sidebar/` entirely. Search-and-remove
+  any imports.
+- [ ] Delete `client/src/components/dashboard-hero/` (no longer used; was
+  part of old DashboardPage chrome).
+- [ ] Rewrite `client/src/router.tsx`:
+  - `/` → `<LibraryPage />` (placeholder until M4 — render a "Library
+    (coming in M4)" stub component).
+  - `/profiles` → `<ProfilesPage />` (placeholder until M5).
+  - `/profiles/new` → `<CreateProfilePage />` (placeholder until M5).
+  - `/profiles/:profileId/edit` → `<EditProfilePage />` (placeholder until
+    M5).
+  - `/watchlist` → `<WatchlistPage />` (placeholder until M6).
+  - `/settings` → keep current `<SettingsPage />` (M8 redresses it).
+  - `/player/:videoId` → keep current PlayerPage (M7 redresses chrome).
+    Note: lab uses `:filmId`; production currently uses `:videoId`. Decide
+    in M2/M3 which name wins and align both router + PlayerPage param
+    reading. **Recommended:** keep `:videoId` since that's what backend
+    Relay IDs already match; update lab spec to note the production param
+    name.
+  - `/goodbye` → keep current.
+  - `*` → 404 (current NotFoundPage; M9 redresses it).
+- [ ] Delete `/feedback` route + `client/src/pages/feedback-page/` directory.
+- [ ] Delete `client/src/pages/dashboard-page/` (the route is gone, all
+  consumers gone).
+- [ ] Add Storybook stories for AppShell, AppHeader, AccountMenu.
+- [ ] Add `.strings.ts` for AppHeader (nav labels, aria-labels, brand
+  wordmark literal "Xstream") and AccountMenu (menu items, sign-out
+  confirmation).
+- [ ] Add `.events.ts` where Nova events are emitted (account menu open,
+  scan trigger, nav click).
+- [ ] **Spec sync:** if any param name, route path, or component-prop name
+  changed during implementation from what AppShell.md/AppHeader.md said,
+  update the spec.
+- [ ] Run lint + format. Type-check. Stories build.
+- [ ] Commit. Push. **Update roster.**
+
+### Inputs
+
+- `design/Release/src/components/Layout/AppShell.{tsx,styles.ts}`
+- `design/Release/src/components/AppHeader/AppHeader.{tsx,styles.ts}`
+- `design/Release/src/components/AccountMenu/AccountMenu.{tsx,styles.ts}`
+- `design/Release/src/App.tsx` (route table)
+- `docs/migrations/release-design/Components/AppShell.md`,
+  `AppHeader.md`, `AccountMenu.md`, `Sidebar.md`
+- `client/src/router.tsx`, `client/src/components/app-shell/`,
+  `client/src/components/app-header/`,
+  `client/src/components/sidebar/` (delete)
+- Porting-Guide for stories + strings template
+
+### Cross-cutting notes for M4+
+
+> Every page from M4 onward renders inside AppShell. Pages own their own
+> `paddingTop: tokens.headerHeight` because the shell no longer reserves
+> a grid row for the header. Library is the designed exception (its hero
+> intentionally starts at y=0).
+>
+> The `/player/:videoId` param name decision (made in M3) propagates to
+> M7 — PlayerPage reads `useParams<{ videoId: string }>()`.
+
+### Verification
+
+- [ ] `bun run dev`. App boots. Header is green. Brand says "Xstream".
+- [ ] Click each nav link — routes resolve to placeholder content.
+- [ ] Click avatar → AccountMenu opens; click outside → closes.
+- [ ] Click scan icon → fires the existing scan mutation (the eventing
+  wiring should be preserved from old AppHeader's scan flow, even though
+  the AppHeader is rewritten).
+- [ ] Storybook: AppShell, AppHeader, AccountMenu render in their
+  expected states.
+- [ ] No `client/src/components/sidebar/`, `dashboard-hero/`, or
+  `pages/feedback-page/`, `pages/dashboard-page/` remain.
+- [ ] Roster row M3 = `done`.
+
+### Hand-off note for M4
+
+> Library is the biggest milestone — it lands 8 components plus the page
+> itself. Read every spec listed in M4 inputs before starting. Library's
+> hero overlaps the header, so the page does NOT add `paddingTop:
+> headerHeight`. The `withViewTransition` helper from M1 is consumed here
+> for poster→player navigation.
+
+---
+
+## Milestone 4 — Library page + dependencies {#m4}
+
+**Goal:** `/` is the Release Library home. Tile click opens
+`FilmDetailsOverlay`. Search/filter modes work. Poster→player navigation
+uses view transitions. Old DashboardPage + film-detail-loader fully
+removed.
+
+### Specs to audit + port
+
+| Spec | Lab path | Status going in |
+|---|---|---|
+| `Library.md` | `pages/Library/Library.{tsx,styles.ts}` | done |
+| `FilmDetailsOverlay.md` | `components/FilmDetailsOverlay/` | baseline |
+| `SearchSlide.md` | `components/SearchSlide/` | baseline |
+| `FilterSlide.md` | `components/FilterSlide/` + `filters.ts` | baseline |
+| `PosterRow.md` | `components/PosterRow/` | baseline |
+| `FilmTile.md` | `components/FilmTile/` | baseline |
+| `MediaKindBadge.md` | `components/MediaKindBadge/` | done |
+| `Poster.md` | `components/Poster/` | baseline |
+
+**Audit work:** for each `baseline` spec above, the M4 agent walks the
+lab source and fills any `TODO(redesign)` markers, expands the porting
+checklist to AppShell.md depth (one bullet per concrete CSS value /
+behaviour detail), and adds a "Strings" + "Stories" subsection.
+
+### Tasks
+
+- [ ] Audit all 8 specs above; commit spec updates as the first commit of M4.
+- [ ] Port `Poster` (the lowest-level reusable). Path:
+  `client/src/components/poster/`. Replaces existing
+  `client/src/components/poster-card/` (verify by checking call sites).
+- [ ] Port `MediaKindBadge`: `client/src/components/media-kind-badge/`.
+- [ ] Port `FilmTile`: `client/src/components/film-tile/`.
+- [ ] Port `PosterRow`: `client/src/components/poster-row/`.
+- [ ] Port `SearchSlide`: `client/src/components/search-slide/`.
+- [ ] Port `FilterSlide` + `filters.ts` pure logic:
+  `client/src/components/filter-slide/` (with `__tests__/filters.test.ts`
+  for the pure helpers).
+- [ ] Port `FilmDetailsOverlay`: `client/src/components/film-details-overlay/`.
+- [ ] Port `LibraryPage`: `client/src/pages/library-page/LibraryPage.tsx`
+  (replace contents of existing directory). Wire `useLazyLoadQuery` for
+  Library data; component fragments per the Relay contract.
+- [ ] Wire `withViewTransition` for tile → player navigation. Apply
+  `viewTransitionName: "film-backdrop"` to the FilmDetailsOverlay poster
+  (matched in M7 on Player.backdrop).
+- [ ] Update router: `/` → real `<LibraryPage />` (drop the M3
+  placeholder).
+- [ ] Delete `client/src/pages/dashboard-page/` (already removed in M3 if
+  M3 was thorough; verify).
+- [ ] Delete `client/src/pages/film-detail-loader/`.
+- [ ] Delete `client/src/components/library-list-header/`,
+  `library-filter-bar/`, `library-chips/`, `library-film-list-row/`,
+  `library-tab/`. Verify no remaining imports.
+- [ ] Delete `client/src/components/poster-card/` once `Poster` replaces it
+  everywhere.
+- [ ] Delete `client/src/components/dashboard-hero/` if M3 missed it.
+- [ ] Delete `client/src/components/slideshow/` if Library hero supersedes
+  it (verify — old slideshow may have been used elsewhere).
+- [ ] `.strings.ts`, `.stories.tsx`, `.events.ts` per component.
+- [ ] Tests for `filters.ts`.
+- [ ] Run lint + format + type-check + tests.
+- [ ] Commit (potentially split into per-component sub-commits for
+  reviewability). Push. **Update roster.**
+
+### Inputs
+
+- `design/Release/src/pages/Library/`
+- `design/Release/src/components/{FilmDetailsOverlay,SearchSlide,FilterSlide,PosterRow,FilmTile,MediaKindBadge,Poster}/`
+- All 8 specs in the table above
+- `Schema-Changes.md` for `Video.kind`, `Video.posterUrl`, `Watchlist`
+  fragment shape
+- `client/src/utils/viewTransition.ts` (created M1)
+
+### Cross-cutting notes for M5+
+
+> Library introduced these reusable components — Profiles M5 will
+> consume `Poster`, `MediaKindBadge`, and the SeasonsPanel's interaction
+> patterns documented in this milestone. If you change a `<Poster>` prop
+> after M4 ships, walk every call site in M5+.
+>
+> The viewTransitionName `film-backdrop` is the contract between Library
+> and Player. M7 must echo it.
+
+### Verification
+
+- [ ] `bun run dev`. `/` shows the Library hero with cycling B&W posters.
+- [ ] Search input opens SearchSlide; results populate; Filters button
+  opens FilterSlide; chips toggle; Clear/Done work.
+- [ ] Tile click sets `?film=<id>` and opens FilmDetailsOverlay full-bleed.
+- [ ] Play CTA navigates with smooth poster morph (Chromium / current
+  Firefox); instant nav otherwise.
+- [ ] Posters are real OMDb JPGs from `Video.posterUrl`.
+- [ ] Watchlist row shows watchlist items from the new GQL surface.
+- [ ] No stale dashboard / library-old code remains. `grep -r DashboardPage`
+  comes up empty.
+- [ ] Stories build for every new component.
+- [ ] Roster row M4 = `done`.
+
+### Hand-off note for M5
+
+> Profiles is the second-largest milestone — 9 specs in scope. The
+> EdgeHandle component is shared between Profiles split-view and the
+> Player (M7) seasons panel; port it once and consume from both. The
+> `useSplitResize` hook already exists in `client/src/hooks/`; verify its
+> Min/Max constants match the lab (M5 raises `MAX_PANE_WIDTH` to 1200).
+
+---
+
+## Milestone 5 — Profiles ecosystem {#m5}
+
+**Goal:** `/profiles`, `/profiles/new`, `/profiles/:profileId/edit` all
+land. DetailPane works in view + edit modes. Drag-resize pane lives.
+
+### Specs to audit + port
+
+| Spec | Lab path |
+|---|---|
+| `Profiles.md` | `pages/Profiles/` |
+| `ProfileRow.md` | `components/ProfileRow/` |
+| `FilmRow.md` | `components/FilmRow/` |
+| `EdgeHandle.md` (`done`) | `components/EdgeHandle/` |
+| `DetailPane.md` | `components/DetailPane/` |
+| `CreateProfile.md` | `pages/CreateProfile/` |
+| `EditProfile.md` | `pages/EditProfile/` |
+| `ProfileForm.md` | `components/ProfileForm/` |
+| `DirectoryBrowser.md` | `components/DirectoryBrowser/` |
+
+### Tasks
+
+- [ ] Audit all 9 specs; expand to `done` depth where needed.
+- [ ] Port `EdgeHandle` first (shared with M7).
+- [ ] Port `useSplitResize` updates: raise `MAX_PANE_WIDTH` from 640 → 1200;
+  default pane width = `Math.floor(window.innerWidth * 0.5)` via
+  `useMemo([])`.
+- [ ] Port `DirectoryBrowser`: `client/src/components/directory-browser/`
+  (replaces the existing one, but rewrite to spec).
+- [ ] Port `ProfileForm`: `client/src/components/profile-form/`.
+- [ ] Port `DetailPane`: `client/src/components/detail-pane/` (Relay
+  fragment for film data; handles view + edit modes; OMDb search picker
+  when in edit mode).
+- [ ] Port `ProfileRow`: `client/src/components/profile-row/`.
+- [ ] Port `FilmRow`: `client/src/components/film-row/`.
+- [ ] Add shared `PROFILE_GRID_COLUMNS` constant at
+  `client/src/pages/profiles-page/grid.ts` (per spec).
+- [ ] Port `ProfilesPage`: `client/src/pages/profiles-page/`. Wire
+  `useLazyLoadQuery`, search bar, first-mount default selection,
+  drag-resize, footer counts.
+- [ ] Port `CreateProfilePage`: `client/src/pages/create-profile-page/`.
+  Wire `createLibrary` mutation.
+- [ ] Port `EditProfilePage`: `client/src/pages/edit-profile-page/`. Wire
+  `updateLibrary` mutation.
+- [ ] Update router: replace M3 placeholders for `/profiles`,
+  `/profiles/new`, `/profiles/:profileId/edit` with real pages.
+- [ ] Delete superseded production code:
+  - `client/src/components/film-detail-pane/`
+  - `client/src/components/profile-explorer/`
+  - `client/src/components/new-profile-pane/`
+  - `client/src/components/edit-profile-pane/`
+  - `client/src/components/film-row/` (if path collides — replace
+    in-place rather than deleting if directory name matches)
+  - `client/src/components/profile-row/` (same)
+  - `client/src/components/directory-browser/` (rewrite)
+- [ ] `.strings.ts`, `.stories.tsx`, `.events.ts` per component.
+- [ ] Tests for `filmMatches` helper (pure logic from Profiles search bar).
+- [ ] Lint + format + type-check + tests.
+- [ ] Commit. Push. **Update roster.**
+
+### Inputs
+
+- All 9 specs listed above
+- `design/Release/src/pages/{Profiles,CreateProfile,EditProfile}/`
+- `design/Release/src/components/{ProfileRow,FilmRow,EdgeHandle,DetailPane,ProfileForm,DirectoryBrowser}/`
+- `Schema-Changes.md` for `Library.scanProgress`, `Video.kind`,
+  series-specific Watchlist behaviour
+- `client/src/hooks/useSplitResize.ts` (extend, don't replace)
+
+### Cross-cutting notes for M6+
+
+> M5 ports the SeasonsPanel-consumer surface (DetailPane + FilmRow inline
+> expansion). The actual `<SeasonsPanel>` component is M7's
+> deliverable, but its prop contract MUST match the spec and what M5
+> stubs in. Stub it as
+> `function SeasonsPanel(props: SeasonsPanelProps): JSX.Element`
+> rendering a "Seasons coming in M7" placeholder if you can't fully port
+> in M5. Update the stub's import to the real component in M7.
+
+### Verification
+
+- [ ] `/profiles` loads with split-pane: profile tree on left, DetailPane
+  pre-selected to first matched movie at 50% viewport on right.
+- [ ] Search bar filters across profiles + films.
+- [ ] Click profile chevron → expands.
+- [ ] Click film row → opens DetailPane in view mode (`?film=<id>`).
+- [ ] Click EDIT → DetailPane edit mode (`?film=<id>&edit=1`).
+- [ ] Drag the EdgeHandle → pane resizes (240px–1200px).
+- [ ] `+ NEW PROFILE` footer button → `/profiles/new`. Form submits →
+  `createLibrary` mutation → redirect to `/profiles`.
+- [ ] `/profiles/:profileId/edit` loads, form pre-fills, save runs
+  `updateLibrary` mutation.
+- [ ] Stories build.
+- [ ] Roster row M5 = `done`.
+
+### Hand-off note for M6
+
+> Watchlist is the simplest UI milestone (one page, one component
+> fragment) but consumes the new `Watchlist` GQL field landed in M2 and
+> the `Poster` + `Link to /?film=...` pattern from M4. Re-use, don't
+> reinvent.
+
+---
+
+## Milestone 6 — Watchlist {#m6}
+
+**Goal:** `/watchlist` shows the user's saved films as a poster grid;
+click navigates to Library overlay.
+
+### Specs to audit + port
+
+`Watchlist.md` (`done`).
+
+### Tasks
+
+- [ ] Audit `Watchlist.md`; tick implementation checklist as you go.
+- [ ] Port `WatchlistPage`: `client/src/pages/watchlist-page/`. Replace
+  current contents.
+- [ ] Wire `useLazyLoadQuery` for Watchlist root field. Each tile uses
+  `<Poster>` from M4 wrapped in `<Link to={`/?film=${id}`}>`.
+- [ ] Update router: `/watchlist` → real page (drop M3 placeholder).
+- [ ] Delete `client/src/components/watchlist-content/` (superseded).
+- [ ] `.strings.ts`, `.stories.tsx`, `.events.ts`.
+- [ ] Lint + format + type-check.
+- [ ] Commit. Push. **Update roster.**
+
+### Verification
+
+- [ ] `/watchlist` shows poster grid of all watchlist items, eyebrow "YOUR
+  WATCHLIST" + Anton 64px count title.
+- [ ] Click any tile navigates to `/?film=<id>` and opens Library overlay.
+- [ ] Story builds.
+- [ ] Roster row M6 = `done`.
+
+### Hand-off note for M7
+
+> Player is the most invariant-heavy milestone. The streaming pipeline
+> (`useChunkedPlayback`, `useVideoPlayback`, `useVideoSync`,
+> `services/`) is OFF-LIMITS. Only the chrome around it changes:
+> top/bottom controls, side panel, SeasonsPanel for series, view
+> transitions, episode-driven `?s=&e=` URL state. Read
+> `docs/code-style/Invariants/00-Never-Violate.md` § "MSE state
+> machine" before touching anything.
+
+---
+
+## Milestone 7 — Player wrap + SeasonsPanel {#m7}
+
+**Goal:** Player chrome matches the Release lab. SeasonsPanel ships as a
+shared component used by DetailPane (M5), FilmDetailsOverlay (M4 stub →
+real), and Player. View transitions from Library backdrop to Player
+backdrop work.
+
+### Specs to audit + port
+
+`Player.md` (`done`), `SeasonsPanel.md` (baseline).
+
+### Tasks
+
+- [ ] Audit both specs; expand SeasonsPanel.md to `done` depth.
+- [ ] Port `SeasonsPanel`: `client/src/components/seasons-panel/` (shared
+  by DetailPane + FilmDetailsOverlay + Player). Implements `accordion`
+  prop (default false; Player passes `true`).
+- [ ] Replace the M5 SeasonsPanel stub call sites with real component
+  imports (DetailPane, FilmRow inline expansion).
+- [ ] Replace the M4 SeasonsPanel reference in FilmDetailsOverlay with
+  the real component.
+- [ ] Port Player chrome: `client/src/pages/player-page/PlayerPage.tsx`
+  + sub-components. Reuses existing `useChunkedPlayback`,
+  `useVideoPlayback`, `useVideoSync`, all `services/`. Updates: VideoArea,
+  SidePanel, top eyebrow (TV-show variant adds episode code), bottom
+  controls eyebrow, episode badge row.
+- [ ] TV-show variant: read `?s=<season>&e=<episode>` URL params; render
+  episode picker in SidePanel; `onSelectEpisode` updates URL params and
+  re-runs the loading state.
+- [ ] Apply `viewTransitionName: "film-backdrop"` to `Player.backdrop`
+  (matches M4's FilmDetailsOverlay poster).
+- [ ] Wrap back-navigation in `withViewTransition`.
+- [ ] Delete superseded production sub-components if any:
+  `client/src/components/player-content/`, `player-sidebar/`,
+  `player-end-screen/`, `control-bar/` — verify each one is fully replaced
+  by the new design before deleting; if a piece (e.g. control-bar)
+  survives unchanged, leave it.
+- [ ] `.strings.ts`, `.stories.tsx`, `.events.ts` per new component.
+- [ ] Lint + format + type-check.
+- [ ] Commit. Push. **Update roster.**
+
+### Verification
+
+- [ ] `/player/:videoId` plays a movie with new chrome.
+- [ ] Series film: `?s=1&e=3` plays the right episode; SidePanel shows
+  EPISODES picker; clicking another episode swaps the load.
+- [ ] Library tile → Player navigation morphs the poster (view
+  transition).
+- [ ] Streaming behaviour unchanged: chunks load, buffers, plays through.
+  Existing playback tests still pass.
+- [ ] Stories build.
+- [ ] Roster row M7 = `done`.
+
+### Hand-off note for M8
+
+> Settings is mostly preserved layout (220px nav + content) with the new
+> identity (green active row, Anton headers) and a `paddingTop:
+> headerHeight` on the outer shell because it no longer renders its own
+> AppHeader. Tab content sections are unchanged in scope.
+
+---
+
+## Milestone 8 — Settings {#m8}
+
+**Goal:** `/settings` matches the Release lab visually; layout intact.
+
+### Specs to audit + port
+
+`Settings.md` (baseline).
+
+### Tasks
+
+- [ ] Audit `Settings.md` to `done` depth.
+- [ ] Port `SettingsPage`: `client/src/pages/settings-page/`. Replace the
+  outer shell to add `paddingTop: tokens.headerHeight, boxSizing: border-box`.
+  Remove its own `<AppHeader>` rendering (the shell provides it).
+- [ ] Port child tabs that need redress: `flags-tab/`, `metadata-tab/`,
+  `library-tab/`, `trace-history-tab/`, `danger-tab/`,
+  `settings-tabs/`. Most are layout-only updates.
+- [ ] `.strings.ts`, `.stories.tsx`, `.events.ts` per touched component.
+- [ ] Lint + format + type-check.
+- [ ] Commit. Push. **Update roster.**
+
+### Verification
+
+- [ ] `/settings` loads under new shell; all tabs render; flags toggle;
+  metadata save works.
+- [ ] Stories build.
+- [ ] Roster row M8 = `done`.
+
+### Hand-off note for M9
+
+> Goodbye, NotFound, Error are all small visual-redress jobs. Goodbye
+> swaps `<LogoShield>` for `<Logo02>` (chosen mark from M0/M1 logo
+> selection). NotFound's "Browse library" link still uses `IconSearch`
+> per spec — leave the `TODO` note in NotFound.md.
+
+---
+
+## Milestone 9 — Misc pages (Goodbye, NotFound, Error) {#m9}
+
+**Goal:** Edge pages match the Release lab.
+
+### Specs to audit + port
+
+`Goodbye.md` (baseline), `NotFound.md` (baseline), `Error.md` (baseline).
+
+### Tasks
+
+- [ ] Audit all three specs to `done` depth.
+- [ ] Port `Logo` family (specifically `Logo02`):
+  `client/src/components/logo/Logo02.tsx`. Used by Goodbye + AppHeader
+  brand mark (note: AppHeader uses Bytesized wordmark, NOT Logo02 — verify
+  via spec).
+- [ ] Port `GoodbyePage`. Swap `<LogoShield>` for `<Logo02>`. Green CTA.
+- [ ] Port `NotFoundPage`. New copy, `paddingTop: headerHeight`.
+- [ ] Port `ErrorPage`. Add to router as `/error` if not already.
+- [ ] `.strings.ts`, `.stories.tsx` per page.
+- [ ] Commit. Push. **Update roster.**
+
+### Verification
+
+- [ ] `/goodbye` countdown + green CTA + Logo02.
+- [ ] Bad URL → NotFound with Anton ghost numeral + new copy.
+- [ ] Error boundary catches and shows ErrorPage.
+- [ ] Roster row M9 = `done`.
+
+### Hand-off note for M10
+
+> Final milestone is e2e + cleanup. Walk every page in the browser; run
+> the full test suite; finalise the catalog (`Components/README.md`)
+> with every Production status set to `done`; mark the migration
+> README as ready-to-archive.
+
+---
+
+## Milestone 10 — Final polish, e2e, catalog finalisation {#m10}
+
+**Goal:** PR is mergeable. Every spec ticked, every page e2e-verified, no
+dead code, no lingering Prerelease references.
+
+### Tasks
+
+- [ ] `grep` sweep for Prerelease ghosts: `Moran`, `colorRed`, `Bebas`,
+  `gradient:` on Film/Video, `dashboard-page`, `feedback-page`,
+  `film-detail-loader`, `library-list-header`, `library-filter-bar`,
+  `library-chips`, `library-film-list-row`, `library-tab` (verify whether
+  this last one is the Settings tab and stays), `dashboard-hero`,
+  `sidebar/`. Each hit either has a justification or gets removed.
+- [ ] Update `client/src/styles/tokens.ts` to remove any tokens that no
+  consumer references (e.g. red-related tokens).
+- [ ] Update `docs/migrations/release-design/Components/README.md`:
+  every Production column set to `done`. Update the headline status.
+- [ ] Update `docs/migrations/release-design/README.md` status section.
+- [ ] Run the full test suite (`bun run test` at root, plus client + server).
+- [ ] Run Storybook build; verify every story renders.
+- [ ] Run e2e walk via the `browser` skill: `/`, `/profiles`,
+  `/profiles/new`, `/watchlist`, `/settings`, `/player/<videoId>` (movie),
+  `/player/<videoId>?s=1&e=1` (series), `/goodbye`, bad URL.
+- [ ] Verify Seq receives traces for new resolvers (`Watchlist.query`,
+  `Library.scanProgress`, etc.) — use `seq` skill.
+- [ ] Mark PR ready for review. Move it out of draft.
+- [ ] **Update roster.** All milestones `done`. Final commit SHA recorded.
+
+### Verification
+
+- [ ] PR is green in CI.
+- [ ] e2e walk produced no console errors.
+- [ ] No `// release-design-temporary` stubs remain.
+- [ ] Catalog table is fully `done`.
+
+### Closing note
+
+> Once merged, `docs/migrations/release-design/` retires per the
+> migration README's "Time-bounded" clause. The Porting-Guide can move
+> to `docs/code-style/` as a permanent guide if it has lasting value;
+> Schema-Changes can be archived.
+
+---
+
+## Decision log {#decisions}
+
+Append to this section as decisions are made mid-port. Format:
+`YYYY-MM-DD (M{n}) — Decision summary. Rationale.`
+
+- `2026-05-02 (M0)` — `:videoId` wins over `:filmId` for player route param.
+  Rationale: matches existing backend Relay IDs; simpler than renaming the
+  whole graph.
+- `2026-05-02 (M0)` — View transitions ship with `withViewTransition` helper
+  (feature-detect + no-op fallback). Rationale: Tauri/Chromium target +
+  Firefox already supports the API on user's machine; helper is one-line
+  insurance.
+- `2026-05-02 (M0)` — Schema breakage is allowed (v1). Drop `feedback*`,
+  `Film.gradient`, rename if needed.
+- `2026-05-02 (M0)` — Stories every component; tests only on extracted pure
+  logic. E2E lives in M10.
+- `2026-05-02 (M0)` — Strings extract to `.strings.ts` per component.
+- `2026-05-02 (M0)` — Cleanup happens per milestone (replacement deletes
+  the superseded files in the same commit).
+- `2026-05-02 (M0)` — Spec audit is per page/milestone (not a single
+  upfront pass). Cross-page sync notes go in this plan.
+- `2026-05-02 (M0)` — Porting-Guide doc lives at
+  `docs/migrations/release-design/Porting-Guide.md`.
+
+## Cross-page sync notes {#sync}
+
+This is the running scratchpad for "if you change X in milestone N, also
+look at Y in milestone M". The audit step in each milestone updates this
+list before porting begins.
+
+- **`<Poster>` prop contract** — defined in M4. Consumed by M5 (DetailPane,
+  PosterRow remnants), M6 (Watchlist), M7 (Player.backdrop). If M4 changes
+  the prop shape, the M5+ ports must be updated.
+- **`<SeasonsPanel>` prop contract** — defined in M7 with `accordion`,
+  `seasons`, `defaultOpenFirst`, `activeEpisode`, `onSelectEpisode`.
+  Stubbed in M5 (DetailPane, FilmRow inline expansion); referenced in M4
+  (FilmDetailsOverlay seasonsRail). Real import lands in M7.
+- **`viewTransitionName: "film-backdrop"`** — written by M4
+  (FilmDetailsOverlay poster), expected by M7 (Player.backdrop). The
+  literal string is the contract.
+- **`useSplitResize` constants** — `MAX_PANE_WIDTH = 1200` raised in M5.
+  M7 also consumes the hook for SeasonsPanel-area resize; verify the same
+  constants apply or override locally.
+- **`PROFILE_GRID_COLUMNS` constant** — defined at
+  `client/src/pages/profiles-page/grid.ts` in M5. Imported by ProfileRow +
+  FilmRow styles. Single source of column widths.
+- **Schema field availability** — every M3+ Relay fragment depends on M2
+  having landed the fields. If M2 misses one, that consumer milestone
+  files a fix to M2 (don't add fields after M2 unless absolutely necessary
+  — the schema is meant to be one shot).
+
+---
+
+## Files this plan considers in scope vs out of scope
+
+**In scope (touched in this PR):**
+- `client/src/pages/`, `client/src/components/`, `client/src/router.tsx`,
+  `client/src/main.tsx` (if needed for shared CSS import)
+- `client/src/styles/tokens.ts`, `client/src/styles/shared.css`,
+  `client/src/lib/icons.tsx`
+- `client/src/utils/` (add `viewTransition.ts`)
+- `client/src/contexts/`, `client/src/config/` only if needed by a port
+- `server/src/db/migrate.ts`, `server/src/db/queries/`
+- `server/src/graphql/` (schema, resolvers, presenters, mappers)
+- `docs/migrations/release-design/` (specs + new docs)
+
+**Out of scope (DO NOT TOUCH):**
+- `client/src/services/*.ts` (streaming pipeline)
+- `client/src/hooks/useChunkedPlayback.ts`,
+  `client/src/hooks/useVideoPlayback.ts`,
+  `client/src/hooks/useVideoSync.ts`
+- `server/src/services/chunker.ts`, `ffmpegFile.ts`, `hwAccel.ts`,
+  `streamingService` (the transcoding pipeline)
+- `server/src/routes/stream.ts` (the streaming HTTP route)
+- `design/Prerelease/`, `design/Release/` (the labs are read-only refs)
+- `docs/migrations/rust-rewrite/` (separate migration)
+
+If a milestone's tasks force a change to an "out of scope" file, STOP and
+escalate to the user via the migration-lead agent — do not modify silently.
