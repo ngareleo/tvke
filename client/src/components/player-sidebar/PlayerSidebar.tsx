@@ -1,14 +1,21 @@
 import { mergeClasses } from "@griffel/react";
-import React, { type FC } from "react";
+import { type FC } from "react";
 import { graphql, useFragment } from "react-relay";
-import { Link, useNavigate } from "react-router-dom";
+import { Link } from "react-router-dom";
 
-import { IconArrowLeft, IconPlay } from "~/lib/icons.js";
+import { SeasonsPanel } from "~/components/seasons-panel/SeasonsPanel.js";
+import { IconClose, IconPlay } from "~/lib/icons.js";
 import type { PlayerSidebar_video$key } from "~/relay/__generated__/PlayerSidebar_video.graphql.js";
 import { formatDuration } from "~/utils/formatters.js";
 
 import { strings } from "./PlayerSidebar.strings.js";
 import { usePlayerSidebarStyles } from "./PlayerSidebar.styles.js";
+
+export interface SidebarSeriesPick {
+  seasonNumber: number;
+  episodeNumber: number;
+  episodeTitle: string | null;
+}
 
 const VIDEO_FRAGMENT = graphql`
   fragment PlayerSidebar_video on Video {
@@ -36,79 +43,144 @@ const VIDEO_FRAGMENT = graphql`
         }
       }
     }
-    videoStream {
-      height
-      width
-    }
+    ...SeasonsPanel_video
   }
 `;
 
 interface Props {
   video: PlayerSidebar_video$key;
-  hidden?: boolean;
+  open: boolean;
+  seriesPick: SidebarSeriesPick | null;
+  onClose: () => void;
+  onBack: () => void;
+  onSelectEpisode: (seasonNumber: number, episodeNumber: number) => void;
 }
 
-export const PlayerSidebar: FC<Props> = ({ video, hidden }) => {
+function formatEpisodeCode(seasonNumber: number, episodeNumber: number): string {
+  return `S${String(seasonNumber).padStart(2, "0")}E${String(episodeNumber).padStart(2, "0")}`;
+}
+
+export const PlayerSidebar: FC<Props> = ({
+  video,
+  open,
+  seriesPick,
+  onClose,
+  onBack,
+  onSelectEpisode,
+}) => {
   const data = useFragment(VIDEO_FRAGMENT, video);
   const styles = usePlayerSidebarStyles();
-  const navigate = useNavigate();
 
   const meta = data.metadata;
-  const displayTitle = meta?.title ?? data.title;
-  const metaLine = [meta?.year, meta?.genre, formatDuration(data.durationSeconds)]
+  const displayTitle = meta?.title ?? data.title ?? strings.untitled;
+  const metaLine = [
+    meta?.year ?? null,
+    meta?.genre?.split("·")[0]?.trim() ?? null,
+    formatDuration(data.durationSeconds),
+  ]
     .filter(Boolean)
     .join(" · ");
+  const episodeCode = seriesPick
+    ? formatEpisodeCode(seriesPick.seasonNumber, seriesPick.episodeNumber)
+    : null;
 
-  // Up Next: other videos from the same library, excluding current
   const upNext = (data.library?.videos.edges ?? [])
     .map((e) => e.node)
     .filter((v) => v.id !== data.id)
-    .slice(0, 4);
+    .slice(0, 3);
+
+  const activeEpisode = seriesPick
+    ? { seasonNumber: seriesPick.seasonNumber, episodeNumber: seriesPick.episodeNumber }
+    : undefined;
 
   return (
-    <div className={mergeClasses(styles.root, hidden === true && styles.rootHidden)}>
-      {/* Now Playing */}
-      <div className={styles.section}>
-        <div className={styles.sectionLabel}>{strings.nowPlaying}</div>
+    <aside aria-hidden={!open} className={mergeClasses(styles.root, !open && styles.rootHidden)}>
+      <button
+        type="button"
+        aria-label={strings.closeAriaLabel}
+        className={styles.closeBtn}
+        onClick={onClose}
+      >
+        <IconClose size={14} />
+      </button>
+
+      <div className={styles.header}>
+        <div className={mergeClasses(styles.eyebrow, styles.nowPlayingEyebrow)}>
+          {strings.nowPlaying}
+        </div>
         <div className={styles.title}>{displayTitle}</div>
         {metaLine && <div className={styles.meta}>{metaLine}</div>}
-        {meta?.plot && <div className={styles.plot}>{meta.plot}</div>}
-      </div>
-
-      {/* Scrollable body */}
-      <div className={styles.body}>
-        {/* Up Next */}
-        {upNext.length > 0 && (
-          <div className={styles.upNextSection}>
-            <div className={styles.sectionLabel}>{strings.upNext}</div>
-            {upNext.map((v) => {
-              const thumbStyle = v.metadata?.posterUrl
-                ? { backgroundImage: `url(${v.metadata.posterUrl})` }
-                : undefined;
-              return (
-                <Link key={v.id} to={`/player/${v.id}`} className={styles.upNextItem}>
-                  <div className={styles.upNextThumb} style={thumbStyle} />
-                  <div className={styles.upNextInfo}>
-                    <div className={styles.upNextTitle}>{v.title}</div>
-                    {v.metadata?.year && <div className={styles.upNextYear}>{v.metadata.year}</div>}
-                  </div>
-                  <span className={styles.upNextPlay}>
-                    <IconPlay size={9} />
-                  </span>
-                </Link>
-              );
-            })}
+        {seriesPick && episodeCode != null && (
+          <div className={styles.episodeRow}>
+            <span className={styles.episodeCode}>{episodeCode}</span>
+            {seriesPick.episodeTitle != null && (
+              <span className={styles.episodeTitle}>{seriesPick.episodeTitle}</span>
+            )}
           </div>
+        )}
+        {meta?.plot != null && meta.plot.length > 0 && (
+          <div className={styles.plot}>{meta.plot}</div>
         )}
       </div>
 
-      {/* Footer */}
+      <div className={styles.body}>
+        {seriesPick ? (
+          <>
+            <div className={mergeClasses(styles.eyebrow, styles.bodyEyebrow)}>
+              {strings.episodes}
+            </div>
+            <SeasonsPanel
+              video={data}
+              accordion
+              activeEpisode={activeEpisode}
+              onSelectEpisode={onSelectEpisode}
+            />
+          </>
+        ) : (
+          <>
+            <div className={mergeClasses(styles.eyebrow, styles.bodyEyebrow)}>{strings.upNext}</div>
+            {upNext.length === 0 ? (
+              <div className={styles.upNextEmpty}>{strings.upNextEmpty}</div>
+            ) : (
+              upNext.map((v) => {
+                const posterStyle = v.metadata?.posterUrl
+                  ? { backgroundImage: `url(${v.metadata.posterUrl})` }
+                  : undefined;
+                return (
+                  <Link key={v.id} to={`/player/${v.id}`} replace className={styles.upNextRow}>
+                    <div className={styles.upNextPoster} style={posterStyle} />
+                    <div className={styles.upNextInfo}>
+                      <div className={styles.upNextTitle}>{v.title}</div>
+                      {v.metadata?.year != null && (
+                        <div className={styles.upNextSub}>{v.metadata.year}</div>
+                      )}
+                    </div>
+                    <span
+                      aria-label={
+                        strings.formatString(strings.playAriaLabelFormat, {
+                          title: v.title,
+                        }) as string
+                      }
+                      className={styles.upNextPlay}
+                    >
+                      <IconPlay size={10} />
+                    </span>
+                  </Link>
+                );
+              })
+            )}
+          </>
+        )}
+      </div>
+
       <div className={styles.footer}>
-        <button className={styles.backBtn} onClick={() => navigate(-1)} type="button">
-          <IconArrowLeft size={12} />
+        <button type="button" className={styles.vlcBtn}>
+          {strings.openInVlc}
+        </button>
+        <button type="button" onClick={onBack} className={styles.backBtn}>
           {strings.back}
         </button>
       </div>
-    </div>
+    </aside>
   );
 };

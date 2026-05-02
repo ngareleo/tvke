@@ -1,98 +1,169 @@
 import { mergeClasses } from "@griffel/react";
-import { type FC, Suspense, useCallback, useEffect, useRef, useState } from "react";
+import { type FC, type MouseEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { graphql, useFragment } from "react-relay";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 
-import { DevThrowTarget } from "~/components/dev-throw-target/DevThrowTarget.js";
+import { EdgeHandle } from "~/components/edge-handle/EdgeHandle.js";
 import { PlayerSidebarAsync } from "~/components/player-sidebar/PlayerSidebarAsync.js";
-import { VideoPlayerAsync } from "~/components/video-player/VideoPlayerAsync.js";
-import { IconArrowLeft } from "~/lib/icons.js";
+import {
+  type SeriesPick as VideoAreaSeriesPick,
+  VideoArea,
+} from "~/components/video-area/VideoArea.js";
 import type { PlayerContent_video$key } from "~/relay/__generated__/PlayerContent_video.graphql.js";
+import { withViewTransition } from "~/utils/viewTransition.js";
 
-import { strings } from "./PlayerContent.strings.js";
 import { usePlayerContentStyles } from "./PlayerContent.styles.js";
+import { resolveSeriesPick, type SeasonInput } from "./resolveSeriesPick.js";
 
-const FRAGMENT = graphql`
+const INACTIVITY_MS = 3000;
+
+const VIDEO_FRAGMENT = graphql`
   fragment PlayerContent_video on Video {
+    id
     title
-    ...VideoPlayer_video
+    mediaType
+    seasons {
+      seasonNumber
+      episodes {
+        episodeNumber
+        title
+        durationSeconds
+        onDisk
+      }
+    }
+    ...VideoArea_video
     ...PlayerSidebar_video
   }
 `;
-
-const INACTIVITY_MS = 3000;
 
 interface Props {
   video: PlayerContent_video$key;
 }
 
 export const PlayerContent: FC<Props> = ({ video }) => {
-  const data = useFragment(FRAGMENT, video);
-  const navigate = useNavigate();
+  const data = useFragment(VIDEO_FRAGMENT, video);
   const styles = usePlayerContentStyles();
+  const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
 
-  const [controlsHidden, setControlsHidden] = useState(false);
-  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const seasonParam = searchParams.get("s");
+  const episodeParam = searchParams.get("e");
+  const seriesPick = useMemo(() => {
+    if (data.mediaType !== "TV_SHOWS") return null;
+    const seasons: ReadonlyArray<SeasonInput> = data.seasons.map((s) => ({
+      seasonNumber: s.seasonNumber,
+      episodes: s.episodes.map((ep) => ({
+        episodeNumber: ep.episodeNumber,
+        title: ep.title ?? null,
+        durationSeconds: ep.durationSeconds ?? null,
+        onDisk: ep.onDisk,
+      })),
+    }));
+    return resolveSeriesPick(
+      seasons,
+      seasonParam !== null ? Number(seasonParam) : null,
+      episodeParam !== null ? Number(episodeParam) : null
+    );
+  }, [data.mediaType, data.seasons, seasonParam, episodeParam]);
 
-  const resetTimer = useCallback((): void => {
-    setControlsHidden(false);
-    if (timerRef.current) clearTimeout(timerRef.current);
-    timerRef.current = setTimeout(() => setControlsHidden(true), INACTIVITY_MS);
+  const [chromeHidden, setChromeHidden] = useState(false);
+  const [panelOpen, setPanelOpen] = useState(false);
+  const [cursor, setCursor] = useState<{ x: number; y: number }>(() => ({
+    x: typeof window === "undefined" ? 0 : window.innerWidth,
+    y: typeof window === "undefined" ? 0 : window.innerHeight / 2,
+  }));
+  const inactivityRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const armInactivity = useCallback((): void => {
+    if (inactivityRef.current !== null) clearTimeout(inactivityRef.current);
+    inactivityRef.current = setTimeout(() => setChromeHidden(true), INACTIVITY_MS);
   }, []);
 
+  const wakeChrome = useCallback((): void => {
+    setChromeHidden(false);
+    armInactivity();
+  }, [armInactivity]);
+
   useEffect(() => {
-    resetTimer();
+    armInactivity();
     return () => {
-      if (timerRef.current) clearTimeout(timerRef.current);
+      if (inactivityRef.current !== null) clearTimeout(inactivityRef.current);
     };
-  }, [resetTimer]);
+  }, [armInactivity]);
+
+  const handleMouseMove = (e: MouseEvent<HTMLDivElement>): void => {
+    wakeChrome();
+    setCursor({ x: e.clientX, y: e.clientY });
+  };
+
+  const goBackWithTransition = useCallback((): void => {
+    withViewTransition(() => navigate(-1));
+  }, [navigate]);
+
+  const selectEpisode = useCallback(
+    (sNum: number, eNum: number): void => {
+      setSearchParams({ s: String(sNum), e: String(eNum) }, { replace: true });
+    },
+    [setSearchParams]
+  );
+
+  const handleEligible = !panelOpen && !chromeHidden;
+
+  const videoAreaPick: VideoAreaSeriesPick | null = seriesPick
+    ? {
+        seasonNumber: seriesPick.seasonNumber,
+        episodeNumber: seriesPick.episodeNumber,
+        episodeTitle: seriesPick.episodeTitle,
+        episodeDurationSeconds: seriesPick.episodeDurationSeconds,
+      }
+    : null;
+
+  const sidebarPick = seriesPick
+    ? {
+        seasonNumber: seriesPick.seasonNumber,
+        episodeNumber: seriesPick.episodeNumber,
+        episodeTitle: seriesPick.episodeTitle,
+      }
+    : null;
 
   return (
-    <DevThrowTarget id="Player">
-      <div
-        className={mergeClasses(styles.root, controlsHidden && styles.rootHidden)}
-        onMouseMove={resetTimer}
-        onKeyDown={resetTimer}
-        tabIndex={0}
-      >
-        {/* ── Video column ─────────────────────────────────────────────────── */}
-        <div className={styles.videoArea}>
-          <div className={styles.scene} />
-          <div className={styles.grain} />
-          <div className={styles.letterbox} />
+    <div
+      className={mergeClasses(styles.shell, chromeHidden && styles.shellChromeHidden)}
+      onMouseMove={handleMouseMove}
+      onClick={wakeChrome}
+      onKeyDown={wakeChrome}
+      tabIndex={0}
+    >
+      <VideoArea
+        video={data}
+        seriesPick={videoAreaPick}
+        controlsHidden={chromeHidden}
+        onBack={goBackWithTransition}
+      />
 
-          <Suspense
-            fallback={
-              <div className={styles.skeleton}>
-                <div className={styles.spinner} />
-              </div>
-            }
-          >
-            <div className={styles.videoWrapper}>
-              <VideoPlayerAsync video={data} />
-            </div>
-          </Suspense>
+      {handleEligible && (
+        <EdgeHandle cursorX={cursor.x} cursorY={cursor.y} onActivate={() => setPanelOpen(true)} />
+      )}
 
-          <div className={mergeClasses(styles.topBar, controlsHidden && styles.topBarHidden)}>
-            <button
-              className={styles.backBtn}
-              onClick={() => navigate(-1)}
-              aria-label={strings.backAriaLabel}
-              type="button"
-            >
-              <IconArrowLeft size={14} />
-              {strings.back}
-            </button>
-            <div className={styles.topDivider} />
-            <div className={styles.videoTitle}>{data.title}</div>
-          </div>
-        </div>
+      {panelOpen && !chromeHidden && (
+        <div
+          aria-hidden="true"
+          className={styles.panelScrim}
+          onClick={(e) => {
+            e.stopPropagation();
+            setPanelOpen(false);
+          }}
+        />
+      )}
 
-        {/* ── Side panel column ────────────────────────────────────────────── */}
-        <Suspense fallback={null}>
-          <PlayerSidebarAsync video={data} hidden={controlsHidden} />
-        </Suspense>
-      </div>
-    </DevThrowTarget>
+      <PlayerSidebarAsync
+        video={data}
+        open={panelOpen && !chromeHidden}
+        seriesPick={sidebarPick}
+        onClose={() => setPanelOpen(false)}
+        onBack={goBackWithTransition}
+        onSelectEpisode={selectEpisode}
+      />
+    </div>
   );
 };

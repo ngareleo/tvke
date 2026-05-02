@@ -9,14 +9,16 @@ export const usePlayerStyles = makeStyles({
   // ── Suspense fallback — mirrors PlayerContent root layout ───────────────────
   rootFallback: {
     position: "fixed",
-    inset: "0",
-    display: "grid",
-    gridTemplateColumns: `1fr ${tokens.playerPanelWidth}`,
+    top: 0,
+    right: 0,
+    bottom: 0,
+    left: 0,
+    display: "flex",
     overflow: "hidden",
     backgroundColor: "#000",
     fontFamily: tokens.fontBody,
     alignItems: "center",
-    justifyItems: "center",
+    justifyContent: "center",
   },
 
   // Film-grain for the fallback background

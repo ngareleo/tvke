@@ -1,8 +1,9 @@
 # SeasonsPanel (component)
 
-> Status: **done** (Spec) · **not started** (Production)
+> Status: **done** (Spec) · **done** (Production)
 > Spec created: 2026-05-02 — Reusable season → episode browser. Renders an accordion of seasons with expandable episodes. Used inline in FilmRow expansion, DetailPane series section, and FilmDetailsOverlay seasons rail. Props: `seasons: Season[]`, `defaultOpenFirst?: boolean`. Each season shows a progress indicator (green complete, yellow partial, grey missing) and meta line (X of Y episodes on disk).
 > Audited: 2026-05-02 — added Strings + Stories sections (M4 audit pass).
+> Production landed: M4 commit `60b6ff7` shipped the Relay-fragment-driven `client/src/components/seasons-panel/` with core accordion + episode list rendering. M5 (`91043d9`) extended with `activeEpisode` + `onSelectEpisode` props and wired consumers (DetailPane, FilmRow, FilmDetailsOverlay). M7 (Player chrome) consumes it inside `PlayerSidebar` for the series episode picker with `accordion={true}` (single-open mode). Per-episode `watched / progressSeconds` rendering remains a follow-up — production schema does not yet expose those fields and styles for them sit unused in `SeasonsPanel.styles.ts`.
 
 ## Files
 

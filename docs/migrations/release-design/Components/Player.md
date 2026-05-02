@@ -187,6 +187,16 @@ The `replace: true` option ensures the episode switch doesn't pollute browser hi
 - `.sideEpisodeCode` — same as `.episodeBadgeCode` (reused style).
 - `.sideEpisodeTitle` — same as `.episodeBadgeTitle` (reused style).
 
+## Production implementation divergence
+
+**Architectural split:** The spec documents VideoArea, SidePanel, and PlayerContent (orchestrator) as logical units within Player's narrative. Production extracted them into separate component directories for modularity:
+- `client/src/components/video-area/VideoArea.tsx` — backdrop + topbar + controls chrome
+- `client/src/components/player-sidebar/PlayerSidebar.tsx` — right-side drawer with episode picker or UP NEXT + watchlist (movie variant)
+- `client/src/components/player-content/PlayerContent.tsx` — thin orchestrator managing chrome-hide state, panel open/close, cursor tracking, episode param resolution
+- `client/src/pages/player-page/PlayerPage.tsx` — page shell fetching video via Relay, passing to PlayerContent
+
+This is a clean separation (one concern per directory) but semantically identical to the spec. VideoArea and PlayerSidebar are not reusable across routes; they are Player-specific chrome. The spec's Subcomponents sections remain accurate as architectural description; implementation maps them to the directory tree.
+
 ## Changes from Prerelease
 
 - **Shell layout:** OLD (Prerelease) — `chromeHidden` toggled a dynamic inline `style={{ gridTemplateColumns: "1fr 290px" | "1fr 0px" }}`; opening/closing the side panel resized the video. NEW — shell is no longer a grid; VideoArea is `position: absolute; inset: 0` filling the shell, and SidePanel/EdgeHandle/panelScrim are absolutely-positioned siblings layered on top. Opening the panel **does not shift the video.**
@@ -249,4 +259,4 @@ The `replace: true` option ensures the episode switch doesn't pollute browser hi
 ## Status
 
 - [x] Designed in `design/Release` lab. 2026-05-02 (third pass): Series side-panel SeasonsPanel now uses `accordion={true}` to ensure single-open behaviour (opening a season closes others). User feedback: prevents the narrow rail from becoming overwhelmed when browsing across seasons. Applies only in Player side panel (DetailPane and FilmDetailsOverlay SeasonsPanel retain multi-open mode). 2026-05-02 (second pass): Series-aware Player variant added. URL contract `?s&e`; `resolveSeriesPick` fallback to first available episode. Episode code injected into top-right status eyebrow (e.g. "S01E03" between play state + resolution). Bottom controls: eyebrow changes to `[Season N, genre, episode duration]`; new episode badge row with green-bordered code chip + title. Side panel: header gains `sideEpisodeRow` (green code chip + episode title); body replaces UP NEXT + WATCHLIST with EPISODES eyebrow + `<SeasonsPanel activeEpisode={{...}} onSelectEpisode={selectEpisode} />`; no WATCHLIST section for series. `selectEpisode` calls `setSearchParams({ s, e }, { replace: true })` to switch playback. Earlier 2026-05-02: `EdgeHandle` extracted into its own component (`design/Release/src/components/EdgeHandle/`). Detection zone widened 24px → 140px. Bulge animation: smoothstep ease, X stretch + Y squish at peak proximity, vertical position follows cursor Y. Earlier 2026-05-02: SidePanel converted from grid column to overlay; default state hidden; reveals via right-edge handle; explicit top-right close button; slide animation via `transform: translateX`. Shell grid removed. View Transitions contract preserved (backdrop unchanged). 2026-05-01: `.backdrop` gains `viewTransitionName: "film-backdrop"`; back navigation wrapped in `goBackWithTransition` at both callsites (VideoArea topbar + SidePanel); cross-cutting View Transitions contract documented (PR #46 commit 73a9cca). 2026-05-01: Shell grid, SidePanel sections (UP NEXT + FROM YOUR WATCHLIST + footer) corrected to match source (PR #46 audit).
-- [ ] Production implementation
+- [x] Production implementation (M7, 2026-05-03). Spec sections map to production architecture: PlayerPage (page shell) → PlayerContent (orchestrator) → VideoArea (chrome) + PlayerSidebar (drawer). Movie variant: UP NEXT + FROM YOUR WATCHLIST. Series variant: EPISODES + SeasonsPanel with `accordion={true}`. URL params `?s=<season>&e=<episode>` resolve via `resolveSeriesPick` utility. All controls wired to existing playback services. View transitions (`viewTransitionName: "film-backdrop"`) sync with Library overlay. Back navigation wraps `navigate(-1)` in `withViewTransition` helper.
