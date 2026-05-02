@@ -1,7 +1,11 @@
-import { type FC } from "react";
+import { type FC, Suspense } from "react";
 
-import { PagePlaceholder } from "~/components/page-placeholder/PagePlaceholder.js";
+import { ProfilesPageContent } from "./ProfilesPageContent.js";
 
-const ProfilesPage: FC = () => <PagePlaceholder name="Profiles" milestone="M5" />;
+const ProfilesPage: FC = () => (
+  <Suspense fallback={null}>
+    <ProfilesPageContent />
+  </Suspense>
+);
 
 export default ProfilesPage;
