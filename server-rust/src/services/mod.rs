@@ -21,3 +21,4 @@ pub mod kill_reason;
 pub mod library_scanner;
 pub mod omdb;
 pub mod scan_state;
+pub mod tv_discovery;

@@ -35,13 +35,13 @@ use walkdir::WalkDir;
 use crate::config::AppContext;
 use crate::db::queries::videos::replace_video_streams;
 use crate::db::{
-    get_all_libraries, get_unmatched_video_ids, get_video_by_id, upsert_episode, upsert_library,
-    upsert_season, upsert_video, upsert_video_metadata, EpisodeRow, LibraryRow, NewVideoStream,
-    VideoMetadataRow, VideoRow,
+    get_all_libraries, get_unmatched_video_ids, get_video_by_id, upsert_library, upsert_video,
+    upsert_video_metadata, LibraryRow, NewVideoStream, VideoMetadataRow, VideoRow,
 };
 use crate::graphql::scalars::Resolution;
 use crate::services::ffmpeg_file::FfmpegFile;
 use crate::services::omdb::{OmdbClient, OmdbResult};
+use crate::services::tv_discovery;
 
 const FINGERPRINT_BYTES: usize = 65_536;
 
@@ -96,6 +96,14 @@ pub async fn scan_libraries(ctx: &AppContext) {
 
             scan_one_library(ctx, library).await;
             info!(library_name = %library.name, "library_scanned");
+            // TV-show discovery: cross-checks the local file tree against
+            // the OMDb canonical episode list and populates the seasons +
+            // episodes tables. Runs before auto_match_library so the
+            // synthetic show video row exists by the time the metadata
+            // matcher iterates the unmatched-video list.
+            if library.media_type == "tvShows" {
+                tv_discovery::discover_tv_shows(ctx, library).await;
+            }
             auto_match_library(ctx, library).await;
         }
 

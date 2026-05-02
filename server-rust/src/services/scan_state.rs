@@ -26,12 +26,23 @@ use crate::graphql::types::{LibraryScanProgress, LibraryScanUpdate};
 /// One scan-state datapoint. The wire-shape converters at the bottom of
 /// this module produce the two GraphQL subscription payloads from this
 /// single internal snapshot.
+///
+/// `phase` and `current_item` are extension fields added for the
+/// release-design TV-show discovery flow: the scanner moves through
+/// phases (`scanning_files`, `discovering_tv`, `fetching_omdb`,
+/// `auto_matching`) and reports the current show / video being processed
+/// so the client UI can show "Fetching Breaking Bad S03 episodes…"
+/// instead of just a numeric counter. Both are `Option<String>` to
+/// preserve back-compat for existing callers that still report
+/// progress without a phase.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ScanSnapshot {
     pub scanning: bool,
     pub library_id: Option<String>,
     pub done: Option<u32>,
     pub total: Option<u32>,
+    pub phase: Option<String>,
+    pub current_item: Option<String>,
 }
 
 impl ScanSnapshot {
@@ -41,6 +52,8 @@ impl ScanSnapshot {
             library_id: None,
             done: None,
             total: None,
+            phase: None,
+            current_item: None,
         }
     }
 }
@@ -103,6 +116,8 @@ impl ScanState {
             library_id: None,
             done: None,
             total: None,
+            phase: None,
+            current_item: None,
         };
         let snap = g.clone();
         drop(g);
@@ -111,11 +126,28 @@ impl ScanState {
     }
 
     pub fn mark_progress(&self, library_id: &str, done: u32, total: u32) {
+        self.mark_progress_with_context(library_id, done, total, None, None);
+    }
+
+    /// Like [`mark_progress`] but carries the current `phase` (e.g.
+    /// `"fetching_omdb"`) and `current_item` (e.g. show title) for the
+    /// richer client UX. Existing callers that don't yet plumb these
+    /// stay on `mark_progress` and emit `None` for both.
+    pub fn mark_progress_with_context(
+        &self,
+        library_id: &str,
+        done: u32,
+        total: u32,
+        phase: Option<&str>,
+        current_item: Option<&str>,
+    ) {
         let snap = ScanSnapshot {
             scanning: true,
             library_id: Some(library_id.to_string()),
             done: Some(done),
             total: Some(total),
+            phase: phase.map(|s| s.to_string()),
+            current_item: current_item.map(|s| s.to_string()),
         };
         match self.inner.current.write() {
             Ok(mut g) => *g = snap.clone(),
@@ -166,6 +198,8 @@ impl From<&ScanSnapshot> for LibraryScanProgress {
             library_id: snap.library_id.clone().map(async_graphql::ID),
             done: snap.done.map(|n| n as i32),
             total: snap.total.map(|n| n as i32),
+            phase: snap.phase.clone(),
+            current_item: snap.current_item.clone(),
         }
     }
 }
@@ -336,12 +370,16 @@ mod tests {
             library_id: Some("lib-x".to_string()),
             done: Some(3),
             total: Some(7),
+            phase: Some("fetching_omdb".to_string()),
+            current_item: Some("Breaking Bad".to_string()),
         };
         let p: LibraryScanProgress = (&snap).into();
         assert!(p.scanning);
         assert_eq!(p.library_id.as_ref().map(|id| id.as_str()), Some("lib-x"));
         assert_eq!(p.done, Some(3));
         assert_eq!(p.total, Some(7));
+        assert_eq!(p.phase.as_deref(), Some("fetching_omdb"));
+        assert_eq!(p.current_item.as_deref(), Some("Breaking Bad"));
     }
 
     #[test]
@@ -351,8 +389,32 @@ mod tests {
             library_id: Some("lib-x".to_string()),
             done: Some(5),
             total: Some(5),
+            phase: None,
+            current_item: None,
         };
         let u: LibraryScanUpdate = (&snap).into();
         assert!(u.scanning);
+    }
+
+    #[test]
+    fn mark_progress_with_context_carries_phase_and_current_item() {
+        let s = ScanState::new();
+        s.mark_started();
+        s.mark_progress_with_context("lib-a", 2, 5, Some("fetching_omdb"), Some("Breaking Bad"));
+        let snap = s.current();
+        assert_eq!(snap.phase.as_deref(), Some("fetching_omdb"));
+        assert_eq!(snap.current_item.as_deref(), Some("Breaking Bad"));
+        assert_eq!(snap.done, Some(2));
+        assert_eq!(snap.total, Some(5));
+    }
+
+    #[test]
+    fn mark_progress_emits_none_phase_and_item_for_back_compat_callers() {
+        let s = ScanState::new();
+        s.mark_started();
+        s.mark_progress("lib-a", 1, 3);
+        let snap = s.current();
+        assert!(snap.phase.is_none());
+        assert!(snap.current_item.is_none());
     }
 }

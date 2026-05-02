@@ -139,7 +139,7 @@ The exact column types, NULLability, and indexes live in the M0 doc.
 |----|-----------|-------|--------|-------|
 | M0 | Foundations: Plan + Porting-Guide + Schema-Changes + worktree setup | Opus 4.7 (2026-05-02) | done | Commit `262c57d`. Schema-Changes.md captures the discovery that the existing GQL surface is far more complete than the plan first assumed — the real M2 deltas are seasons/episodes + `Video.nativeResolution`. The design's `Film.kind` maps onto existing `Video.mediaType`. |
 | M1 | Tokens, fonts, shared CSS, icon sweep | Opus 4.7 (2026-05-02) | done | Commit `7612343`. Wholesale-replaced tokens.ts (Kenyan red palette → Release green/oklch + four text tiers + Bytesized/Anton/Science Gothic). Added Google Fonts link to index.html, created shared.css (CSS-var mirror + .eyebrow/.chip/.dot/.grain-layer), updated global.css body bg/text + scrollbar to match new tokens, removed stale Bebas Neue @import. Added IconCheck + Release-named icon aliases (IconBack/IconChevron/IconFullscreen/IconExpand/IconVolume/IconWarn) + ImdbBadge. Created withViewTransition helper. Type-check fails on ~289 call sites consuming removed tokens (colorMuted, colorWhite, colorRedDim, etc.) — expected; these are M3+ to-dos. Spec sync clean — no Components/*.md cite removed tokens. |
-| M2 | GraphQL + SQLite schema migration | Opus 4.7 (2026-05-02) | done | Commit `1a0c0d6`. **Backend pivot:** M2 lands in `server-rust/` only; Bun is retired for new feature work as of 2026-05-02. Migration docs swapped to Rust paths. Adds `videos.native_resolution` column + `seasons`/`episodes` composite-PK tables, `Video.nativeResolution` + `Video.seasons` GraphQL fields, plus new `Season` and `Episode` types. Native-resolution backfill happens via the next periodic scan (every 30s) — every video's row is re-probed and populates the column via COALESCE. **TV-show filename parsing → seasons/episodes population is deferred to a Post-M2 patch** — algorithm fuzzy across real layouts (Show/S01E01.mkv vs Show/Season 1/S01E01.mkv). Logged in Schema-Changes.md Post-M2 patches table; M3+ uses Storybook mocks until the patch lands. Tests: 247 unit + 12 integration, +9 net new. |
+| M2 | GraphQL + SQLite schema migration + TV-show discovery | Opus 4.7 (2026-05-02) | done | Schema commit `1a0c0d6`; TV-discovery commit pending in same PR. **Backend pivot:** M2 lands in `server-rust/` only; Bun is retired for new feature work as of 2026-05-02. Migration docs swapped to Rust paths. Adds `videos.native_resolution` column + `seasons`/`episodes` composite-PK tables, `Video.nativeResolution` + `Video.seasons` GraphQL fields, plus new `Season` + `Episode` types. **TV-show OMDb-driven discovery shipped in same PR:** `services/tv_discovery.rs` walks `<library>/<Show>/<Season>/<Episode>` layout, queries OMDb (`?s=<title>&type=series` → `?i=<imdbID>` → per-season `?i=<imdbID>&Season=N`), merges canonical episode list with local files, persists to seasons + episodes (matched/OMDb-only/local-only). `AppConfig.omdb_daily_budget` (default 800/1000) protects the free-tier quota with a soft-warn at <50 remaining. `LibraryScanProgress` extended additively with `phase` + `current_item` so the client UI can show granular per-OMDb-call progress. Tests: 270 unit + 12 integration, +23 net new vs M1 baseline. |
 | M3 | AppShell + AppHeader + AccountMenu + Router cutover | _waiting on M2_ | not started | App boots with new shell; placeholder pages for `/`, `/profiles`, `/watchlist` until later milestones land them. Sidebar deleted. |
 | M4 | Library page + dependencies (FilmDetailsOverlay, SearchSlide, FilterSlide, PosterRow, FilmTile, MediaKindBadge, Poster) | _waiting on M3_ | not started | `/` is now Library. Dashboard + film-detail-loader deleted. |
 | M5 | Profiles ecosystem (Profiles, ProfileRow, FilmRow, EdgeHandle, DetailPane, CreateProfile, EditProfile, ProfileForm, DirectoryBrowser) | _waiting on M4_ | not started | `/profiles`, `/profiles/new`, `/profiles/:profileId/edit`. |
@@ -427,11 +427,13 @@ UI (M3+) consumes the new fields directly.
 > placeholder pages where M4–M9 will land real content. The brand
 > wordmark uses Bytesized 34px (font already loaded by M1).
 >
-> **TV-show grouping is a Post-M2 patch.** The seasons + episodes tables
-> are empty until a follow-up PR adds the filename-parsing + show-row
-> synthesis algorithm. Until then, M4+ component work that needs
-> seasons/episodes data renders against mocked Storybook fixtures.
-> See `Schema-Changes.md` Post-M2 patches table for the deferral note.
+> **TV-show discovery landed within M2.** The seasons + episodes tables
+> are populated by `services/tv_discovery.rs` after each scan: directory
+> tree → OMDb canonical episodes → merged into the DB. Subscription
+> events carry `phase` + `current_item` so M3+ client code can render
+> "Fetching Breaking Bad S03 episodes…" instead of just a numeric
+> counter. See `Schema-Changes.md` Post-M2 patches table for the full
+> algorithm spec.
 
 ---
 
