@@ -3,7 +3,6 @@ import { useNavigate } from "react-router-dom";
 import { mergeClasses } from "@griffel/react";
 import { type Film, getEpisodeStats, getResumeEpisode } from "../../data/mock.js";
 import {
-  IconBack,
   IconClose,
   IconFolder,
   IconPlay,
@@ -84,15 +83,6 @@ export const FilmDetailsOverlay: FC<FilmDetailsOverlayProps> = ({
         />
         <div className={s.gradient} />
         <div className="grain-layer" />
-        <button
-          type="button"
-          onClick={onClose}
-          aria-label="Back to home"
-          className={s.back}
-        >
-          <IconBack />
-          <span>Back</span>
-        </button>
         <button
           type="button"
           onClick={onClose}
