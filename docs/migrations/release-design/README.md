@@ -31,7 +31,7 @@ Documentation updated via PR #46 audit (2026-05-01), PR #48 sync (2026-05-02, he
 - **Eight extracted components:** SearchSlide, FilterSlide, PosterRow, FilmTile, FilmDetailsOverlay (from Library); ProfileRow, FilmRow (from Profiles). Each now has its own `.tsx` + `.styles.ts` in the design lab and a dedicated `.md` spec with porting checklist. Parent pages (Library, Profiles) became thin shells (~160–260 lines) delegating to extracted components. Shared `PROFILE_GRID_COLUMNS` constant (`pages/Profiles/grid.ts`) locks column widths across ProfileRow and FilmRow.
 - **Earlier:** DirectoryBrowser (popover for ProfileForm), DevPanel (lab-only QA nav), Error (runtime-error page).
 
-**Implementation in production:** not started (all specs are design-lab first; porting begins once a spec is `done` or clearly marked `baseline` with knowns only).
+**Implementation in production:** M0 (plan) through M6 (Watchlist) shipped. M3 (AppShell + AppHeader + AccountMenu + Router), M4 (Library + 8 components), M5 (Profiles ecosystem), and M6 (Watchlist page) are all `done` in `client/src/`. M7 (Player chrome) onwards pending.
 
 ## Links
 

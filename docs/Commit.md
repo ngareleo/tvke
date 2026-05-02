@@ -15,6 +15,13 @@ Entry shape (each entry ends with the divider line described above):
 
 <!-- ENTRIES BELOW — newest first; each ends with a bare `---` line. The architect's next invocation will treat the no-entries state as the first-run case and prepend a bootstrap entry at HEAD. -->
 
+## 38ed25d — 2026-05-03 (M6 relay-compiler operation-naming rule promotion + page-story convention)
+
+**Files:** `docs/code-style/Invariants/00-Never-Violate.md`, `docs/code-style/Client-Conventions/00-Patterns.md`, `docs/SUMMARY.md`
+**Why:** M6 (Watchlist) exposed relay-compiler operation-naming violation (M5 `DetailPaneEdit.tsx` with operations named `DetailPaneSearchQuery` / `DetailPaneMatchMutation` halted project-wide artifact generation silently); promoted to invariant #14 with explicit blast-radius call-out; added page-story convention to Client-Conventions (pages can't use `@relay_test_operation`, no storybook precedent); updated SUMMARY.md invariants shortlist to #10 (relay ops) + renumbered error-swallowing to #15
+
+---
+
 ## 3733748 — 2026-05-02 (client-side `.utils.ts` convention — new code-style bullet)
 
 **Files:** `docs/code-style/Client-Conventions/00-Patterns.md`

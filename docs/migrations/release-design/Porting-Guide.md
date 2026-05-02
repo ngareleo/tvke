@@ -123,8 +123,7 @@ Reference: `docs/architecture/Relay/00-Fragment-Contract.md`.
 
 ### 9. Stories — `<Name>.stories.tsx` per ported component
 
-Every ported component ships a story file, even if simple. Use the
-existing decorators:
+Every ported **component** ships a story file, even if simple. **Pages do not.** Page queries cannot carry `@relay_test_operation` (a test-only directive), so the existing `withRelay` decorator cannot wrap them; there is no precedent in the codebase for page-level stories. Pages are tested via e2e in M10. Use the existing decorators for components:
 
 - `withNovaEventing` (always, when the component dispatches Nova events)
 - `withRelay` (when the component consumes a fragment)
