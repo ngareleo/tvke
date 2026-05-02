@@ -15,6 +15,13 @@ Entry shape (each entry ends with the divider line described above):
 
 <!-- ENTRIES BELOW — newest first; each ends with a bare `---` line. The architect's next invocation will treat the no-entries state as the first-run case and prepend a bootstrap entry at HEAD. -->
 
+## 931c982 — 2026-05-02 (release-design M0 INDEX row for Plan.md)
+
+**Files:** `docs/INDEX.md`
+**Why:** added retrieval row for `docs/migrations/release-design/Plan.md` (agent-orchestration scaffold for M0–M10 milestones) per migrations-lead notification; Schema-Changes.md and Porting-Guide.md are navigation-discoverable from Plan.md, no separate rows needed; SUMMARY.md unchanged (M0 is scaffolding, not architecture-level)
+
+---
+
 ## ac4c7fd — 2026-05-02 (forward note for Rust Step 2/3 nativeResolution field)
 
 **Files:** `docs/server/GraphQL-Schema/00-Surface.md`
