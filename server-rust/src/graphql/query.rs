@@ -104,14 +104,37 @@ impl Query {
             .collect())
     }
 
-    /// OMDb search — Step 1 stub; returns empty list. Implemented for real
-    /// when the OMDb client lands in the Rust server (Step 2 area).
+    /// OMDb free-text search behind the DetailPane edit picker. Reads
+    /// the `OmdbClient` off `AppContext` and forwards to its
+    /// `search_list`. Returns an empty Vec when no API key is configured
+    /// or the call fails (same shape OMDb uses on quota exhaustion /
+    /// network failure) so the client renders its "no matches" branch
+    /// gracefully.
     async fn search_omdb(
         &self,
-        _query: String,
-        _year: Option<i32>,
+        ctx: &Context<'_>,
+        query: String,
+        year: Option<i32>,
     ) -> async_graphql::Result<Vec<OmdbSearchResult>> {
-        Ok(Vec::new())
+        let app_ctx = ctx.data_unchecked::<crate::config::AppContext>();
+        let trimmed = query.trim();
+        if trimmed.is_empty() {
+            return Ok(Vec::new());
+        }
+        let Some(omdb) = app_ctx.omdb.as_ref() else {
+            return Ok(Vec::new());
+        };
+        let hits = omdb.search_list(trimmed, year).await;
+        Ok(hits
+            .into_iter()
+            .map(|h| OmdbSearchResult {
+                imdb_id: h.imdb_id,
+                title: h.title,
+                year: h.year.and_then(|y| i32::try_from(y).ok()),
+                poster_url: h.poster_url,
+                plot: None,
+            })
+            .collect())
     }
 
     async fn list_directory(&self, path: String) -> async_graphql::Result<Vec<DirEntry>> {

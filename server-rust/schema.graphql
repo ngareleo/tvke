@@ -187,8 +187,12 @@ type Query {
 	transcodeJob(id: ID!): TranscodeJob
 	watchlist: [WatchlistItem!]!
 	"""
-	OMDb search — Step 1 stub; returns empty list. Implemented for real
-	when the OMDb client lands in the Rust server (Step 2 area).
+	OMDb free-text search behind the DetailPane edit picker. Reads
+	the `OmdbClient` off `AppContext` and forwards to its
+	`search_list`. Returns an empty Vec when no API key is configured
+	or the call fails (same shape OMDb uses on quota exhaustion /
+	network failure) so the client renders its "no matches" branch
+	gracefully.
 	"""
 	searchOmdb(query: String!, year: Int): [OmdbSearchResult!]!
 	listDirectory(path: String!): [DirEntry!]!

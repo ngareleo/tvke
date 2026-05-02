@@ -291,6 +291,41 @@ impl OmdbClient {
         map_response(parsed)
     }
 
+    /// Free-text catalogue search across both movies and series — used
+    /// by the GraphQL `searchOmdb` resolver behind the DetailPane edit
+    /// picker. Returns up to ~10 candidate hits (whatever OMDb's `?s=`
+    /// endpoint surfaces in its `Search` array). Optional `year` narrows
+    /// the search to that release year. Same network/error handling
+    /// shape as `search` and `search_series`: any failure (network,
+    /// non-2xx, malformed JSON, "Response: False") collapses to an
+    /// empty Vec.
+    pub async fn search_list(&self, query_text: &str, year: Option<i32>) -> Vec<OmdbSeries> {
+        let mut query: Vec<(&str, String)> = vec![("s", query_text.to_string())];
+        if let Some(y) = year {
+            query.push(("y", y.to_string()));
+        }
+        let parsed: Option<OmdbSearchListResponse> = self.request_json(&query, query_text).await;
+        let parsed = match parsed {
+            Some(p) => p,
+            None => return Vec::new(),
+        };
+        if parsed.response != "True" {
+            return Vec::new();
+        }
+        let results = parsed.search.unwrap_or_default();
+        results
+            .into_iter()
+            .filter_map(|item| {
+                Some(OmdbSeries {
+                    imdb_id: item.imdb_id?,
+                    title: item.title?,
+                    year: parse_year(item.year.as_deref()),
+                    poster_url: parse_poster(item.poster.as_deref()),
+                })
+            })
+            .collect()
+    }
+
     /// Search the OMDb series catalogue by free-text title. Returns the
     /// top match (the first entry of the `Search` array). The caller can
     /// then chain `series_details(imdb_id)` to fetch `totalSeasons` and

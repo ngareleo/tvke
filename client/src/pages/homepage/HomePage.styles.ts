@@ -101,7 +101,25 @@ export const useHomePageStyles = makeStyles({
   },
   slideDotActive: {
     width: "26px",
+    backgroundColor: tokens.colorTextFaint,
+    position: "relative",
+    overflow: "hidden",
+  },
+  slideDotFill: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    width: "100%",
+    height: "100%",
     backgroundColor: tokens.colorGreen,
+    transformOrigin: "left center",
+    animationName: {
+      "0%": { transform: "scaleX(0)" },
+      "100%": { transform: "scaleX(1)" },
+    },
+    animationDuration: "7s",
+    animationTimingFunction: "linear",
+    animationFillMode: "forwards",
   },
   slideDotInactive: {
     width: "8px",

@@ -375,18 +375,32 @@ export const HomePageContent: FC = () => {
               </div>
               {heroFilms.length > 1 && (
                 <div className={styles.slideDots}>
-                  {heroFilms.map((film, i) => (
-                    <button
-                      key={film.id}
-                      type="button"
-                      onClick={() => goToHero(i)}
-                      aria-label={`Show ${film.node.title ?? film.node.filename}`}
-                      className={mergeClasses(
-                        styles.slideDot,
-                        i === heroIndex ? styles.slideDotActive : styles.slideDotInactive
-                      )}
-                    />
-                  ))}
+                  {heroFilms.map((film, i) => {
+                    const active = i === heroIndex;
+                    return (
+                      <button
+                        key={film.id}
+                        type="button"
+                        onClick={() => goToHero(i)}
+                        aria-label={`Show ${film.node.title ?? film.node.filename}`}
+                        className={mergeClasses(
+                          styles.slideDot,
+                          active ? styles.slideDotActive : styles.slideDotInactive
+                        )}
+                      >
+                        {active && (
+                          // Inner fill animates 0 → 100% width over the
+                          // 7s slide interval. Keying it on heroIndex
+                          // resets the animation on every slide change.
+                          <span
+                            key={heroIndex}
+                            className={styles.slideDotFill}
+                            aria-hidden="true"
+                          />
+                        )}
+                      </button>
+                    );
+                  })}
                 </div>
               )}
             </>
