@@ -1,12 +1,16 @@
 import { mergeClasses } from "@griffel/react";
-import { type FC, useEffect, useMemo, useState } from "react";
-import { graphql, useLazyLoadQuery } from "react-relay";
+import { type FC, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { fetchQuery, graphql, useLazyLoadQuery, useRelayEnvironment } from "react-relay";
 import { useNavigate, useSearchParams } from "react-router-dom";
 
 import { DetailPane } from "~/components/detail-pane/DetailPane.js";
 import { EmptyLibrariesHero } from "~/components/empty-libraries-hero/EmptyLibrariesHero.js";
 import { FilmRow } from "~/components/film-row/FilmRow.js";
 import { ProfileRow } from "~/components/profile-row/ProfileRow.js";
+import {
+  type LibraryScanSnapshot,
+  useLibraryScanSubscription,
+} from "~/hooks/useLibraryScanSubscription.js";
 import { useSplitResize } from "~/hooks/useSplitResize.js";
 import { IconClose, IconSearch } from "~/lib/icons.js";
 import type { ProfilesPageContentQuery } from "~/relay/__generated__/ProfilesPageContentQuery.graphql.js";
@@ -44,10 +48,42 @@ export const ProfilesPageContent: FC = () => {
   const data = useLazyLoadQuery<ProfilesPageContentQuery>(PROFILES_QUERY, {});
   const styles = useProfilesPageStyles();
   const navigate = useNavigate();
+  const environment = useRelayEnvironment();
   const [params, setParams] = useSearchParams();
 
   const filmId = params.get("film");
   const editingFilm = params.get("edit") === "1";
+
+  // Live scan state, keyed by library id. Subscribing to
+  // libraryScanProgress lets the row spinner + done/total label update in
+  // real time without a manual refresh; the post-scan refetch then
+  // surfaces the freshly-discovered videos.
+  const [scanByLibrary, setScanByLibrary] = useState<Map<string, LibraryScanSnapshot>>(new Map());
+  const wasScanningRef = useRef(false);
+
+  const handleScanUpdate = useCallback(
+    (snap: LibraryScanSnapshot): void => {
+      if (snap.scanning && snap.libraryId) {
+        wasScanningRef.current = true;
+        setScanByLibrary((prev) => {
+          const next = new Map(prev);
+          next.set(snap.libraryId as string, snap);
+          return next;
+        });
+        return;
+      }
+      // scanning=false: clear any state we tracked. If we just transitioned
+      // from scanning, refetch the libraries list so newly-discovered
+      // videos populate without a manual refresh.
+      if (wasScanningRef.current) {
+        wasScanningRef.current = false;
+        setScanByLibrary(new Map());
+        fetchQuery<ProfilesPageContentQuery>(environment, PROFILES_QUERY, {}).subscribe({});
+      }
+    },
+    [environment]
+  );
+  useLibraryScanSubscription(handleScanUpdate);
 
   // Flatten { library, video } edges so we can resolve the selected film
   // in O(1) and pre-expand its parent profile on mount / deep-link.
@@ -233,26 +269,35 @@ export const ProfilesPageContent: FC = () => {
               {strings.formatString(strings.noMatchesFormat, { q: search.trim() })}
             </div>
           ) : (
-            visibleProfiles.map(({ library, videos }) => (
-              <ProfileRow
-                key={library.id}
-                library={library}
-                expanded={isSearching || expandedIds.has(library.id)}
-                onToggle={() => {
-                  if (!isSearching) toggleProfile(library.id);
-                }}
-              >
-                {videos.map((node) => (
-                  <FilmRow
-                    key={node.id}
-                    video={node}
-                    selected={filmId === node.id}
-                    onOpen={() => openFilm(node.id)}
-                    onEdit={() => editFilm(node.id)}
-                  />
-                ))}
-              </ProfileRow>
-            ))
+            visibleProfiles.map(({ library, videos }) => {
+              const scan = scanByLibrary.get(library.id);
+              const scanProgress =
+                scan && scan.done !== null && scan.total !== null
+                  ? { done: scan.done, total: scan.total }
+                  : null;
+              return (
+                <ProfileRow
+                  key={library.id}
+                  library={library}
+                  expanded={isSearching || expandedIds.has(library.id)}
+                  onToggle={() => {
+                    if (!isSearching) toggleProfile(library.id);
+                  }}
+                  scanning={Boolean(scan)}
+                  scanProgress={scanProgress}
+                >
+                  {videos.map((node) => (
+                    <FilmRow
+                      key={node.id}
+                      video={node}
+                      selected={filmId === node.id}
+                      onOpen={() => openFilm(node.id)}
+                      onEdit={() => editFilm(node.id)}
+                    />
+                  ))}
+                </ProfileRow>
+              );
+            })
           )}
         </div>
 
