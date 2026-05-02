@@ -16,7 +16,7 @@ Inline subcomponents (ProfileRow, FilmRow, ProfileChip, PosterCard, ListRow, Vid
 | [Sidebar](Sidebar.md) | ~~`components/Sidebar/Sidebar.{tsx,styles.ts}`~~ **deleted** | tombstone | n/a — deleted |
 | [DetailPane](DetailPane.md) | `components/DetailPane/DetailPane.tsx` | baseline | not started |
 | [EdgeHandle](EdgeHandle.md) | `components/EdgeHandle/EdgeHandle.{tsx,styles.ts}` | done | not started |
-| [Poster](Poster.md) | `components/Poster/Poster.tsx` | baseline | not started |
+| [Poster](Poster.md) | `components/Poster/Poster.tsx` | baseline | done |
 | [Logo](Logo.md) | `components/Logo/{Logo01..Logo07,index}.tsx` | baseline | not started |
 | [Profiles page](Profiles.md) | `pages/Profiles/Profiles.{tsx,styles.ts}` | baseline | not started |
 | [ProfileRow component](ProfileRow.md) | `components/ProfileRow/ProfileRow.{tsx,styles.ts}` | baseline | not started |
