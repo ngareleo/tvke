@@ -14,7 +14,7 @@ import { filmMatches } from "./filmMatches.js";
 import { strings } from "./ProfilesPage.strings.js";
 import { useProfilesPageStyles } from "./ProfilesPage.styles.js";
 
-const PROFILES_QUERY = graphql`
+export const PROFILES_QUERY = graphql`
   query ProfilesPageContentQuery {
     libraries {
       id

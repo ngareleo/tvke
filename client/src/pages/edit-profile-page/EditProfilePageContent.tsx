@@ -1,11 +1,19 @@
 import { type FC } from "react";
-import { graphql, useLazyLoadQuery, useMutation } from "react-relay";
+import {
+  fetchQuery,
+  graphql,
+  useLazyLoadQuery,
+  useMutation,
+  useRelayEnvironment,
+} from "react-relay";
 import { useNavigate, useParams } from "react-router-dom";
 
 import { ProfileForm, type ProfileFormValues } from "~/components/profile-form/ProfileForm.js";
+import { PROFILES_QUERY } from "~/pages/profiles-page/ProfilesPageContent.js";
 import type { EditProfilePageContentDeleteMutation } from "~/relay/__generated__/EditProfilePageContentDeleteMutation.graphql.js";
 import type { EditProfilePageContentQuery } from "~/relay/__generated__/EditProfilePageContentQuery.graphql.js";
 import type { EditProfilePageContentUpdateMutation } from "~/relay/__generated__/EditProfilePageContentUpdateMutation.graphql.js";
+import type { ProfilesPageContentQuery } from "~/relay/__generated__/ProfilesPageContentQuery.graphql.js";
 
 const QUERY = graphql`
   query EditProfilePageContentQuery($id: ID!) {
@@ -55,6 +63,7 @@ const DELETE_LIBRARY = graphql`
 export const EditProfilePageContent: FC = () => {
   const { profileId } = useParams<{ profileId: string }>();
   const navigate = useNavigate();
+  const environment = useRelayEnvironment();
   const data = useLazyLoadQuery<EditProfilePageContentQuery>(
     QUERY,
     { id: profileId ?? "" },
@@ -79,6 +88,15 @@ export const EditProfilePageContent: FC = () => {
     extensions: [...lib.videoExtensions],
   };
 
+  const refetchAndNavigate = (): void => {
+    // Refetch the profiles list so /profiles renders fresh data on
+    // navigation, without a manual refresh.
+    fetchQuery<ProfilesPageContentQuery>(environment, PROFILES_QUERY, {}).subscribe({
+      complete: () => navigate("/profiles"),
+      error: () => navigate("/profiles"),
+    });
+  };
+
   const handleSubmit = (values: ProfileFormValues): void => {
     updateCommit({
       variables: {
@@ -90,7 +108,7 @@ export const EditProfilePageContent: FC = () => {
       },
       onCompleted: (_data, errors) => {
         if (errors && errors.length > 0) return;
-        navigate("/profiles");
+        refetchAndNavigate();
       },
     });
   };
@@ -100,7 +118,7 @@ export const EditProfilePageContent: FC = () => {
       variables: { id: libraryId },
       onCompleted: (_data, errors) => {
         if (errors && errors.length > 0) return;
-        navigate("/profiles");
+        refetchAndNavigate();
       },
     });
   };
