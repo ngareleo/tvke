@@ -1,7 +1,11 @@
-import { type FC } from "react";
+import { type FC, Suspense } from "react";
 
-import { PagePlaceholder } from "~/components/page-placeholder/PagePlaceholder.js";
+import { LibraryPageContent } from "./LibraryPageContent.js";
 
-const LibraryPage: FC = () => <PagePlaceholder name="Library" milestone="M4" />;
+const LibraryPage: FC = () => (
+  <Suspense fallback={null}>
+    <LibraryPageContent />
+  </Suspense>
+);
 
 export default LibraryPage;
