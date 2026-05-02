@@ -1,4 +1,4 @@
-//! Idempotent schema setup. Mirrors `server/src/db/migrate.ts`.
+//! Idempotent schema setup.
 //!
 //! No migration versioning + no `ALTER TABLE` retro-fits: the schema is
 //! whatever this file says it is on a fresh DB. While we're pre-prod the
