@@ -138,12 +138,16 @@ export const useVideoAreaStyles = makeStyles({
 
   titleOverlay: {
     position: "absolute",
-    bottom: "120px",
+    bottom: "130px",
     left: "26px",
     right: "26px",
     zIndex: 9,
     pointerEvents: "none",
     color: "#fff",
+  },
+
+  filmMetaSpacer: {
+    marginBottom: "18px",
   },
 
   episodeBadge: {

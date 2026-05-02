@@ -4,15 +4,7 @@ import React, { type FC, type MouseEvent, type RefObject, useState } from "react
 import { graphql, useFragment } from "react-relay";
 
 import { useVideoSync } from "~/hooks/useVideoSync.js";
-import {
-  IconArrowsIn,
-  IconArrowsOut,
-  IconBackward,
-  IconForward,
-  IconPause,
-  IconPlay,
-  IconSpeaker,
-} from "~/lib/icons.js";
+import { IconArrowsIn, IconArrowsOut, IconPause, IconPlay, IconSpeaker } from "~/lib/icons.js";
 import type { ControlBar_video$key } from "~/relay/__generated__/ControlBar_video.graphql.js";
 import type { Resolution } from "~/types.js";
 import { ALL_RESOLUTIONS, RESOLUTION_ORDER } from "~/types.js";
@@ -30,7 +22,6 @@ import { useControlBarStyles } from "./ControlBar.styles.js";
 
 const VIDEO_FRAGMENT = graphql`
   fragment ControlBar_video on Video {
-    title
     durationSeconds
     videoStream {
       height
@@ -142,114 +133,106 @@ export const ControlBar: FC<Props> = ({
 
   return (
     <div className={mergeClasses(styles.root, !isVisible && styles.rootHidden)}>
-      {/* Progress track */}
-      <div
-        className={styles.track}
-        role="slider"
-        aria-label="Seek"
-        aria-valuemin={0}
-        aria-valuemax={data.durationSeconds}
-        aria-valuenow={currentTime}
-        tabIndex={0}
-        onClick={handleSeek}
-        onMouseMove={handleSeekHover}
-        onMouseLeave={handleSeekHoverEnd}
-      >
-        <div className={styles.trackFill} style={{ width: `${progressPct}%` }} />
-        {hoverPx !== null && (
-          <div className={styles.trackTooltip} style={{ left: `${hoverPx}px` }}>
-            {formatDuration(hoverSeconds)}
-          </div>
-        )}
+      {/* Progress row: timestamp + 3px green track + duration */}
+      <div className={styles.progressRow}>
+        <span className={styles.timeLabel}>{formatDuration(currentTime)}</span>
+        <div
+          className={styles.track}
+          role="slider"
+          aria-label="Seek"
+          aria-valuemin={0}
+          aria-valuemax={data.durationSeconds}
+          aria-valuenow={currentTime}
+          tabIndex={0}
+          onClick={handleSeek}
+          onMouseMove={handleSeekHover}
+          onMouseLeave={handleSeekHoverEnd}
+        >
+          <div className={styles.trackFill} style={{ width: `${progressPct}%` }} />
+          <div className={styles.trackKnob} style={{ left: `${progressPct}%` }} />
+          {hoverPx !== null && (
+            <div className={styles.trackTooltip} style={{ left: `${hoverPx}px` }}>
+              {formatDuration(hoverSeconds)}
+            </div>
+          )}
+        </div>
+        <span className={styles.timeLabelDim}>{formatDuration(data.durationSeconds)}</span>
       </div>
 
-      {/* Controls row */}
-      <div className={styles.row}>
-        {/* Left */}
-        <div className={styles.left}>
-          <button
-            className={styles.btn}
-            aria-label={isPlaying ? "Pause" : "Play"}
-            onClick={togglePlayPause}
-          >
-            {playIcon}
-          </button>
-          <button className={styles.btn} aria-label="Rewind 10 seconds" onClick={handleSkip(-10)}>
-            <IconBackward size={18} />
-          </button>
-          <button className={styles.btn} aria-label="Forward 10 seconds" onClick={handleSkip(10)}>
-            <IconForward size={18} />
-          </button>
+      {/* Controls row: −10s · play · +10s · — · volume · res chip · fullscreen */}
+      <div className={styles.controlsRow}>
+        <button className={styles.ctrlBtn} aria-label="Rewind 10 seconds" onClick={handleSkip(-10)}>
+          −10s
+        </button>
+        <button
+          className={mergeClasses(
+            styles.ctrlBtn,
+            styles.ctrlBtnPlay,
+            status === "idle" && styles.ctrlBtnPlayIdle
+          )}
+          aria-label={isPlaying ? "Pause" : "Play"}
+          onClick={togglePlayPause}
+        >
+          {playIcon}
+        </button>
+        <button className={styles.ctrlBtn} aria-label="Forward 10 seconds" onClick={handleSkip(10)}>
+          +10s
+        </button>
 
-          {/* Volume */}
-          <div
-            className={styles.volumeGroup}
-            onMouseEnter={() => setShowVolumeSlider(true)}
-            onMouseLeave={() => setShowVolumeSlider(false)}
-          >
-            <button className={styles.btn} aria-label="Volume">
-              <IconSpeaker size={18} />
-            </button>
-            <input
-              type="range"
-              min={0}
-              max={1}
-              step={0.05}
-              defaultValue={1}
-              onChange={handleVolumeChange}
-              className={styles.volumeSlider}
-              style={{
-                width: showVolumeSlider ? 72 : 0,
-                opacity: showVolumeSlider ? 1 : 0,
-              }}
-              aria-label="Volume level"
-            />
-          </div>
+        <span className={styles.flexFill} />
 
-          <span className={styles.time}>
-            {formatDuration(currentTime)} / {formatDuration(data.durationSeconds)}
-          </span>
+        <div
+          className={styles.volumeGroup}
+          onMouseEnter={() => setShowVolumeSlider(true)}
+          onMouseLeave={() => setShowVolumeSlider(false)}
+        >
+          <IconSpeaker size={18} />
+          <input
+            type="range"
+            min={0}
+            max={1}
+            step={0.05}
+            defaultValue={1}
+            onChange={handleVolumeChange}
+            className={styles.volumeSlider}
+            style={{
+              width: showVolumeSlider ? 80 : 0,
+              opacity: showVolumeSlider ? 1 : 0,
+            }}
+            aria-label="Volume level"
+          />
         </div>
 
-        {/* Right */}
-        <div className={styles.right}>
-          <span className={styles.title}>{data.title}</span>
-
-          {/* Resolution dropdown */}
-          <div className={styles.resWrapper}>
-            <button
-              className={mergeClasses(styles.btn, styles.btnSmall)}
-              onClick={() => setResMenuOpen((o) => !o)}
-              aria-label={`Resolution: ${resolution}`}
-            >
-              {resolution}
-            </button>
-            {resMenuOpen && (
-              <div className={styles.resMenu}>
-                {availableResolutions.map((r) => (
-                  <button
-                    key={r}
-                    className={mergeClasses(
-                      styles.resItem,
-                      r === resolution && styles.resItemActive
-                    )}
-                    onClick={(e) => handleResolutionClick(e, r)}
-                  >
-                    {r}
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-
+        <div className={styles.resWrapper}>
           <button
-            className={styles.btn}
-            aria-label={isFullscreen ? "Exit fullscreen" : "Fullscreen"}
-            onClick={handleFullscreen}
+            className={styles.resChip}
+            onClick={() => setResMenuOpen((o) => !o)}
+            aria-label={`Resolution: ${resolution}`}
           >
-            {isFullscreen ? <IconArrowsIn size={18} /> : <IconArrowsOut size={18} />}
+            {resolution}
           </button>
+          {resMenuOpen && (
+            <div className={styles.resMenu}>
+              {availableResolutions.map((r) => (
+                <button
+                  key={r}
+                  className={mergeClasses(styles.resItem, r === resolution && styles.resItemActive)}
+                  onClick={(e) => handleResolutionClick(e, r)}
+                >
+                  {r}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
+
+        <button
+          className={styles.ctrlBtn}
+          aria-label={isFullscreen ? "Exit fullscreen" : "Fullscreen"}
+          onClick={handleFullscreen}
+        >
+          {isFullscreen ? <IconArrowsIn size={18} /> : <IconArrowsOut size={18} />}
+        </button>
       </div>
     </div>
   );

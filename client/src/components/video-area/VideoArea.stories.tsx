@@ -4,6 +4,7 @@ import type { Meta, StoryObj } from "storybook-react-rsbuild";
 
 import type { VideoArea_video$key } from "~/relay/__generated__/VideoArea_video.graphql.js";
 import type { VideoAreaStoryQuery } from "~/relay/__generated__/VideoAreaStoryQuery.graphql.js";
+import { withNovaEventing } from "~/storybook/withNovaEventing.js";
 import { withRelay } from "~/storybook/withRelay.js";
 
 import { type SeriesPick, VideoArea } from "./VideoArea.js";
@@ -43,7 +44,8 @@ const baseResolvers = {
       year: 2015,
       genre: "Action · Adventure",
       plot: null,
-      posterUrl: null,
+      posterUrl:
+        "https://m.media-amazon.com/images/M/MV5BN2EwM2I5OWMtMGQyMi00Zjg1LWJkNTctZTdjYTA4OGUwZjMyXkEyXkFqcGdeQXVyMTMxODk2OTU@._V1_SX300.jpg",
     },
     videoStream: { height: 2160, width: 3840 },
   }),
@@ -52,7 +54,7 @@ const baseResolvers = {
 const meta: Meta<WrapperProps> = {
   title: "Components/VideoArea",
   component: VideoAreaWrapper,
-  decorators: [withRelay],
+  decorators: [withRelay, withNovaEventing],
   parameters: {
     layout: "fullscreen",
     relay: {

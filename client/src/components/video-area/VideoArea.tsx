@@ -2,6 +2,7 @@ import { mergeClasses } from "@griffel/react";
 import { type FC, Suspense } from "react";
 import { graphql, useFragment } from "react-relay";
 
+import { Poster } from "~/components/poster/Poster.js";
 import { VideoPlayerAsync } from "~/components/video-player/VideoPlayerAsync.js";
 import { IconBack } from "~/lib/icons.js";
 import type { VideoArea_video$key } from "~/relay/__generated__/VideoArea_video.graphql.js";
@@ -87,15 +88,7 @@ export const VideoArea: FC<Props> = ({ video, seriesPick, controlsHidden, onBack
 
   return (
     <div className={styles.root}>
-      {posterUrl != null && (
-        <img
-          src={posterUrl}
-          alt={displayTitle}
-          className={styles.backdrop}
-          loading="eager"
-          decoding="async"
-        />
-      )}
+      <Poster url={posterUrl} alt={displayTitle} className={styles.backdrop} width={1600} />
 
       <div className={styles.videoWrapper}>
         <Suspense fallback={null}>
