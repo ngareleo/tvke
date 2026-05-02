@@ -82,7 +82,6 @@ export const useHomePageStyles = makeStyles({
   slideDots: {
     display: "flex",
     columnGap: "8px",
-    marginTop: "auto",
   },
   slideDot: {
     height: "3px",

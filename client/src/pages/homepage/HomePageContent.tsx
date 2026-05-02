@@ -373,7 +373,7 @@ export const HomePageContent: FC = () => {
                 <div className={styles.greetingEyebrow}>· {timeOfDayGreeting(new Date())}</div>
                 <div className={styles.greeting}>{strings.libraryHeading}</div>
               </div>
-              {heroFilms.length > 1 && (
+              {heroFilms.length > 0 && (
                 <div className={styles.slideDots}>
                   {heroFilms.map((film, i) => {
                     const active = i === heroIndex;
