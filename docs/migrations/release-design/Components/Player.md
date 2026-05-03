@@ -223,38 +223,38 @@ This is a clean separation (one concern per directory) but semantically identica
 
 ## Porting checklist (`client/src/pages/Player/`)
 
-- [ ] Bypass AppShell — full-viewport `100vw × 100vh` black background
-- [ ] Shell is **not a grid**: VideoArea fills the viewport; SidePanel and EdgeHandle are absolutely-positioned siblings. `.shell` / `.shellChromeHidden` only toggle cursor.
-- [ ] State machine: `idle → loading → playing`, with 600ms loading-to-playing simulation **replaced by real `canplay`**
-- [ ] Chrome auto-hide: 3000ms inactivity timer; wakes on mousemove / click / keydown; only armed while `playing`
-- [ ] Track `cursor: {x, y}` on `onMouseMove` (`clientX, clientY`)
-- [ ] `<EdgeHandle cursorX cursorY onActivate>` rendered as own component while `!panelOpen && !chromeHidden`. Detection zone 140px. Self-hides via opacity outside the zone. Smoothstep-eased bulge: translateX out → flush, asymmetric scale (X stretch 18%, Y squish 4%), top clamped to cursor Y. Click → `setPanelOpen(true)` + `stopPropagation()`
-- [ ] `panelScrim` (transparent, `position: absolute; inset: 0; zIndex: 18`) renders only when `panelOpen && !chromeHidden`; click closes the panel (drawer pattern)
-- [ ] Cursor `none` when chromeHidden
-- [ ] VideoArea background: Poster, brightness 0.85 contrast 1.05, grain overlay; `.backdrop` carries `viewTransitionName: "film-backdrop"` (must match Library `.overlayPoster`)
-- [ ] Letterbox gradients: top 80px, bottom 220px, fade with chrome
-- [ ] Idle overlay: 80×80 green circle play button with green-glow shadow
-- [ ] Loading overlay: 56×56 circular spinner with green arc
-- [ ] Topbar: **icon-only** Back button (no "BACK" label) with drop-shadow + hover white-glow + status eyebrow showing resolution + HDR/codec
-- [ ] Topbar status eyebrow (series variant): inject episode code (e.g. "S01E03") between play state and resolution — `● PLAYING · S01E03 · 4K · HDR10`
-- [ ] Idle play button: **glass** 88×88 circle (translucent white bg, `backdropFilter: blur(20px) saturate(180%)`, beveled borders, inset highlights + drop shadow) — NOT solid green
-- [ ] Bottom title: Anton 64px with text-shadow (show name for series, film title for movies)
-- [ ] Bottom eyebrow (movie variant): `[year, genre, duration]` in Mono 11px
-- [ ] Bottom eyebrow (series variant): `[Season N, genre, episode duration]` in Mono 11px
-- [ ] Episode badge (series variant, NEW): row above show title with green-bordered episode code chip (`episodeBadgeCode`) + episode title (`episodeBadgeTitle`). Format code as `S{pad}E{pad}` (zero-padded).
-- [ ] Progress bar: 3px tall, green fill with green-glow shadow
-- [ ] Control row: −10s / play-pause / +10s / volume / resolution chip / fullscreen
-- [ ] SidePanel 290px overlay: `position: absolute, right: 0, top: 0, bottom: 0, zIndex: 20`; slide via `transform: translateX(100%)` ↔ `0`, 0.3s ease. Default closed.
-- [ ] SidePanel content (movie variant): header (NOW PLAYING eyebrow + title + meta + plot) + body (UP NEXT from same-profile films, up to 3) + watchlist section (FROM YOUR WATCHLIST, first 3 watchlist entries with on-disk indicator) + footer (VLC + BACK)
-- [ ] SidePanel content (series variant, NEW): header (NOW PLAYING eyebrow + title + Season meta + plot + sideEpisodeRow with green code chip + episode title) + body (EPISODES eyebrow + `<SeasonsPanel seasons={film.seasons} activeEpisode={{...}} onSelectEpisode={selectEpisode} accordion={true} />`) + footer (VLC + BACK). No WATCHLIST for series.
-  - [ ] `accordion={true}` ensures single-open behaviour: opening a season closes others, preventing rail clutter
-- [ ] SidePanel top-right `×` close button → `setPanelOpen(false)`
-- [ ] Visible state of SidePanel = `panelOpen && !chromeHidden` — chrome auto-hide slides the panel off but preserves `panelOpen`
-- [ ] All controls wired to actual playback API
-- [ ] Back: `goBackWithTransition()` shared helper on both VideoArea topbar and SidePanel back buttons — wraps `navigate(-1)` in `document.startViewTransition` with plain `navigate(-1)` fallback
-- [ ] **URL contract (series):** `/player/<filmId>?s=<season>&e=<episode>`. Parse URL params; resolve missing/invalid params via `resolveSeriesPick(film, s, e)` → first available episode (or first episode if none available)
-- [ ] **Episode selection handler:** `selectEpisode(seasonNumber, episodeNumber)` → `setSearchParams({ s, e }, { replace: true })`; re-run loading state to visually reset playback
-- [ ] Unknown film ID fallback message
+- [x] Bypass AppShell — full-viewport `100vw × 100vh` black background
+- [x] Shell is **not a grid**: VideoArea fills the viewport; SidePanel and EdgeHandle are absolutely-positioned siblings. `.shell` / `.shellChromeHidden` only toggle cursor.
+- [x] State machine: `idle → loading → playing`, with 600ms loading-to-playing simulation **replaced by real `canplay`**
+- [x] Chrome auto-hide: 3000ms inactivity timer; wakes on mousemove / click / keydown; only armed while `playing`
+- [x] Track `cursor: {x, y}` on `onMouseMove` (`clientX, clientY`)
+- [x] `<EdgeHandle cursorX cursorY onActivate>` rendered as own component while `!panelOpen && !chromeHidden`. Detection zone 140px. Self-hides via opacity outside the zone. Smoothstep-eased bulge: translateX out → flush, asymmetric scale (X stretch 18%, Y squish 4%), top clamped to cursor Y. Click → `setPanelOpen(true)` + `stopPropagation()`
+- [x] `panelScrim` (transparent, `position: absolute; inset: 0; zIndex: 18`) renders only when `panelOpen && !chromeHidden`; click closes the panel (drawer pattern)
+- [x] Cursor `none` when chromeHidden
+- [x] VideoArea background: Poster, brightness 0.85 contrast 1.05, grain overlay; `.backdrop` carries `viewTransitionName: "film-backdrop"` (must match Library `.overlayPoster`)
+- [x] Letterbox gradients: top 80px, bottom 220px, fade with chrome
+- [x] Idle overlay: 88×88 glass circle play button (translucent white bg, blur, beveled borders, inset highlights + drop shadow, engraved icon)
+- [x] Loading overlay: 56×56 circular spinner with green arc
+- [x] Topbar: **icon-only** Back button (no "BACK" label) with drop-shadow + hover white-glow + status eyebrow showing resolution + HDR/codec
+- [x] Topbar status eyebrow (series variant): inject episode code (e.g. "S01E03") between play state and resolution — `● PLAYING · S01E03 · 4K · HDR10`
+- [x] Idle play button: **glass** 88×88 circle (translucent white bg, `backdropFilter: blur(20px) saturate(180%)`, beveled borders, inset highlights + drop shadow) — NOT solid green
+- [x] Bottom title: Anton 64px with text-shadow (show name for series, film title for movies)
+- [x] Bottom eyebrow (movie variant): `[year, genre, duration]` in Mono 11px
+- [x] Bottom eyebrow (series variant): `[Season N, genre, episode duration]` in Mono 11px
+- [x] Episode badge (series variant, NEW): row above show title with green-bordered episode code chip (`episodeBadgeCode`) + episode title (`episodeBadgeTitle`). Format code as `S{pad}E{pad}` (zero-padded).
+- [x] Progress bar: 3px tall, green fill with green-glow shadow
+- [x] Control row: −10s / play-pause / +10s / volume / resolution chip / fullscreen
+- [x] SidePanel 290px overlay: `position: absolute, right: 0, top: 0, bottom: 0, zIndex: 20`; slide via `transform: translateX(100%)` ↔ `0`, 0.3s ease. Default closed.
+- [x] SidePanel content (movie variant): header (NOW PLAYING eyebrow + title + meta + plot) + body (UP NEXT from same-profile films, up to 3) + watchlist section (FROM YOUR WATCHLIST, first 3 watchlist entries with on-disk indicator) + footer (VLC + BACK)
+- [x] SidePanel content (series variant, NEW): header (NOW PLAYING eyebrow + title + Season meta + plot + sideEpisodeRow with green code chip + episode title) + body (EPISODES eyebrow + `<SeasonsPanel seasons={film.seasons} activeEpisode={{...}} onSelectEpisode={selectEpisode} accordion={true} />`) + footer (VLC + BACK). No WATCHLIST for series.
+  - [x] `accordion={true}` ensures single-open behaviour: opening a season closes others, preventing rail clutter
+- [x] SidePanel top-right `×` close button → `setPanelOpen(false)`
+- [x] Visible state of SidePanel = `panelOpen && !chromeHidden` — chrome auto-hide slides the panel off but preserves `panelOpen`
+- [x] All controls wired to actual playback API
+- [x] Back: `goBackWithTransition()` shared helper on both VideoArea topbar and SidePanel back buttons — wraps `navigate(-1)` in `document.startViewTransition` with plain `navigate(-1)` fallback
+- [x] **URL contract (series):** `/player/<filmId>?s=<season>&e=<episode>`. Parse URL params; resolve missing/invalid params via `resolveSeriesPick(film, s, e)` → first available episode (or first episode if none available)
+- [x] **Episode selection handler:** `selectEpisode(seasonNumber, episodeNumber)` → `setSearchParams({ s, e }, { replace: true })`; re-run loading state to visually reset playback
+- [x] Unknown film ID fallback message
 
 ## Status
 

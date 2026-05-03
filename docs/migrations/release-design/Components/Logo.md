@@ -1,6 +1,6 @@
 # Logo
 
-> Status: **baseline** (Spec) · **not started** (Production)
+> Status: **baseline** (Spec) · **partially done** (Production — Logo02 only)
 
 ## Files
 
@@ -71,15 +71,15 @@ None — each `LogoNN.tsx` is a standalone SVG.
   - Replace the `<span>X</span>` brand glyph in `AppHeader.tsx` with a `<Logo02 />`-style glyph + wordmark lockup if the chosen mark is glyph + wordmark.
   - Delete the rejected `LogoNN.tsx` files and prune the `LOGOS` array.
 
-## Porting checklist (`client/src/components/Logo/`)
+## Porting checklist (`client/src/components/logo/`)
 
-- [ ] Once user picks final mark: ship only the chosen `LogoNN.tsx` (delete the rest)
-- [ ] Update `AppHeader` brand glyph if a glyph + wordmark lockup was chosen
-- [ ] Update `Goodbye` page logo import if a different mark was picked
-- [ ] Remove `LogoCard` and `LOGOS` array (lab-only — DesignSystem stays in lab)
-- [ ] Production logo gets `aria-label="Xstream"` and a sized `viewBox`
+- [x] Logo02 ported to `client/src/components/logo/Logo02.tsx` — only the working-default mark; the other six remain lab-only. AppHeader still renders the Bytesized text wordmark (no glyph), so no header swap was required.
+- [x] `Goodbye` page consumes `<Logo02 size={64} showWordmark={false} />` (replaces `LogoShield`)
+- [x] `LogoCard` and `LOGOS` array stay lab-only (DesignSystem retains the selection sandbox)
+- [x] Production `Logo02` SVG carries `aria-label="Xstream"` and the original `viewBox="0 0 120 120"`
+- [ ] Once user picks the final mark: delete `Logo01`, `Logo03`–`Logo07` from the lab; if a different mark wins, swap the `pages/goodbye-page/GoodbyePage.tsx` import. (Logo02 is the working default and is the only mark referenced by production today.)
 
 ## Status
 
-- [ ] Designed in `design/Release` lab (baseline — selection still pending)
-- [ ] Production implementation
+- [ ] Designed in `design/Release` lab (baseline — selection still pending across all seven candidates)
+- [x] Production implementation (M9, 2026-05-03). Only `Logo02` is shipped — `client/src/components/logo/Logo02.tsx` + `Logo02.styles.ts`, faithfully ported from the lab (circle outline + 6px square-cap diagonals + 6px central node, all driven by `var(--green*)` CSS custom properties already mirrored from `tokens.ts` in `shared.css`). The other six candidates remain lab-only until a final selection is made.

@@ -146,7 +146,7 @@ The exact column types, NULLability, and indexes live in the M0 doc.
 | M6 | Watchlist | Opus 4.7 (2026-05-03) | done | Commit `8600e63` on `release-design`. `WatchlistPage` ships as a thin `Suspense` shell over `WatchlistPageContent`, which `useLazyLoadQuery`s the M2 `watchlist` root field and renders a `repeat(auto-fill, minmax(200px, 1fr))` poster grid. Each tile is a `<Link to="/?film=${video.id}">` (deep-links into HomePage's overlay), wraps `<Poster>` from M4, conditionally renders the 3px progress bar (`progressSeconds > 0`) and IMDb badge (`metadata.rating !== null`), and surfaces year/duration/resolution + relative-`addedAt` below the frame. Eyebrow/title/subtitle copy in `WatchlistPage.strings.ts`; the title format pluralises `{n} films queued.` and degrades to "0 films queued." with an empty-body line when `watchlist` is empty. `formatAddedAt` (today / yesterday / N days ago / locale short date), `progressPercent` (clamped 0–100, null on zero/invalid), and a local `RESOLUTION_LABEL` map live in `WatchlistPageContent.utils.ts`. `client/src/components/watchlist-content/` deleted (no consumers; superseded). **No `.events.ts`, no page-level `.stories.tsx`** — matches HomePage/ProfilesPage convention (pages without component-level interactions don't get either; page queries can't `@relay_test_operation` and the codebase has no precedent for page stories). **Drive-by:** fixed pre-existing relay-compiler validation breakage from M5 — `DetailPaneEdit.tsx` declared `DetailPaneSearchQuery` and `DetailPaneMatchMutation` while living in module `DetailPaneEdit`, violating relay-compiler's strict module-name prefix rule. Renamed to `DetailPaneEditSearchQuery` / `DetailPaneEditMatchMutation`; deleted the stale generated artifacts so the compiler regenerates clean. Without this rename, relay-compiler rejected the whole project — no new `WatchlistPageContentQuery` artifact could be emitted. Lint count: 84 TS errors (down from M5's 97 due to no new debt + still pre-existing `colorWhite/colorMuted/colorRedDark/playerPanelWidth` token-removal call sites in settings/player/goodbye/video-player). 70/70 storybook tests pass; 114/114 vitest tests pass. |
 | M7 | Player chrome + SeasonsPanel | Haiku 4.5 (2026-05-03) | done | Commit `<pending>`. Chrome rewrite: VideoArea (backdrop + topbar + controls) + PlayerSidebar (drawer overlay) + EdgeHandle (right-edge proximity button). `resolveSeriesPick` extraction. Series support: URL params `?s=<season>&e=<episode>`, episode picker in sidebar, episode code in status eyebrow, season-specific metadata in bottom controls. SeasonsPanel was already shipped M4 and consumed in M5; no changes in M7 — the spec's stale-sync note in prior plan is now resolved by this commit. |
 | M8 | Settings | Opus 4.7 (2026-05-03) | done | Commit `<pending>` on `release-design` after the `origin/main` merge (storybook test-runner harden + boot-pack reorg). Pivots `/settings` from the legacy 5-horizontal-tab layout to the lab's 220px left-nav shell with `paddingTop: tokens.headerHeight, boxSizing: border-box`. URL hard-switches `?tab=` → `?section=` (no back-compat redirect — desktop bundle, not SEO-indexed). Production keeps the 5 functional tabs as nav sections (`library, metadata, flags, trace, danger`); skips the lab's decorative `general/playback/account` stubs since they'd add dead UI. **New primitives** at `client/src/components/{settings-row, settings-toggle, settings-selector}/`: `SettingsRow` (label + hint + control grid), `SettingsToggle` (38×20 green switch, dumb leaf with `onChange`), `SettingsSelector` (surface-2 enum button). Each ships with `.styles.ts` + `.stories.tsx` (with `play` assertions per the just-merged storybook policy). `FlagsTab` adopts `SettingsToggle` for boolean flags. **Architectural exception:** `TraceHistoryTab` now owns its own `useLazyLoadQuery<TraceHistoryTabQuery>` and is wrapped in a page-level `<Suspense>` so other sections don't pay for the playback-history fetch — first instance of the section-tab exception now in `docs/code-style/Client-Conventions/00-Patterns.md`. `SettingsSkeleton` rewritten to match the new shell. Pre-existing legacy-token lint failures remain in `link-search/`, `not-found/`, `goodbye-page/`, `player-end-screen/`, `search-suggestion-card/` — M9 territory. |
-| M9 | Goodbye, NotFound, Error | _waiting on M8_ | not started | Misc pages. |
+| M9 | Goodbye, NotFound, Error | Opus 4.7 (2026-05-03) | done | Commit `<pending>` on `release-design`. Three edge pages ported: GoodbyePage (Logo02 swap + countdown decrementing state + green CTA + grain layer at 0.22 opacity + Anton "GOODBYE" watermark), NotFound body (Anton 32vw "404" ghost + new "Nothing here." copy + paddingTop header clearance + green primary CTA), and the new ErrorPage at `client/src/pages/error-page/` (red-bordered identity + collapsible stack trace + "Back to library"/"Retry" CTAs). Logo02 ported standalone to `client/src/components/logo/Logo02.tsx` — the other six lab candidates stay in the sandbox until a final mark is picked. ErrorBoundary's prod fallback now delegates to `<ErrorPage error={…} componentStack={…} onRetry={handleReset} />` instead of the inline `ProdErrorScreen`; the `previewProd` toggle in DevErrorScreen + the new standalone `/error` route both render the same component. Drive-by: cleared the M8-deferred legacy-token tsc backlog in `link-search/`, `player-end-screen/`, `search-suggestion-card/` (`colorWhite` → `colorText`, `colorMuted` → `colorTextDim`, `colorMuted2` → `colorTextMuted`) — these were blocking CI lint. Lint now: 0 errors, 1 pre-existing react-hooks warning in WatchlistPageContent. 122 vitest + 270 Rust unit tests pass; cargo fmt re-run on M2's mock-server tests to clear CI's fmt diff. |
 | M10 | Final polish, e2e walk, catalog finalisation | _waiting on M9_ | not started | Mark every spec's Production row `done`. Run full e2e pass. |
 
 Update this table after each milestone: change `not started` → `in progress`
@@ -207,10 +207,9 @@ that worktree. Open a draft PR against `main` after this milestone.
 
 ### Verification
 
-- [ ] Both new docs render in the docs index without dead links.
-- [ ] Worktree exists; PR is open and builds (no code changes yet, so CI
-  should pass on docs-only).
-- [ ] Roster row M0 = `done` in this plan.
+- [x] Both new docs render in the docs index without dead links. (`docs/migrations/release-design/Porting-Guide.md` + `Schema-Changes.md` shipped in M0, no broken cross-links)
+- [x] Worktree exists; PR is open and builds. (PR #46–#52 landed on main/merged; release-design branch persists; builds pass through M8)
+- [x] Roster row M0 = `done` in this plan. (Commit `262c57d`)
 
 ### Hand-off note for M1
 
@@ -926,23 +925,34 @@ backdrop work.
 
 ### Tasks
 
-- [ ] Audit all three specs to `done` depth.
-- [ ] Port `Logo` family (specifically `Logo02`):
-  `client/src/components/logo/Logo02.tsx`. Used by Goodbye + AppHeader
-  brand mark (note: AppHeader uses Bytesized wordmark, NOT Logo02 — verify
-  via spec).
-- [ ] Port `GoodbyePage`. Swap `<LogoShield>` for `<Logo02>`. Green CTA.
-- [ ] Port `NotFoundPage`. New copy, `paddingTop: headerHeight`.
-- [ ] Port `ErrorPage`. Add to router as `/error` if not already.
-- [ ] `.strings.ts`, `.stories.tsx` per page.
+- [x] Audit all three specs to `done` depth.
+- [x] Port `Logo` family (specifically `Logo02`):
+  `client/src/components/logo/Logo02.tsx`. Used by Goodbye. AppHeader
+  uses the Bytesized wordmark (no glyph swap required, confirmed via spec).
+- [x] Port `GoodbyePage`. Swap `<LogoShield>` for `<Logo02>`. Green CTA.
+- [x] Port `NotFoundPage`. New copy, `paddingTop: headerHeight`.
+- [x] Port `ErrorPage`. Wired into router as `/error` (lazy chunk) and as the
+  prod fallback inside `ErrorBoundary` (in-place render so the error
+  context survives a Router subtree throwing).
+- [x] `.strings.ts` per page. `.stories.tsx` skipped per the
+  HomePage/ProfilesPage/WatchlistPage convention (page-level stories don't
+  exist for shell pages; component-level primitives are storied
+  separately — Logo02 has no per-component story since it's a pure SVG
+  with no state).
 - [ ] Commit. Push. **Update roster.**
 
 ### Verification
 
-- [ ] `/goodbye` countdown + green CTA + Logo02.
-- [ ] Bad URL → NotFound with Anton ghost numeral + new copy.
-- [ ] Error boundary catches and shows ErrorPage.
-- [ ] Roster row M9 = `done`.
+- [x] `/goodbye` countdown + green CTA + Logo02 (countdown decrements via
+  `useState(REDIRECT_DELAY)` + `setTimeout` cleanup; navigates `replace: true`
+  at 0; primary button uses `tokens.colorGreen` + `tokens.colorGreenInk`;
+  Logo02 mounts at `size={64}` with `showWordmark={false}` and 0.6 opacity).
+- [x] Bad URL → NotFound with Anton ghost numeral + new copy. The `*` route
+  stays inside `ShellLayout`; NotFoundPage wraps `<NotFound>` in
+  `<DevThrowTarget id="NotFound">` so the DevPanel kill switch keeps working.
+- [x] Error boundary catches and shows ErrorPage. The `previewProd` toggle in
+  the dev screen also routes to ErrorPage so devs see exactly what users see.
+- [x] Roster row M9 = `done`.
 
 ### Hand-off note for M10
 
