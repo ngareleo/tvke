@@ -141,6 +141,8 @@ The curator decides whether `docs/`, `SUMMARY.md`, or the cross-cutting index ne
 - Any `Write` or `Edit` in `client/`, `server-rust/`, `src-tauri/`, `docs/`, `.claude/`, `CLAUDE.md`, or `README.md` during the task.
 - Not fired by: read-only investigation, log inspection, browser verification, test-run observation — observational work doesn't change the baseline.
 
+**Per-component spec sync (load-bearing).** Every directory under `client/src/components/<name>/` and every page under `client/src/pages/<name>-page/` has a paired spec at [`docs/client/Components/<Name>.md`](docs/client/Components/README.md). When a task edits a component's `.tsx` / `.styles.ts` / `.strings.ts` / `.events.ts`, **explicitly mention the paired spec path** in the architect notification (e.g. "files changed: `client/src/components/account-menu/AccountMenu.tsx`; paired spec: `docs/client/Components/AccountMenu.md`"). Architect updates the spec to match the new code. This keeps the agent-facing reference in lockstep with reality — the spec is authoritative for *what the component is supposed to be*, the code wins on *what it currently does*, and the architect's job is to close the gap. New components mean a new spec under `Components/` and a new row in `Components/README.md`.
+
 If the change is genuinely irrelevant to the knowledge base (a typo fix, a lint-only change, a dev-only script tweak), tell architect that explicitly — "files changed: X; no docs impact." Architect will log it and return. This preserves the "always notify" discipline without forcing a doc edit on every commit.
 
 ## Branch & PR policy
