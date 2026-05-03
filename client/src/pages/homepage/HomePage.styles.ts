@@ -173,9 +173,16 @@ export const useHomePageStyles = makeStyles({
   },
   // In search/filter mode the hero is auto-height (heroActive). Pull
   // heroBody into normal flow so its content height drives the hero
-  // height instead of stretching to fill an absolute box.
+  // height instead of stretching to fill an absolute box. Stay
+  // `relative` (not `static`) so heroBody's `z-index: 2` keeps
+  // applying — otherwise heroPanelBg (the absolute backdrop) paints
+  // over the SearchSlide / FilterSlide content.
   heroBodyFlow: {
-    position: "static",
+    position: "relative",
+    top: "auto",
+    right: "auto",
+    bottom: "auto",
+    left: "auto",
   },
   greetingEyebrow: {
     fontFamily: tokens.fontMono,
