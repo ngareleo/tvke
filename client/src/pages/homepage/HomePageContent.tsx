@@ -277,7 +277,7 @@ export const HomePageContent: FC = () => {
           )}
         </div>
 
-        <div className={styles.heroBody}>
+        <div className={mergeClasses(styles.heroBody, heroMode !== "idle" && styles.heroBodyFlow)}>
           {heroMode === "idle" && (
             <>
               <div>
@@ -342,7 +342,9 @@ export const HomePageContent: FC = () => {
         </div>
       </div>
 
-      <div className={styles.rowsScroll}>
+      <div
+        className={mergeClasses(styles.rowsScroll, heroMode !== "idle" && styles.rowsScrollFlat)}
+      >
         {showFlatResults ? (
           searchResults.length > 0 ? (
             <div className={styles.searchResults}>
