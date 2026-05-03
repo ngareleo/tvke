@@ -378,7 +378,7 @@ export const HomePageContent: FC = () => {
               </div>
               <div className={styles.searchGrid}>
                 {searchResults.map((r) => (
-                  <FilmTile key={r.id} video={r.node} onClick={openFilm} />
+                  <FilmTile key={r.id} video={r.node} onClick={() => openFilm(r.id)} />
                 ))}
               </div>
             </div>
@@ -396,7 +396,7 @@ export const HomePageContent: FC = () => {
             {movies.length > 0 && (
               <PosterRow title={strings.rowMovies}>
                 {movies.map((r) => (
-                  <FilmTile key={r.id} video={r.node} onClick={openFilm} />
+                  <FilmTile key={r.id} video={r.node} onClick={() => openFilm(r.id)} />
                 ))}
               </PosterRow>
             )}
@@ -404,7 +404,7 @@ export const HomePageContent: FC = () => {
             {tvShows.length > 0 && (
               <PosterRow title={strings.rowTvShows}>
                 {tvShows.map((r) => (
-                  <FilmTile key={r.id} video={r.node} onClick={openFilm} />
+                  <FilmTile key={r.id} video={r.node} onClick={() => openFilm(r.id)} />
                 ))}
               </PosterRow>
             )}
