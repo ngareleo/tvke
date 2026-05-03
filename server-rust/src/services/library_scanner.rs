@@ -239,10 +239,11 @@ async fn process_file(path: &Path, library_id: &str, ctx: &AppContext) -> Result
     // map it to the closest rung. Stays `None` when the file has no video
     // stream (audio-only) — every other case (incl. `height == 0`) falls
     // through to `R240p` per the clamp contract.
-    let native_resolution = metadata
-        .video_streams
-        .first()
-        .map(|vs| Resolution::from_height(vs.height as i64).to_internal().to_string());
+    let native_resolution = metadata.video_streams.first().map(|vs| {
+        Resolution::from_height(vs.height as i64)
+            .to_internal()
+            .to_string()
+    });
 
     let row = VideoRow {
         id: video_id.clone(),

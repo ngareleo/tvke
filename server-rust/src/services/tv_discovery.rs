@@ -620,10 +620,7 @@ mod tests {
             parse_episode_id("Breaking.Bad.S01E02.720p.mkv"),
             Some((1, 2))
         );
-        assert_eq!(
-            parse_episode_id("Some.Show.S10E15.mkv"),
-            Some((10, 15))
-        );
+        assert_eq!(parse_episode_id("Some.Show.S10E15.mkv"), Some((10, 15)));
     }
 
     #[test]
@@ -959,7 +956,10 @@ mod tests {
             .expect("metadata exists");
         assert_eq!(show_meta.imdb_id, "tt7777777");
         assert_eq!(show_meta.title, "Show A");
-        assert_eq!(show_meta.poster_url.as_deref(), Some("https://example.com/sa.jpg"));
+        assert_eq!(
+            show_meta.poster_url.as_deref(),
+            Some("https://example.com/sa.jpg")
+        );
     }
 
     #[tokio::test]
@@ -976,11 +976,9 @@ mod tests {
         // search_series → not found
         Mock::given(method("GET"))
             .and(query_param("s", "Unknown Show"))
-            .respond_with(
-                ResponseTemplate::new(200).set_body_json(
-                    serde_json::json!({"Response": "False", "Error": "Series not found!"}),
-                ),
-            )
+            .respond_with(ResponseTemplate::new(200).set_body_json(
+                serde_json::json!({"Response": "False", "Error": "Series not found!"}),
+            ))
             .mount(&server)
             .await;
 
@@ -1023,10 +1021,7 @@ mod tests {
 
     impl wiremock::Match for AbsentQueryParamMatcher {
         fn matches(&self, request: &wiremock::Request) -> bool {
-            !request
-                .url
-                .query_pairs()
-                .any(|(k, _)| k == self.key)
+            !request.url.query_pairs().any(|(k, _)| k == self.key)
         }
     }
 }

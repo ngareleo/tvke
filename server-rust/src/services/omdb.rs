@@ -224,12 +224,7 @@ impl OmdbClient {
         Self::new(http, api_key, base_url, DEFAULT_DAILY_BUDGET)
     }
 
-    fn new(
-        http: reqwest::Client,
-        api_key: String,
-        base_url: String,
-        daily_budget: u32,
-    ) -> Self {
+    fn new(http: reqwest::Client, api_key: String, base_url: String, daily_budget: u32) -> Self {
         Self {
             http,
             api_key,
@@ -280,10 +275,8 @@ impl OmdbClient {
     /// `imdbID`/`Title`. Every non-`None`-on-success branch logs via
     /// `tracing::warn!` so operators see the failure in Seq.
     pub async fn search(&self, title: &str, year: Option<i32>) -> Option<OmdbResult> {
-        let mut query: Vec<(&str, String)> = vec![
-            ("t", title.to_string()),
-            ("type", "movie".to_string()),
-        ];
+        let mut query: Vec<(&str, String)> =
+            vec![("t", title.to_string()), ("type", "movie".to_string())];
         if let Some(y) = year {
             query.push(("y", y.to_string()));
         }
@@ -332,10 +325,8 @@ impl OmdbClient {
     /// per-season episode lists. Returns `None` for any failure mode
     /// `search` covers (network, non-2xx, malformed JSON, no results).
     pub async fn search_series(&self, title: &str) -> Option<OmdbSeries> {
-        let query: Vec<(&str, String)> = vec![
-            ("s", title.to_string()),
-            ("type", "series".to_string()),
-        ];
+        let query: Vec<(&str, String)> =
+            vec![("s", title.to_string()), ("type", "series".to_string())];
         let parsed: OmdbSearchListResponse = self.request_json(&query, title).await?;
         if parsed.response != "True" {
             return None;
@@ -805,18 +796,19 @@ mod tests {
         assert_eq!(result.imdb_id, "tt0903747");
         assert_eq!(result.title, "Breaking Bad");
         assert_eq!(result.year, Some(2008));
-        assert_eq!(result.poster_url.as_deref(), Some("https://example.com/bb.jpg"));
+        assert_eq!(
+            result.poster_url.as_deref(),
+            Some("https://example.com/bb.jpg")
+        );
     }
 
     #[tokio::test]
     async fn search_series_returns_none_for_empty_search_array() {
         let server = MockServer::start().await;
         Mock::given(method("GET"))
-            .respond_with(
-                ResponseTemplate::new(200).set_body_json(
-                    serde_json::json!({"Response": "False", "Error": "Series not found!"}),
-                ),
-            )
+            .respond_with(ResponseTemplate::new(200).set_body_json(
+                serde_json::json!({"Response": "False", "Error": "Series not found!"}),
+            ))
             .mount(&server)
             .await;
         let client = make_client(server.uri());
@@ -863,11 +855,9 @@ mod tests {
         // call as a miss.
         let server = MockServer::start().await;
         Mock::given(method("GET"))
-            .respond_with(
-                ResponseTemplate::new(200).set_body_json(
-                    serde_json::json!({"Response": "True", "imdbID": "tt1", "Title": "X"}),
-                ),
-            )
+            .respond_with(ResponseTemplate::new(200).set_body_json(
+                serde_json::json!({"Response": "True", "imdbID": "tt1", "Title": "X"}),
+            ))
             .mount(&server)
             .await;
         let client = make_client(server.uri());
@@ -939,9 +929,9 @@ mod tests {
     async fn budget_decrements_per_call_and_blocks_after_exhaustion() {
         let server = MockServer::start().await;
         Mock::given(method("GET"))
-            .respond_with(ResponseTemplate::new(200).set_body_json(full_response_json(
-                "tt1", "X", "2020",
-            )))
+            .respond_with(
+                ResponseTemplate::new(200).set_body_json(full_response_json("tt1", "X", "2020")),
+            )
             .mount(&server)
             .await;
 
