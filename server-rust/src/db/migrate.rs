@@ -1,4 +1,9 @@
 //! Idempotent schema setup.
+//!
+//! No migration versioning + no `ALTER TABLE` retro-fits: the schema is
+//! whatever this file says it is on a fresh DB. While we're pre-prod the
+//! cost of "delete `tmp/xstream-rust.db` and re-create" is tiny, and the
+//! payoff is one place to read the canonical column set per table.
 
 use rusqlite::Connection;
 
@@ -24,7 +29,8 @@ pub fn run(conn: &Connection) -> rusqlite::Result<()> {
           file_size_bytes      INTEGER NOT NULL,
           bitrate              INTEGER NOT NULL,
           scanned_at           TEXT NOT NULL,
-          content_fingerprint  TEXT NOT NULL
+          content_fingerprint  TEXT NOT NULL,
+          native_resolution    TEXT
         );
         CREATE INDEX IF NOT EXISTS videos_library_id ON videos(library_id);
         CREATE TABLE IF NOT EXISTS video_streams (
@@ -98,6 +104,23 @@ pub fn run(conn: &Connection) -> rusqlite::Result<()> {
           started_at  TEXT NOT NULL
         );
         CREATE INDEX IF NOT EXISTS playback_history_started_at ON playback_history(started_at DESC);
+        CREATE TABLE IF NOT EXISTS seasons (
+          show_video_id TEXT    NOT NULL REFERENCES videos(id) ON DELETE CASCADE,
+          season_number INTEGER NOT NULL CHECK (season_number > 0),
+          PRIMARY KEY (show_video_id, season_number)
+        );
+        CREATE TABLE IF NOT EXISTS episodes (
+          show_video_id    TEXT    NOT NULL REFERENCES videos(id) ON DELETE CASCADE,
+          season_number    INTEGER NOT NULL,
+          episode_number   INTEGER NOT NULL CHECK (episode_number > 0),
+          title            TEXT,
+          episode_video_id TEXT             REFERENCES videos(id) ON DELETE SET NULL,
+          PRIMARY KEY (show_video_id, season_number, episode_number),
+          FOREIGN KEY (show_video_id, season_number)
+            REFERENCES seasons(show_video_id, season_number) ON DELETE CASCADE
+        );
+        CREATE INDEX IF NOT EXISTS idx_episodes_show ON episodes(show_video_id);
+        CREATE INDEX IF NOT EXISTS idx_episodes_video ON episodes(episode_video_id);
         COMMIT;
         "#,
     )

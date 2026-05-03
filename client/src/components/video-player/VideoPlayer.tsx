@@ -20,7 +20,6 @@ import { PlayerEndScreenAsync } from "~/components/player-end-screen/PlayerEndSc
 import type { JobProgress } from "~/hooks/useJobSubscription.js";
 import { useJobSubscription } from "~/hooks/useJobSubscription.js";
 import { useVideoPlayback } from "~/hooks/useVideoPlayback.js";
-import { IconPlay } from "~/lib/icons.js";
 import type { VideoPlayer_video$key } from "~/relay/__generated__/VideoPlayer_video.graphql.js";
 import type { Resolution } from "~/types.js";
 import { maxResolutionForHeight } from "~/utils/formatters.js";
@@ -40,13 +39,22 @@ const VIDEO_FRAGMENT = graphql`
   }
 `;
 
+type PlayStatus = "idle" | "loading" | "playing";
+
 interface Props {
   video: VideoPlayer_video$key;
+  /**
+   * Fired when the playback state machine transitions. The Player chrome
+   * uses this to fade out the backdrop poster once real video frames start
+   * arriving — without it, letterbox bars (`objectFit: contain`) expose
+   * the dimmed backdrop during playback.
+   */
+  onStatusChange?: (status: PlayStatus) => void;
 }
 
 const HIDE_DELAY_MS = 3000;
 
-export const VideoPlayer: FC<Props> = ({ video }) => {
+export const VideoPlayer: FC<Props> = ({ video, onStatusChange }) => {
   const data = useFragment(VIDEO_FRAGMENT, video);
   const styles = useVideoPlayerStyles();
 
@@ -120,6 +128,12 @@ export const VideoPlayer: FC<Props> = ({ video }) => {
   useEffect(() => {
     setIsEnded(false);
   }, [data.id]);
+
+  // Notify parent on play-state transitions so the backdrop can fade out once
+  // real video frames start arriving.
+  useEffect(() => {
+    onStatusChange?.(status);
+  }, [status, onStatusChange]);
 
   // Track fullscreen state from the browser.
   useEffect(() => {
@@ -223,21 +237,15 @@ export const VideoPlayer: FC<Props> = ({ video }) => {
         }}
       />
 
-      {/* Pre-play overlay — shown in idle state */}
+      {/* Pre-play overlay — full-area click-to-play scrim. No visible button:
+          the primary play affordance is the green disc in the ControlBar. */}
       {status === "idle" && !isEnded && (
-        <div className={styles.idleOverlay} onClick={handlePlay}>
-          <button
-            className={styles.playBtn}
-            onClick={(e) => {
-              e.stopPropagation();
-              handlePlay();
-            }}
-            aria-label="Play"
-            type="button"
-          >
-            <IconPlay size={32} />
-          </button>
-        </div>
+        <button
+          type="button"
+          aria-label="Play"
+          className={styles.idleOverlay}
+          onClick={handlePlay}
+        />
       )}
 
       {/* Loading spinner overlay */}

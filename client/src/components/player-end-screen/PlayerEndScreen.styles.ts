@@ -56,7 +56,7 @@ export const usePlayerEndScreenStyles = makeStyles({
   cardTitle: {
     fontSize: "11px",
     fontWeight: "600",
-    color: tokens.colorWhite,
+    color: tokens.colorText,
     lineHeight: "1.3",
     overflow: "hidden",
     display: "-webkit-box",
@@ -89,7 +89,7 @@ export const usePlayerEndScreenStyles = makeStyles({
     transitionProperty: "color, border-color",
     transitionDuration: tokens.transition,
     ":hover": {
-      color: tokens.colorWhite,
+      color: tokens.colorText,
       border: "1px solid rgba(255,255,255,0.35)",
     },
   },

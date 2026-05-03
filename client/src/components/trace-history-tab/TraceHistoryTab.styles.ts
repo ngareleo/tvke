@@ -1,6 +1,6 @@
 import { makeStyles } from "@griffel/react";
 
-import { tokens } from "~/styles/tokens";
+import { tokens } from "~/styles/tokens.js";
 
 export const useTraceHistoryStyles = makeStyles({
   root: {
@@ -10,12 +10,12 @@ export const useTraceHistoryStyles = makeStyles({
   },
   description: {
     fontSize: "12px",
-    color: tokens.colorMuted,
+    color: tokens.colorTextMuted,
     lineHeight: "1.6",
   },
   empty: {
     fontSize: "12px",
-    color: tokens.colorMuted2,
+    color: tokens.colorTextFaint,
     fontStyle: "italic",
   },
   table: {
@@ -29,19 +29,19 @@ export const useTraceHistoryStyles = makeStyles({
     fontWeight: "700",
     letterSpacing: "0.1em",
     textTransform: "uppercase",
-    color: tokens.colorMuted2,
+    color: tokens.colorTextFaint,
     paddingBottom: "8px",
     borderBottom: `1px solid ${tokens.colorBorder}`,
   },
   td: {
     paddingTop: "10px",
     paddingBottom: "10px",
-    borderBottom: `1px solid ${tokens.colorBorder}`,
-    color: tokens.colorMuted,
+    borderBottom: `1px solid ${tokens.colorBorderSoft}`,
+    color: tokens.colorTextMuted,
     verticalAlign: "middle",
   },
   tdTitle: {
-    color: tokens.colorWhite,
+    color: tokens.colorText,
     fontWeight: "500",
     maxWidth: "160px",
     overflow: "hidden",
@@ -54,9 +54,9 @@ export const useTraceHistoryStyles = makeStyles({
     gap: "8px",
   },
   traceCode: {
-    fontFamily: "monospace",
+    fontFamily: tokens.fontMono,
     fontSize: "10px",
-    color: tokens.colorMuted,
+    color: tokens.colorTextMuted,
     maxWidth: "110px",
     overflow: "hidden",
     textOverflow: "ellipsis",
@@ -70,13 +70,13 @@ export const useTraceHistoryStyles = makeStyles({
     backgroundColor: "transparent",
     border: `1px solid ${tokens.colorBorder}`,
     borderRadius: tokens.radiusSm,
-    color: tokens.colorMuted,
+    color: tokens.colorTextMuted,
     cursor: "pointer",
     transitionProperty: "color, border-color",
     transitionDuration: tokens.transition,
     ":hover": {
-      color: tokens.colorWhite,
-      border: `1px solid ${tokens.colorBorder2}`,
+      color: tokens.colorText,
+      border: `1px solid ${tokens.colorTextMuted}`,
     },
   },
   copyBtnDone: {

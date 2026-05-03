@@ -111,6 +111,12 @@ pub struct AppConfig {
     /// `OMDB_API_KEY` env var with a fallback to the persisted
     /// `omdbApiKey` setting in `user_settings`.
     pub omdb_api_key: Option<String>,
+    /// Maximum OMDb requests we'll spend per UTC day. Free-tier OMDb is
+    /// 1 000/day per IP; the default leaves headroom for ad-hoc / manual
+    /// flows that share the same key. The counter resets at UTC
+    /// midnight; exhaustion logs a warn and skips further calls without
+    /// failing the surrounding scan.
+    pub omdb_daily_budget: u32,
 }
 
 /// Library-scanner tunables.
@@ -158,6 +164,7 @@ impl AppConfig {
             stream: StreamConfig::default(),
             scan: ScanConfig::default(),
             omdb_api_key: None,
+            omdb_daily_budget: crate::services::omdb::DEFAULT_DAILY_BUDGET,
         }
     }
 }
@@ -189,11 +196,14 @@ impl AppContext {
         hw_accel: HwAccelConfig,
     ) -> Self {
         let pool = FfmpegPool::new(config.transcode.clone());
+        let daily_budget = config.omdb_daily_budget;
         let omdb = config.omdb_api_key.clone().map(|key| {
             // One Client → shared connection pool across every auto-match
             // call. reqwest::Client is internally Arc'd, so cloning it
-            // for the OmdbClient wrapper is cheap.
-            OmdbClient::production(reqwest::Client::new(), key)
+            // for the OmdbClient wrapper is cheap. The budget counter
+            // lives inside OmdbClient (Arc<Mutex<…>>) so every clone
+            // shares the same daily quota.
+            OmdbClient::production(reqwest::Client::new(), key, daily_budget)
         });
         Self {
             db,
@@ -218,6 +228,7 @@ impl AppContext {
             stream: StreamConfig::default(),
             scan: ScanConfig::default(),
             omdb_api_key: None,
+            omdb_daily_budget: crate::services::omdb::DEFAULT_DAILY_BUDGET,
         };
         let paths = Arc::new(FfmpegPaths {
             ffmpeg: PathBuf::from("/bin/true"),

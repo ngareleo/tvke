@@ -1,6 +1,6 @@
 # Settings (page)
 
-> Status: **baseline** (Spec) · **not started** (Production)
+> Status: **done** (Spec) · **done** (Production)
 
 ## Files
 
@@ -42,16 +42,24 @@ App settings (`/settings`). Two-pane layout: left nav (220px) + right content. S
 
 ## Subcomponents
 
-(All inline in `Settings.tsx`. Source values not yet extracted into named exports.)
+Three primitives extracted into production at `client/src/components/`:
 
-### `SettingsRow`
-- TODO(redesign): label + hint + control layout. Confirm spacing + typography from current source.
+### `SettingsRow` (`client/src/components/settings-row/`)
+- `label: string`, optional `hint: string`, `control: ReactNode`.
+- Grid `1fr auto`, `column-gap: 16px`, vertical padding `14px`, separator `1px solid colorBorderSoft` on the bottom.
+- Label: `13px / colorText`. Hint: `11px / colorTextMuted`, `marginTop: 4`, `lineHeight: 1.5`.
+- Lab still uses inline `SettingsRow`; production primitive is the canonical source going forward.
 
-### `Toggle`
-- TODO(redesign): 38×20 switch, green when active (per browse-agent inventory).
+### `SettingsToggle` (`client/src/components/settings-toggle/`)
+- `on: boolean`, `onChange: (next: boolean) => void`, optional `ariaLabel`, `disabled`.
+- 38×20 with `borderRadius: radiusFull`. Off track: `colorSurface2` bg + `colorBorder`. On track: `colorGreen` bg + `colorGreen` border.
+- Knob 14×14, slides `left: 2 → 20`. Off knob: `colorTextDim`. On knob: `colorGreenInk`. Transitions on `left, background-color` at `tokens.transition`.
+- Renders as `<button role="switch">` with `aria-checked`. Used by `FlagsTab` for boolean flags.
 
-### `Selector`
-- TODO(redesign): surface-2 button-style selector for enum values.
+### `SettingsSelector` (`client/src/components/settings-selector/`)
+- `value: string`, optional `onClick`, `ariaLabel`, `disabled`.
+- Surface-2 button: padding `6 12`, `colorBorder` 1px, `radiusSm`, `fontMono 11px / 0.08em`. Renders `value ▾` with chevron in `colorTextMuted`.
+- Hover (when not disabled) lights the border green. No live consumer in M8 production tabs (their controls are inputs/buttons, not enum selectors); primitive ready for adoption when a tab needs an enum selector.
 
 ## Changes from Prerelease
 
@@ -60,26 +68,29 @@ App settings (`/settings`). Two-pane layout: left nav (220px) + right content. S
 - **Identity:** Active nav button: OLD — `background: var(--red-dim)`, `border-left: 2px solid var(--red)`, `color: var(--white)`. NEW — `background: var(--green-soft)`, `border-left: 2px solid var(--green)`, `color: var(--green)`. Otherwise the left nav structure (220px, `bg-1`, eyebrow `SETTINGS`, gap 4px, 9px 12px buttons) is unchanged.
 - **No structural change** — 220px left nav + 1fr right content, six sections, `?section=<id>` URL state, `max-width: 640px` body — all unchanged from Prerelease.
 
-## TODO(redesign)
+## Production deviations from lab
 
-- All settings controls are decorative — no state wires through to backend.
-- Subcomponents (`SettingsRow`, `Toggle`, `Selector`) need to be extracted as named exports so the spec can pin exact dimensions / animations.
+Production keeps its existing **5 functional tabs** (`library`, `metadata`, `flags`, `trace`, `danger`) inside the new 220px-nav shell instead of the lab's 6 decorative sections (`general`, `library`, `playback`, `metadata`, `account`, `danger`). Rationale: production controls real settings (OMDb key save, library scan, flag toggles, trace history table); the lab's `general/playback/account` mockups have no backing services. Adding stub sections would add dead UI.
 
-## Porting checklist (`client/src/pages/Settings/`)
+URL deep-link: `?section=<id>` per spec — hard-switch from the prior `?tab=<id>` (no back-compat redirect; xstream is desktop-bundled, not SEO-indexed).
 
-- [ ] 220px nav + 1fr content, full-height grid; `paddingTop: tokens.headerHeight`, `boxSizing: border-box` (page manages header clearance)
-- [ ] Nav: bg-1 background, right border, eyebrow `SETTINGS` at top
-- [ ] Nav buttons: green-soft + green text + 2px green left border when active
-- [ ] Content: Anton 40px uppercase title, eyebrow above
-- [ ] Body max-width 640px
-- [ ] URL deep-link: `?section=<id>`, validated against the SectionId set
-- [ ] Default to "general" when section param missing/invalid
-- [ ] Six sections: General, Library, Playback, Metadata, Account, Danger zone
-- [ ] Wire each setting through to `user_settings` (or matching) backend table
-- [ ] Toggle switch: 38×20, green when active
-- [ ] Danger zone: separate visual treatment (red?) — confirm against redesign
+Relay-query placement: `TraceHistoryTab` runs its own `useLazyLoadQuery<TraceHistoryTabQuery>` and is wrapped in a `<Suspense>` boundary at the page level, so Library/Metadata/Flags/Danger sections don't pay for the playback-history fetch. This is the first instance of the section-tab exception now documented in [`docs/code-style/Client-Conventions/00-Patterns.md`](../../../code-style/Client-Conventions/00-Patterns.md).
+
+## Porting checklist (`client/src/pages/settings-page/`)
+
+- [x] 220px nav + 1fr content, full-height grid; `paddingTop: tokens.headerHeight`, `boxSizing: border-box` (page manages header clearance) — `SettingsPage.styles.ts:6–14`
+- [x] Nav: bg-1 background, right border, eyebrow `SETTINGS` at top — `SettingsPage.styles.ts:15–25`, `SettingsPageContent.tsx:43`
+- [x] Nav buttons: green-soft + green text + 2px green left border when active — `SettingsPage.styles.ts:55–62` (active overlay on the 2px transparent left border declared at `:34`)
+- [x] Content: Anton 40px uppercase title, eyebrow above — `SettingsPage.styles.ts:70–79`
+- [x] Body max-width 640px — `SettingsPage.styles.ts:80`
+- [x] URL deep-link: `?section=<id>`, validated against the SectionId set — `SettingsPageContent.tsx:14–27, 33`
+- [x] Default to "general" when section param missing/invalid — **production deviation:** defaults to `library` (no `general` section in production); see Production deviations
+- [x] Six sections: General, Library, Playback, Metadata, Account, Danger zone — **production deviation:** 5 functional sections (`library`, `metadata`, `flags`, `trace`, `danger`); see Production deviations
+- [x] Wire each setting through to `user_settings` (or matching) backend table — `setSetting` GraphQL mutation persists to the `user_settings` SQLite table (`server-rust/src/db/migrate.rs:94`, `server-rust/src/db/queries/user_settings.rs`); MetadataTab writes the OMDb API key via this path; FlagsTab persists per-user via `useFeatureFlag` context (same backing table)
+- [x] Toggle switch: 38×20, green when active — `SettingsToggle.styles.ts:6–9` (38×20) + `:30–36` (green track on)
+- [x] Danger zone: separate visual treatment (red?) — kept red border + red text via shared `dangerZone` / `btnDanger` styles in `SettingsTabs.styles.ts:80–113`
 
 ## Status
 
 - [x] Designed in `design/Release` lab — baseline reflects prior state; `.shell` gains `paddingTop: tokens.headerHeight, boxSizing: border-box` for positioned-shell header clearance (2026-05-01, PR #46 commit 5301df6, `feat/release-design-omdb-griffel`, not yet merged to main)
-- [ ] Production implementation
+- [x] Production implementation — M8 ported the page shell to the new 220px-nav layout, extracted `SettingsRow` / `SettingsToggle` / `SettingsSelector` primitives, retoken'd all 5 tabs to green identity, and pushed the Relay query down into `TraceHistoryTab` (2026-05-03, M8 commit on `release-design` branch)

@@ -6,6 +6,10 @@ Migrations are bounded by definition — once an effort lands, its docs either r
 
 ## Active migrations
 
+None currently. The Prerelease (Moran) → Release (Xstream) client redesign completed M0–M10 and is ready to retire post-merge; see the archive note below.
+
+## Retired migrations (archive)
+
 | Folder | Hook |
 |---|---|
-| [`release-design/`](release-design/README.md) | Prerelease (Moran) → Release (Xstream) client redesign. Per-component spec + porting checklist; visuals live in `design/Release/`, this folder is the portable spec. |
+| [`release-design/`](release-design/README.md) | Prerelease (Moran) → Release (Xstream) client redesign. **Complete as of 2026-05-03 (M10).** Per-component spec + porting checklist shipped in M0–M9; catalog finalised in M10 with 122 client tests + 282 server tests. Folder will retire post-merge. Visuals live in `design/Release/`; this folder is the portable spec for the now-complete port to `client/src/`. Porting-Guide and Schema-Changes docs may migrate to `docs/code-style/` as reference material if future client rewrites need them. |

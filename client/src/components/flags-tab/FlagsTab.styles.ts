@@ -1,6 +1,6 @@
 import { makeStyles } from "@griffel/react";
 
-import { tokens } from "~/styles/tokens";
+import { tokens } from "~/styles/tokens.js";
 
 export const useFlagsTabStyles = makeStyles({
   categoryBlock: {
@@ -11,7 +11,7 @@ export const useFlagsTabStyles = makeStyles({
     fontWeight: "700",
     letterSpacing: "0.12em",
     textTransform: "uppercase",
-    color: tokens.colorMuted2,
+    color: tokens.colorTextFaint,
     marginBottom: "10px",
     paddingBottom: "4px",
     borderBottom: `1px solid ${tokens.colorBorder}`,
@@ -22,7 +22,7 @@ export const useFlagsTabStyles = makeStyles({
     justifyContent: "space-between",
     gap: "16px",
     padding: "10px 0",
-    borderBottom: `1px solid ${tokens.colorBorder}`,
+    borderBottom: `1px solid ${tokens.colorBorderSoft}`,
     ":last-child": {
       borderBottom: "0px solid transparent",
     },
@@ -34,17 +34,17 @@ export const useFlagsTabStyles = makeStyles({
   flagName: {
     fontSize: "13px",
     fontWeight: "600",
-    color: tokens.colorWhite,
+    color: tokens.colorText,
     marginBottom: "2px",
   },
   flagDesc: {
     fontSize: "11px",
-    color: tokens.colorMuted,
+    color: tokens.colorTextMuted,
     lineHeight: "1.5",
   },
   defaultHint: {
     fontSize: "10px",
-    color: tokens.colorMuted2,
+    color: tokens.colorTextFaint,
     marginLeft: "6px",
     fontWeight: "400",
     letterSpacing: "0.04em",
@@ -60,45 +60,15 @@ export const useFlagsTabStyles = makeStyles({
     backgroundColor: tokens.colorSurface2,
     border: `1px solid ${tokens.colorBorder}`,
     borderRadius: tokens.radiusSm,
-    color: tokens.colorWhite,
+    color: tokens.colorText,
     fontSize: "12px",
     fontFamily: tokens.fontBody,
     outlineStyle: "none",
     textAlign: "right",
     ":focus": {
-      border: `1px solid ${tokens.colorRed}`,
+      border: `1px solid ${tokens.colorGreen}`,
     },
     boxSizing: "border-box",
-  },
-  toggle: {
-    position: "relative",
-    width: "36px",
-    height: "20px",
-    backgroundColor: tokens.colorSurface2,
-    border: `1px solid ${tokens.colorBorder}`,
-    borderRadius: "10px",
-    cursor: "pointer",
-    padding: "0",
-    transitionProperty: "background",
-    transitionDuration: tokens.transition,
-  },
-  toggleOn: {
-    backgroundColor: tokens.colorRed,
-    border: `1px solid ${tokens.colorRed}`,
-  },
-  toggleThumb: {
-    position: "absolute",
-    top: "1px",
-    left: "1px",
-    width: "16px",
-    height: "16px",
-    backgroundColor: tokens.colorWhite,
-    borderRadius: "50%",
-    transitionProperty: "transform",
-    transitionDuration: tokens.transition,
-  },
-  toggleThumbOn: {
-    transform: "translateX(16px)",
   },
   actionsBlock: {
     marginTop: "32px",
@@ -110,12 +80,12 @@ export const useFlagsTabStyles = makeStyles({
     fontWeight: "700",
     letterSpacing: "0.12em",
     textTransform: "uppercase",
-    color: tokens.colorMuted2,
+    color: tokens.colorTextFaint,
     marginBottom: "6px",
   },
   actionsDesc: {
     fontSize: "11px",
-    color: tokens.colorMuted,
+    color: tokens.colorTextMuted,
     marginBottom: "14px",
     lineHeight: "1.5",
   },
@@ -133,12 +103,12 @@ export const useFlagsTabStyles = makeStyles({
   actionName: {
     fontSize: "13px",
     fontWeight: "600",
-    color: tokens.colorWhite,
+    color: tokens.colorText,
     marginBottom: "2px",
   },
   actionHint: {
     fontSize: "11px",
-    color: tokens.colorMuted,
+    color: tokens.colorTextMuted,
     lineHeight: "1.5",
   },
   actionButton: {
@@ -147,16 +117,17 @@ export const useFlagsTabStyles = makeStyles({
     backgroundColor: tokens.colorSurface2,
     border: `1px solid ${tokens.colorBorder}`,
     borderRadius: tokens.radiusSm,
-    color: tokens.colorWhite,
+    color: tokens.colorText,
     fontSize: "12px",
     fontFamily: tokens.fontBody,
     fontWeight: "600",
     cursor: "pointer",
-    transitionProperty: "background, border-color",
+    transitionProperty: "background-color, border-color, color",
     transitionDuration: tokens.transition,
     ":hover": {
-      backgroundColor: tokens.colorRed,
-      border: `1px solid ${tokens.colorRed}`,
+      backgroundColor: tokens.colorGreenSoft,
+      border: `1px solid ${tokens.colorGreen}`,
+      color: tokens.colorGreen,
     },
   },
 });

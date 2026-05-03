@@ -1,6 +1,6 @@
 # NotFound (page)
 
-> Status: **baseline** (Spec) · **not started** (Production)
+> Status: **baseline** (Spec) · **done** (Production)
 
 ## Files
 
@@ -57,21 +57,21 @@ None.
 - "Browse library" copy + icon (`IconSearch`) say library but the link points to `/` (Profiles). Either change the copy to "Browse profiles" or change the href to `/library` to match.
 - Could add a search input directly on the 404 page so users can recover by searching.
 
-## Porting checklist (`client/src/pages/NotFound/`)
+## Porting checklist (`client/src/components/not-found/` + `client/src/pages/not-found-page/`)
 
-- [ ] Renders inside AppShell (not full viewport like Goodbye)
-- [ ] `.shell`: `paddingTop: tokens.headerHeight`, `boxSizing: border-box` (page manages header clearance so the 404 stays mid-viewport)
-- [ ] Grain layer at 0.2 opacity
-- [ ] Radial green-soft glow centred
-- [ ] Ghost "404" at 32vw / 0.04 opacity / Anton
-- [ ] Centred eyebrow `· NOT FOUND` in green
-- [ ] Display title Anton 64px uppercase — `"Nothing here."`
-- [ ] Body line max-width 460
-- [ ] Go back button: transparent + 1px border + Mono uppercase, `navigate(-1)`
-- [ ] Browse library link: green bg + green-ink text + Mono uppercase 700
-- [ ] Reconcile "Browse library" copy/href mismatch (currently points to `/`)
+- [x] Renders inside AppShell (not full viewport like Goodbye)
+- [x] `.shell`: `paddingTop: tokens.headerHeight`, `boxSizing: border-box` (page manages header clearance so the 404 stays mid-viewport)
+- [x] Grain layer at 0.2 opacity
+- [x] Radial green-soft glow centred
+- [x] Ghost "404" at 32vw / 0.04 opacity / Anton
+- [x] Centred eyebrow `· NOT FOUND` in green
+- [x] Display title Anton 64px uppercase — `"Nothing here."`
+- [x] Body line max-width 460
+- [x] Go back button: transparent + 1px border + Mono uppercase, `navigate(-1)`
+- [x] Browse library link: green bg + green-ink text + Mono uppercase 700
+- [x] Reconcile "Browse library" copy/href mismatch — `/` is the post-M3 Library home (HomePage); copy and href are now consistent.
 
 ## Status
 
 - [x] Designed in `design/Release` lab — baseline reflects prior state; `.shell` gains `paddingTop: tokens.headerHeight, boxSizing: border-box` for positioned-shell header clearance (2026-05-01, PR #46 commit 5301df6, `feat/release-design-omdb-griffel`, not yet merged to main)
-- [ ] Production implementation
+- [x] Production implementation (M9, 2026-05-03). Inner `NotFound` body component at `client/src/components/not-found/` rewritten to spec; `NotFoundPage` shell still wraps it in `<DevThrowTarget id="NotFound">` so the DevPanel kill switch keeps working. New tokens (`colorGreen`/`colorGreenInk`/`colorGreenSoft`/`colorBg0`) replace the legacy `colorWhite/colorMuted/colorMuted2/colorBorder2/colorRedDark` call sites — `not-found/` no longer contributes to the legacy-token tsc backlog. `IconBack` (alias of `IconArrowLeft`) replaces the previous `IconArrowLeft` import to align with the spec's icon name. `Link to="/"` is correct because the post-M3 cutover put the library on `/`.

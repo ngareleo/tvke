@@ -96,6 +96,122 @@ The `release-design/` migration captures the Prerelease (Moran) → Release (Xst
 
 `design/Prerelease/` is **not** in this migration — Prerelease is frozen and edits there route to `architect`.
 
+## Milestone briefing protocol (release-design)
+
+When the main agent — or any agent picking up an M-numbered release-design milestone — asks me "what's next?" / "brief me on Mn" / "what's the order of work?", **a routing pointer is not enough**. Past hand-offs have shipped real bugs (broken Bun runtime, prop-drilled view models, stale spec values, missing empty states) because tripwires were not surfaced.
+
+Every release-design milestone briefing **must include** the following sections, in order. I draft from the Plan.md row plus the linked specs, then add the cross-cutting tripwire checks below.
+
+### 1. Scope
+Milestone name, page route(s) being ported, the full set of components + utilities + tests in scope, the deliverable acceptance criteria copied verbatim from `Plan.md`'s milestone row.
+
+### 2. Hard contracts the agent MUST honour
+Restate as tripwires (link + one-line MUST), don't just point at the contract doc:
+
+- **Relay fragments** ([`docs/architecture/Relay/00-Fragment-Contract.md`](../../docs/architecture/Relay/00-Fragment-Contract.md)) — every component that reads GraphQL data declares its own `<Component>_<propName>` fragment and consumes it via `useFragment`. **NO view-model interfaces, NO prop-drilling extracted scalars.** The page-level query is the only `useLazyLoadQuery` call site.
+- **Griffel styles only** ([`docs/code-style/Client-Conventions/00-Patterns.md`](../../docs/code-style/Client-Conventions/00-Patterns.md)) — no literal `className="…"` against `shared.css` classes (`.chip`, `.eyebrow`, `.dot`, `.grain-layer`); migrate them to `makeStyles` + `tokens`. Lint will block the commit.
+- **Naming + colocation** — kebab-case directory (`film-tile/`), PascalCase filenames (`FilmTile.tsx`), the four colocated files (`.tsx`, `.styles.ts`, `.strings.ts`, `.stories.tsx`). `.events.ts` only when the component emits Nova events.
+- **Tests in `__tests__/` only**, pure logic only. No component unit tests — Stories cover that.
+- **View-transition contracts** — when the milestone consumes or publishes a `viewTransitionName`, restate the **literal string**. (E.g. M7 Player MUST echo `viewTransitionName: "film-backdrop"` on the player backdrop element to match the M4 Library overlay poster.)
+- **Playback off-limits** — no edits to `client/src/services/`, `useChunkedPlayback`, `useVideoPlayback`, `useVideoSync`, the Rust streaming pipeline, or ffmpeg paths.
+
+### 3. Cross-stack consistency checks (the schema in three places)
+GraphQL schema is mirrored across **three** files — they MUST agree before client queries land:
+
+1. `server-rust/src/graphql/types/*.rs` (the live runtime — when the Rust server is the dev runtime)
+2. `server/src/graphql/schema.ts` (the legacy Bun runtime — still serving dev as of 2026-05-02; "retired for new feature work" but answering live requests)
+3. `server/schema.graphql` (the static SDL relay-compiler reads)
+
+When the milestone introduces a new GraphQL field, **flag this triple-sync requirement explicitly** in the briefing. M4 shipped a new schema field that only landed in (1) and (3); the Bun runtime (2) erred at runtime and the page hit an error boundary. Stub Bun resolvers returning `null`/`[]` are acceptable because the real implementation lives in `server-rust/`.
+
+Also flag: Relay artifacts in `client/src/relay/__generated__/` are **gitignored**; the agent must run `bun run relay` after touching any `graphql\`...\`` tag or after editing `server/schema.graphql`.
+
+### 4. Spec ↔ source drift audit
+For every `done` spec the agent will consume, **I run a quick diff between the spec's concrete values and the matching `design/Release/src/` file** before handing off. M4 caught:
+
+- `PosterRow.md` claimed `ROW_SCROLL_DURATION_MS = 720` + `easeInOutCubic`; source had `SCROLL_DURATION_MS = 1100` + `easeOutQuint`.
+- `PosterRow.md` claimed props `{title, films, onSelectFilm}`; source had `{title, children}`.
+- `FilterSlide.md` had vague constants (`HDRS = ["HDR10", "Dolby Vision", "—"]`); source had `["DV", "HDR10", "HDR10+", "—"]`.
+- `FilmDetailsOverlay.md` had invalid CSS (`tokens.colorGreenGlow / 0.35`).
+
+If I can't run a diff at briefing time, **list the constants the agent should re-verify against source as the first commit of the milestone**. A spec audit pass is preferable to discovering drift mid-port.
+
+### 5. Empty / edge states the page must handle
+For every page or surface in the milestone, list what it must render when:
+
+- The database is empty (`videos.edges = []`)
+- The user has no profiles / libraries (`libraries = []`)
+- A specific row's data is empty (e.g. no watchlist items, no continue-watching items)
+- A field is null at the schema level (poster URL absent, year absent, metadata row absent — the most common "unmatched file" case)
+
+M4 originally rendered the same idle hero whether the DB had data or not — the user had to file a follow-up to get an empty-Library state. **Decide and document the empty-state design as part of the milestone, not after**.
+
+### 6. Verification recipe
+Hand the agent the literal commands and URL:
+
+- Dev server: `bun run dev` from the repo root (Rsbuild on `:5173`, GraphQL backend on `:3001`)
+- Relay watch: `bun run relay` regenerates artifacts; the `dev` script chains it before `rsbuild dev`
+- Smoke target: `http://localhost:5173/` plus the milestone's owned route (`/profiles`, `/watchlist`, `/player/:id`, etc.)
+- Verify in browser **before** claiming the milestone done. Type-check + lint + Storybook are necessary but not sufficient — the user pushed back on M4 because two real runtime issues escaped CI-style checks (Bun schema mismatch, z-stacking bug).
+
+### 7. Cross-milestone contracts inherited and published
+List two arrows:
+
+- **Inherits FROM** — what previous milestones promised that this milestone consumes (e.g. M4 inherits `withViewTransition` from M1, AppShell positioned-layer model from M3, schema fields from M2).
+- **Publishes TO** — what this milestone is committing forward that future milestones MUST honour (e.g. M4 publishes `FilmTile_video` fragment shape, `viewTransitionName: "film-backdrop"` for M7, the `LibraryFilm.kind` discriminator semantics).
+
+If the agent changes a published contract mid-milestone, walking the future call sites is ON the agent — flag this.
+
+### 8. Deferred follow-ups from earlier milestones
+Every Plan.md milestone row should record what was *intentionally not shipped* — polish, follow-on features, or open questions. Surface those when briefing the next agent that touches the same surfaces. M4 deferred the rotating hero slideshow + greeting 3D tilt + profile-name integration; M5 (Profiles) and any future Library polish should know these exist before reinventing or re-deciding.
+
+If the previous milestone's row doesn't carry deferred items, ask the user — don't assume "done" means "complete."
+
+### Briefing template (copy–edit per milestone)
+
+```
+M{n} — {Title}
+
+## Scope
+- Route(s): {…}
+- Components: {…}
+- Acceptance: {verbatim from Plan.md}
+
+## Hard contracts (MUST)
+- Relay fragments per `docs/architecture/Relay/00-Fragment-Contract.md` — useFragment, no view models
+- Griffel + tokens, no shared.css classNames
+- Kebab-case dir + 4 colocated files
+- View-transition contracts to honour: {literal names}
+- Playback services off-limits
+
+## Schema sync ({if any new GraphQL fields})
+- server-rust: {…}
+- server/src/graphql/schema.ts: {…}
+- server/schema.graphql: {…}
+- Run `bun run relay` after touching graphql tags
+
+## Spec drift to audit before porting
+- {Component.md} — verify {constants} against {source.tsx}
+
+## Empty / edge states
+- DB empty: {render what?}
+- No libraries: {render what?}
+- Null fields: {fallback what?}
+
+## Verification
+- `bun run dev`; smoke at `http://localhost:5173/{route}`
+- Verify in browser before marking done
+
+## Inherits FROM
+- {…}
+
+## Publishes TO
+- {…}
+
+## Deferred follow-ups (don't re-decide)
+- {…}
+```
+
 ## Cache protocol
 
 I maintain a rolling cache at `.claude/agents/migrations-lead-cache/index.md` (gitignored, per-machine). On every invocation:

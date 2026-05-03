@@ -15,6 +15,13 @@ Entry shape (each entry ends with the divider line described above):
 
 <!-- ENTRIES BELOW — newest first; each ends with a bare `---` line. The architect's next invocation will treat the no-entries state as the first-run case and prepend a bootstrap entry at HEAD. -->
 
+## 2026-05-03 — M8 Settings section-tab Relay exception
+
+**Files:** `docs/code-style/Client-Conventions/00-Patterns.md`, `docs/SUMMARY.md`
+**Why:** M8 Settings ships `TraceHistoryTab` with its own `useLazyLoadQuery` to avoid fetching playback history on other Settings sections; documented exception to "pages-only" rule + updated SUMMARY.md pointer
+
+---
+
 ## 2026-05-03 — storybook testing policy (console.error, play assertions, resolver patterns)
 
 **Files:** `docs/code-style/Client-Conventions/01-Storybook-Testing.md` (new), `docs/code-style/Client-Conventions/README.md`, `docs/INDEX.md`
@@ -26,6 +33,27 @@ Entry shape (each entry ends with the divider line described above):
 
 **Files:** `CLAUDE.md`, `docs/SUMMARY.md`, `docs/INDEX.md`, `docs/code-style/README.md`, `docs/code-style/Principles/README.md`, `docs/code-style/Principles/00-Fix-Root-Causes.md`, `docs/code-style/Principles/01-Safety-Timeouts.md`, `docs/code-style/Tooling/README.md`, `docs/code-style/Tooling/00-Linting-And-Formatting.md`, `docs/History.md`, `.claude/agents/architect.md`
 **Why:** removed inline content from CLAUDE.md (engineering principles, code-quality tooling, observability rules) — replaced with one-line pointers and an upgraded Session-start directive that names the boot pack explicitly. Two new sub-trees: `code-style/Principles/` (fix-root-causes + safety-timeouts now have a canonical home) and `code-style/Tooling/` (linting + formatting per language: Rust, TS/React, SQL). New `docs/History.md` is a narrative log paired with `Commit.md` — Commit.md answers *did the docs sync at this SHA*, History.md answers *what's been changing and why*. Architect prompt updated with the pairing protocol. Added INDEX rows for all new files. Curator step (this entry + INDEX rows + History.md bootstrap) was performed by the main agent because the architect notification produced a fabricated report.
+
+---
+
+## 38ed25d — 2026-05-03 (M6 relay-compiler operation-naming rule promotion + page-story convention)
+
+**Files:** `docs/code-style/Invariants/00-Never-Violate.md`, `docs/code-style/Client-Conventions/00-Patterns.md`, `docs/SUMMARY.md`
+**Why:** M6 (Watchlist) exposed relay-compiler operation-naming violation (M5 `DetailPaneEdit.tsx` with operations named `DetailPaneSearchQuery` / `DetailPaneMatchMutation` halted project-wide artifact generation silently); promoted to invariant #14 with explicit blast-radius call-out; added page-story convention to Client-Conventions (pages can't use `@relay_test_operation`, no storybook precedent); updated SUMMARY.md invariants shortlist to #10 (relay ops) + renumbered error-swallowing to #15
+
+---
+
+## 3733748 — 2026-05-02 (client-side `.utils.ts` convention — new code-style bullet)
+
+**Files:** `docs/code-style/Client-Conventions/00-Patterns.md`
+**Why:** codified rule that `*.tsx` files house only React components, props, fragments, mutations, queries; constants/formatters/type aliases/helper functions move to colocated `ComponentName.utils.ts`; applied refactor sweep to DetailPane + HomePageContent per user review direction on PR #51
+
+---
+
+## 931c982 — 2026-05-02 (release-design M0 INDEX row for Plan.md)
+
+**Files:** `docs/INDEX.md`
+**Why:** added retrieval row for `docs/migrations/release-design/Plan.md` (agent-orchestration scaffold for M0–M10 milestones) per migrations-lead notification; Schema-Changes.md and Porting-Guide.md are navigation-discoverable from Plan.md, no separate rows needed; SUMMARY.md unchanged (M0 is scaffolding, not architecture-level)
 
 ---
 

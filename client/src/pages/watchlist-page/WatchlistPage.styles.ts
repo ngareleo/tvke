@@ -1,220 +1,154 @@
 import { makeStyles } from "@griffel/react";
 
-import { tokens } from "~/styles/tokens";
+import { tokens } from "~/styles/tokens.js";
 
-export const useWatchlistStyles = makeStyles({
-  root: {
-    display: "flex",
-    flexDirection: "column",
+export const useWatchlistPageStyles = makeStyles({
+  page: {
     height: "100%",
-    overflow: "hidden",
-  },
-
-  // ── Stats row ──────────────────────────────────────────────────────────────
-  statsRow: {
-    display: "flex",
-    alignItems: "center",
-    gap: "0",
-    borderBottom: `1px solid ${tokens.colorBorder}`,
-    flexShrink: "0",
-    backgroundColor: tokens.colorSurface,
-  },
-  statItem: {
-    display: "flex",
-    flexDirection: "column",
-    alignItems: "center",
-    justifyContent: "center",
-    padding: "14px 28px",
-    borderRight: `1px solid ${tokens.colorBorder}`,
-  },
-  statNum: {
-    fontSize: "22px",
-    fontWeight: "700",
-    color: tokens.colorWhite,
-    fontFamily: tokens.fontHead,
-    letterSpacing: "0.04em",
-  },
-  statLabel: {
-    fontSize: "10px",
-    fontWeight: "700",
-    letterSpacing: "0.12em",
-    textTransform: "uppercase",
-    color: tokens.colorMuted2,
-    marginTop: "2px",
-  },
-
-  // ── Scrollable body ────────────────────────────────────────────────────────
-  body: {
-    flex: "1",
+    overflowX: "hidden",
     overflowY: "auto",
-    padding: "24px",
+    backgroundColor: tokens.colorBg0,
+    paddingTop: `calc(${tokens.headerHeight} + 60px)`,
+    paddingBottom: "80px",
+    paddingLeft: "60px",
+    paddingRight: "60px",
+    boxSizing: "border-box",
   },
 
-  // ── Section ────────────────────────────────────────────────────────────────
-  sectionTitle: {
-    fontSize: "11px",
-    fontWeight: "700",
-    letterSpacing: "0.12em",
-    textTransform: "uppercase",
-    color: tokens.colorMuted2,
-    marginBottom: "14px",
-  },
-
-  // ── Horizontal rail (Continue Watching) ───────────────────────────────────
-  rail: {
+  header: {
     display: "flex",
-    gap: "12px",
-    overflowX: "auto",
-    paddingBottom: "4px",
-    marginBottom: "28px",
+    flexDirection: "column",
+    rowGap: "10px",
+    marginBottom: "44px",
   },
-  railCard: {
-    width: "160px",
-    flexShrink: "0",
-    borderRadius: tokens.radiusMd,
-    overflow: "hidden",
-    cursor: "pointer",
-    backgroundColor: tokens.colorSurface2,
-    position: "relative",
+  eyebrow: {
+    fontFamily: tokens.fontMono,
+    fontSize: "12px",
+    letterSpacing: "0.22em",
+    textTransform: "uppercase",
+    color: tokens.colorGreen,
   },
-  railThumb: {
-    width: "100%",
-    paddingBottom: "150%",
-    position: "relative",
-    backgroundSize: "cover",
-    backgroundPosition: "center",
-    backgroundImage: "linear-gradient(135deg, #1a0a0a 0%, #2d0d10 50%, #0f0f0f 100%)",
+  title: {
+    fontFamily: tokens.fontHead,
+    fontSize: "64px",
+    lineHeight: "0.95",
+    color: tokens.colorText,
+    letterSpacing: "-0.02em",
   },
-  railProgress: {
-    position: "absolute",
-    bottom: "0",
-    left: "0",
-    right: "0",
-    height: "3px",
-    backgroundColor: "rgba(255,255,255,0.1)",
-  },
-  railProgressFill: {
-    height: "100%",
-    backgroundColor: tokens.colorRed,
-    borderRadius: "0 2px 2px 0",
-  },
-  railInfo: {
-    padding: "8px 10px",
-  },
-  railTitle: {
-    fontSize: "11px",
-    fontWeight: "600",
-    color: tokens.colorWhite,
-    whiteSpace: "nowrap",
-    overflow: "hidden",
-    textOverflow: "ellipsis",
-  },
-  railYear: {
-    fontSize: "10px",
-    color: tokens.colorMuted2,
-    marginTop: "2px",
+  subtitle: {
+    fontFamily: tokens.fontMono,
+    fontSize: "12px",
+    letterSpacing: "0.06em",
+    color: tokens.colorTextMuted,
   },
 
-  // ── List rows ─────────────────────────────────────────────────────────────
-  listRow: {
+  grid: {
     display: "grid",
-    gridTemplateColumns: "60px 1fr auto auto",
-    alignItems: "center",
-    gap: "12px",
-    padding: "10px 0",
-    borderBottom: `1px solid rgba(255,255,255,0.04)`,
-    ":last-child": {
-      borderBottom: "none",
-    },
+    gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))",
+    gap: "24px",
   },
-  listThumb: {
-    width: "60px",
-    height: "34px",
-    borderRadius: "4px",
-    backgroundSize: "cover",
-    backgroundPosition: "center",
-    backgroundImage: "linear-gradient(135deg, #1a0a0a 0%, #2d0d10 100%)",
-    flexShrink: "0",
+
+  empty: {
+    fontFamily: tokens.fontMono,
+    fontSize: "12px",
+    letterSpacing: "0.06em",
+    color: tokens.colorTextMuted,
   },
-  listInfo: {
-    minWidth: "0",
-  },
-  listTitle: {
-    fontSize: "13px",
-    fontWeight: "600",
-    color: tokens.colorWhite,
-    whiteSpace: "nowrap",
-    overflow: "hidden",
-    textOverflow: "ellipsis",
-  },
-  listMeta: {
-    fontSize: "11px",
-    color: tokens.colorMuted2,
-    marginTop: "2px",
-  },
-  listProgress: {
-    width: "80px",
-    height: "3px",
-    backgroundColor: "rgba(255,255,255,0.08)",
-    borderRadius: "2px",
-    overflow: "hidden",
-    flexShrink: "0",
-  },
-  listProgressFill: {
-    height: "100%",
-    backgroundColor: tokens.colorRed,
-  },
-  removeBtn: {
-    display: "inline-flex",
-    alignItems: "center",
-    justifyContent: "center",
-    width: "28px",
-    height: "28px",
-    background: "transparent",
-    border: `1px solid transparent`,
-    borderRadius: tokens.radiusSm,
-    color: tokens.colorMuted2,
-    cursor: "pointer",
-    fontSize: "16px",
-    transitionProperty: "color, border-color, background",
+
+  tile: {
+    display: "flex",
+    flexDirection: "column",
+    rowGap: "10px",
+    backgroundColor: "transparent",
+    color: "inherit",
+    textDecorationLine: "none",
+    transitionProperty: "transform",
     transitionDuration: tokens.transition,
     ":hover": {
-      color: tokens.colorRed,
-      border: `1px solid ${tokens.colorRedBorder}`,
-      backgroundColor: tokens.colorRedDim,
+      transform: "translateY(-3px)",
     },
   },
-
-  // ── Empty state ───────────────────────────────────────────────────────────
-  empty: {
+  tileFrame: {
+    position: "relative",
+    aspectRatio: "2/3",
+    overflowX: "hidden",
+    overflowY: "hidden",
+    borderTopWidth: "1px",
+    borderRightWidth: "1px",
+    borderBottomWidth: "1px",
+    borderLeftWidth: "1px",
+    borderTopStyle: "solid",
+    borderRightStyle: "solid",
+    borderBottomStyle: "solid",
+    borderLeftStyle: "solid",
+    borderTopColor: tokens.colorBorder,
+    borderRightColor: tokens.colorBorder,
+    borderBottomColor: tokens.colorBorder,
+    borderLeftColor: tokens.colorBorder,
+    backgroundColor: tokens.colorSurface,
+    transitionProperty: "border-color, box-shadow",
+    transitionDuration: tokens.transition,
+    ":hover": {
+      borderTopColor: tokens.colorGreen,
+      borderRightColor: tokens.colorGreen,
+      borderBottomColor: tokens.colorGreen,
+      borderLeftColor: tokens.colorGreen,
+      boxShadow: `0 8px 24px ${tokens.colorGreenSoft}`,
+    },
+  },
+  tileImage: {
+    width: "100%",
+    height: "100%",
+    objectFit: "cover",
+  },
+  progressTrack: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    bottom: 0,
+    height: "3px",
+    backgroundColor: "rgba(0,0,0,0.55)",
+  },
+  progressFill: {
+    height: "100%",
+    backgroundColor: tokens.colorGreen,
+  },
+  ratingBadge: {
+    position: "absolute",
+    top: "8px",
+    right: "8px",
+    backgroundColor: "rgba(0,0,0,0.7)",
+    color: tokens.colorYellow,
+    fontFamily: tokens.fontMono,
+    fontSize: "10px",
+    paddingTop: "3px",
+    paddingBottom: "3px",
+    paddingLeft: "6px",
+    paddingRight: "6px",
+    borderRadius: tokens.radiusSm,
+    display: "flex",
+    alignItems: "center",
+    columnGap: "4px",
+  },
+  tileMeta: {
     display: "flex",
     flexDirection: "column",
-    alignItems: "center",
-    justifyContent: "center",
-    height: "100%",
-    gap: "12px",
-    color: tokens.colorMuted,
+    rowGap: "3px",
   },
-  emptyTitle: {
-    fontSize: "18px",
-    fontWeight: "700",
-    color: tokens.colorWhite,
-    fontFamily: tokens.fontHead,
-    letterSpacing: "0.04em",
-  },
-  emptyBody: {
+  tileTitle: {
     fontSize: "13px",
-    color: tokens.colorMuted,
-    textAlign: "center",
-    maxWidth: "260px",
-    lineHeight: "1.6",
+    color: tokens.colorText,
   },
-  emptyLink: {
-    color: tokens.colorRed,
-    textDecoration: "none",
-    fontWeight: "600",
-    ":hover": {
-      textDecoration: "underline",
-    },
+  tileSubtitle: {
+    fontSize: "10px",
+    color: tokens.colorTextMuted,
+    fontFamily: tokens.fontMono,
+    letterSpacing: "0.06em",
+  },
+  tileAdded: {
+    fontSize: "10px",
+    color: tokens.colorTextFaint,
+    fontFamily: tokens.fontMono,
+    letterSpacing: "0.04em",
   },
 });

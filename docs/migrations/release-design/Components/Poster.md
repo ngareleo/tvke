@@ -1,6 +1,6 @@
 # Poster
 
-> Status: **baseline** (Spec) · **not started** (Production)
+> Status: **done** (Spec) · **done** (Production)
 
 ## Files
 
@@ -48,17 +48,17 @@ Cross-reference: [`Changes.md`](../Changes.md) — "Poster" entry.
 - No `loading="lazy"` attr — every poster fires immediately. Add lazy loading for grid views.
 - No accessible width/height (CLS not constrained). Pass dimensions through props or via parent's container styling.
 
-## Porting checklist (`client/src/components/Poster/`)
+## Porting checklist (`client/src/components/poster/`)
 
-- [ ] `<img>` with onError fallback to gradient placeholder
-- [ ] Fallback gradient: `linear-gradient(160deg, surface-2, bg-0)`
-- [ ] Fallback label: alt text in Mono 10px uppercase / 0.2em / `text-faint`
-- [ ] `objectFit: cover` + `display: block` baked in Griffel; **no `style` prop** — callers supply geometry via `className`
-- [ ] **Reset `errored` state on URL change** (fix the TODO at port time)
-- [ ] Add `loading="lazy"` for grid usage
-- [ ] Forward `className` through both `<img>` and fallback `<div>` branches
+- [x] `<img>` with onError fallback to gradient placeholder
+- [x] Fallback gradient: `linear-gradient(160deg, surface-2, bg-0)`
+- [x] Fallback label: alt text in Mono 10px uppercase / 0.2em / `text-faint`
+- [x] `objectFit: cover` + `display: block` baked in Griffel; **no `style` prop** — callers supply geometry via `className`
+- [x] **Reset `errored` state on URL change** (fix the TODO at port time) — `useEffect(() => setErrored(false), [url])`
+- [x] Add `loading="lazy"` for grid usage
+- [x] Forward `className` through both `<img>` and fallback `<div>` branches via `mergeClasses`
 
 ## Status
 
 - [ ] Designed in `design/Release` lab (baseline reflects current state)
-- [ ] Production implementation
+- [x] Production implementation

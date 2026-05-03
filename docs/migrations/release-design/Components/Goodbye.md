@@ -1,6 +1,6 @@
 # Goodbye (page)
 
-> Status: **baseline** (Spec) · **not started** (Production)
+> Status: **baseline** (Spec) · **done** (Production)
 
 ## Files
 
@@ -66,23 +66,23 @@ None.
 - The countdown StrictMode artefact could be cleaned up by keying the timer off `Date.now()` rather than incremental state. Confirm whether this matters in production (StrictMode may not be enabled).
 - Sign-out wiring — currently `Goodbye` is reached only by directly visiting `/goodbye`. Production needs a sign-out button (likely in [`Sidebar`](Sidebar.md)) that calls a logout mutation then navigates here.
 
-## Porting checklist (`client/src/pages/Goodbye/`)
+## Porting checklist (`client/src/pages/goodbye-page/`)
 
-- [ ] Bypass AppShell — full viewport, `bg-0` background
-- [ ] Grain layer at 0.22 opacity
-- [ ] Radial green-soft glow centred
-- [ ] Ghost watermark "GOODBYE" at 30vw / 0.03 opacity / Anton
-- [ ] Centred Logo02 (64px, no wordmark) at 0.6 opacity
-- [ ] Eyebrow `· SESSION ENDED` in green
-- [ ] Display title Anton 64px uppercase
-- [ ] Body line max-width 460
-- [ ] Back-to-home button: green bg, green-ink text, JetBrains Mono uppercase
-- [ ] Countdown text auto-decrements every second
-- [ ] Auto-redirect to `/` (via `replace: true`) when countdown hits 0
-- [ ] `replace: true` on both manual + auto navigation (no back-button trap)
-- [ ] Wire from sign-out mutation in production
+- [x] Bypass AppShell — full viewport, `bg-0` background
+- [x] Grain layer at 0.22 opacity
+- [x] Radial green-soft glow centred
+- [x] Ghost watermark "GOODBYE" at 30vw / 0.03 opacity / Anton
+- [x] Centred Logo02 (64px, no wordmark) at 0.6 opacity
+- [x] Eyebrow `· SESSION ENDED` in green
+- [x] Display title Anton 64px uppercase
+- [x] Body line max-width 460
+- [x] Back-to-home button: green bg, green-ink text, JetBrains Mono uppercase
+- [x] Countdown text auto-decrements every second
+- [x] Auto-redirect to `/` (via `replace: true`) when countdown hits 0
+- [x] `replace: true` on both manual + auto navigation (no back-button trap)
+- [ ] Wire from sign-out mutation in production (deferred — `/goodbye` still reached only by direct visit; AccountMenu sign-out wiring lives in a future milestone)
 
 ## Status
 
-- [ ] Designed in `design/Release` lab (baseline reflects current state)
-- [ ] Production implementation
+- [x] Designed in `design/Release` lab (baseline reflects current state)
+- [x] Production implementation (M9, 2026-05-03). `client/src/pages/goodbye-page/` rewrite: swaps `LogoShield` for `Logo02` (size 64, no wordmark, opacity 0.6), promotes the redirect timer from a static one-shot `setTimeout` to a `useState(REDIRECT_DELAY)` countdown (decrements 1/s; auto-navigates `replace: true` when it hits 0), drops the legacy `colorWhite/colorMuted/colorRedDark` token call sites in favour of `colorGreen` + `colorGreenInk` + `colorGreenSoft`, layers the shared `.grain-layer` utility at 0.22 opacity, and renders the Anton 64px title above a Mono 11px countdown. `GoodbyePage.strings.ts` adopts a `formatString(redirectingFormat, { n })` interpolation so the countdown number stays a single source of truth.

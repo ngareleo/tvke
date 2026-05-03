@@ -38,8 +38,10 @@ use crate::db::{
     get_all_libraries, get_unmatched_video_ids, get_video_by_id, upsert_library, upsert_video,
     upsert_video_metadata, LibraryRow, NewVideoStream, VideoMetadataRow, VideoRow,
 };
+use crate::graphql::scalars::Resolution;
 use crate::services::ffmpeg_file::FfmpegFile;
 use crate::services::omdb::{OmdbClient, OmdbResult};
+use crate::services::tv_discovery;
 
 const FINGERPRINT_BYTES: usize = 65_536;
 
@@ -94,6 +96,14 @@ pub async fn scan_libraries(ctx: &AppContext) {
 
             scan_one_library(ctx, library).await;
             info!(library_name = %library.name, "library_scanned");
+            // TV-show discovery: cross-checks the local file tree against
+            // the OMDb canonical episode list and populates the seasons +
+            // episodes tables. Runs before auto_match_library so the
+            // synthetic show video row exists by the time the metadata
+            // matcher iterates the unmatched-video list.
+            if library.media_type == "tvShows" {
+                tv_discovery::discover_tv_shows(ctx, library).await;
+            }
             auto_match_library(ctx, library).await;
         }
 
@@ -225,6 +235,16 @@ async fn process_file(path: &Path, library_id: &str, ctx: &AppContext) -> Result
         .to_string();
     let title = derive_title(&filename);
 
+    // Native resolution: take the first probed video stream's height and
+    // map it to the closest rung. Stays `None` when the file has no video
+    // stream (audio-only) — every other case (incl. `height == 0`) falls
+    // through to `R240p` per the clamp contract.
+    let native_resolution = metadata.video_streams.first().map(|vs| {
+        Resolution::from_height(vs.height as i64)
+            .to_internal()
+            .to_string()
+    });
+
     let row = VideoRow {
         id: video_id.clone(),
         library_id: library_id.to_string(),
@@ -236,6 +256,7 @@ async fn process_file(path: &Path, library_id: &str, ctx: &AppContext) -> Result
         bitrate: (metadata.bitrate_kbps * 1_000) as i64,
         scanned_at: Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true),
         content_fingerprint: fingerprint,
+        native_resolution,
     };
 
     let mut streams: Vec<NewVideoStream> =
@@ -876,6 +897,7 @@ mod tests {
             bitrate: 100_000,
             scanned_at: "2026-01-01T00:00:00.000Z".to_string(),
             content_fingerprint: "1000:abc".to_string(),
+            native_resolution: None,
         }
     }
 

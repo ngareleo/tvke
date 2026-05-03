@@ -4,6 +4,7 @@ import { initTelemetry } from "./telemetry.js";
 initTelemetry();
 
 import "./styles/global.css";
+import "./styles/shared.css";
 
 import { mapEventMetadata, NovaEventingProvider } from "@nova/react";
 import type { EventWrapper } from "@nova/types";

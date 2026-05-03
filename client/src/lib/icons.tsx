@@ -1,9 +1,11 @@
+import { makeStyles } from "@griffel/react";
 import {
   AdjustmentsIcon,
   ArrowLeftIcon,
   ArrowsExpandIcon,
   BookmarkIcon,
   ChatIcon,
+  CheckIcon,
   ChevronDownIcon,
   ChevronLeftIcon,
   ChevronRightIcon,
@@ -34,6 +36,8 @@ import {
   XIcon,
 } from "@heroicons/react/outline";
 import React, { type FC, type SVGProps } from "react";
+
+import { tokens } from "~/styles/tokens.js";
 
 /**
  * Icon library — thin wrappers over Heroicons Outline v1
@@ -76,7 +80,14 @@ export const IconChevronDown = wrap(ChevronDownIcon);
 export const IconSearch = wrap(SearchIcon);
 export const IconDocument = wrap(DocumentIcon);
 export const IconWarning = wrap(ExclamationIcon);
+export const IconWarn = IconWarning;
+export const IconCheck = wrap(CheckIcon);
 export const IconArrowLeft = wrap(ArrowLeftIcon);
+export const IconBack = IconArrowLeft;
+export const IconChevron = IconChevronRight;
+export const IconFullscreen = IconArrowsOut;
+export const IconExpand = IconArrowsOut;
+export const IconVolume = IconSpeaker;
 export const IconBookmark = wrap(BookmarkIcon);
 export const IconCog = wrap(CogIcon);
 export const IconFolder = wrap(FolderIcon);
@@ -159,3 +170,28 @@ export const LogoShield = (): React.JSX.Element => (
     <line x1="18" y1="11" x2="6" y2="19" stroke="white" strokeWidth="0.8" opacity="0.4" />
   </svg>
 );
+
+const useImdbBadgeStyles = makeStyles({
+  badge: {
+    backgroundColor: tokens.colorYellow,
+    color: "#000",
+    paddingTop: "1px",
+    paddingBottom: "1px",
+    paddingLeft: "4px",
+    paddingRight: "4px",
+    fontSize: "9px",
+    fontWeight: 800,
+    letterSpacing: "0.06em",
+    borderRadius: "2px",
+  },
+});
+
+/**
+ * Not a Heroicon — a styled "IMDb" badge that visually pairs with
+ * IMDb rating numerals. Lives here because it's used alongside icons
+ * in the same call sites.
+ */
+export const ImdbBadge: FC = () => {
+  const styles = useImdbBadgeStyles();
+  return <span className={styles.badge}>IMDb</span>;
+};

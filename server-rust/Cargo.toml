@@ -5,6 +5,11 @@ edition.workspace = true
 rust-version.workspace = true
 publish.workspace = true
 license.workspace = true
+# Two binaries live in this crate — xstream-server (the runtime) and
+# print_schema (a build-time GraphQL SDL emitter). Pin the default so
+# `cargo run` from package scripts targets the runtime without needing
+# --bin everywhere.
+default-run = "xstream-server"
 
 [dependencies]
 # Web

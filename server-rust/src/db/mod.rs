@@ -117,6 +117,9 @@ pub use queries::libraries::{
 pub use queries::playback_history::{
     get_playback_history, insert_playback_session, PlaybackHistoryRow,
 };
+pub use queries::seasons::{
+    get_episodes_by_show, get_seasons_by_show, upsert_episode, upsert_season, EpisodeRow, SeasonRow,
+};
 pub use queries::user_settings::{get_setting, set_setting};
 pub use queries::video_metadata::{
     count_matched_by_library, delete_video_metadata, get_metadata_by_video_id,

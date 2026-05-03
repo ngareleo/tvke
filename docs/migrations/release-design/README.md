@@ -11,8 +11,12 @@ Migrate the xstream client from the **Prerelease** identity (codename Moran — 
 ## Reading order
 
 1. This README — scope + contract.
-2. [`Components/README.md`](Components/README.md) — catalog + status table for every component.
-3. The individual `Components/<Name>.md` for the element you're touching.
+2. [`Plan.md`](Plan.md) — the shared roster + milestone roadmap. The migration-lead reads this to know which milestone is next.
+3. [`Porting-Guide.md`](Porting-Guide.md) — agent-facing how-to (invariants, helpers, token mapping, milestone-orchestration playbook). Read on every milestone start.
+4. [`Schema-Changes.md`](Schema-Changes.md) — the complete GraphQL + SQLite delta M2 lands and that M3+ consumes.
+5. [`Changes.md`](Changes.md) — high-signal Prerelease → Release diff for orientation.
+6. [`Components/README.md`](Components/README.md) — catalog + status table for every component.
+7. The individual `Components/<Name>.md` for the element you're touching.
 
 ## Status
 
@@ -27,7 +31,7 @@ Documentation updated via PR #46 audit (2026-05-01), PR #48 sync (2026-05-02, he
 - **Eight extracted components:** SearchSlide, FilterSlide, PosterRow, FilmTile, FilmDetailsOverlay (from Library); ProfileRow, FilmRow (from Profiles). Each now has its own `.tsx` + `.styles.ts` in the design lab and a dedicated `.md` spec with porting checklist. Parent pages (Library, Profiles) became thin shells (~160–260 lines) delegating to extracted components. Shared `PROFILE_GRID_COLUMNS` constant (`pages/Profiles/grid.ts`) locks column widths across ProfileRow and FilmRow.
 - **Earlier:** DirectoryBrowser (popover for ProfileForm), DevPanel (lab-only QA nav), Error (runtime-error page).
 
-**Implementation in production:** not started (all specs are design-lab first; porting begins once a spec is `done` or clearly marked `baseline` with knowns only).
+**Implementation in production:** M0 (plan) through M9 (Goodbye/NotFound/Error) shipped. M3 (AppShell + AppHeader + AccountMenu + Router), M4 (Library + 8 components), M5 (Profiles ecosystem), M6 (Watchlist), M7 (Player chrome), M8 (Settings), and M9 (edge pages + Logo02) are all `done` in `client/src/`. M10 (final polish + e2e + catalog finalisation) is the last milestone — once it lands, this migration folder retires (ready-to-archive).
 
 ## Links
 
@@ -35,6 +39,9 @@ Documentation updated via PR #46 audit (2026-05-01), PR #48 sync (2026-05-02, he
 - [`design/Prerelease/`](../../../design/Prerelease/) — the frozen Moran prototype. Behavioural reference for any contract not re-stated in the Release spec (URL pane state, drag-resize, Player state machine, inactivity hide all port verbatim).
 - [`docs/design/UI-Design-Spec/01-Release-Tokens-And-Layout.md`](../../design/UI-Design-Spec/01-Release-Tokens-And-Layout.md) — token map + page-by-page status, lives outside this migration because tokens survive past the port.
 - [`client/src/`](../../../client/src/) — the port target.
+- [`Plan.md`](Plan.md) — shared roster + milestone roadmap. Updated as each milestone lands.
+- [`Porting-Guide.md`](Porting-Guide.md) — agent how-to: invariants, helpers, token map, orchestration playbook.
+- [`Schema-Changes.md`](Schema-Changes.md) — schema delta catalog M2 lands; M3+ consumers reference it.
 - [`Changes.md`](Changes.md) — cross-cutting diff of every meaningful design change between Prerelease and Release. Start here when you need a high-level orientation before reading individual component specs.
 
 ## Contract

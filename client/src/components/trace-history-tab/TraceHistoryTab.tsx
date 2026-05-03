@@ -1,14 +1,14 @@
 import { mergeClasses } from "@griffel/react";
 import { type FC, useState } from "react";
-import { graphql, useFragment } from "react-relay";
+import { graphql, useLazyLoadQuery } from "react-relay";
 
-import type { TraceHistoryTab_sessions$key } from "~/relay/__generated__/TraceHistoryTab_sessions.graphql.js";
+import type { TraceHistoryTabQuery } from "~/relay/__generated__/TraceHistoryTabQuery.graphql.js";
 
 import { strings } from "./TraceHistoryTab.strings.js";
 import { useTraceHistoryStyles } from "./TraceHistoryTab.styles.js";
 
-const SESSIONS_FRAGMENT = graphql`
-  fragment TraceHistoryTab_sessions on Query {
+const SESSIONS_QUERY = graphql`
+  query TraceHistoryTabQuery {
     playbackHistory {
       id
       traceId
@@ -18,10 +18,6 @@ const SESSIONS_FRAGMENT = graphql`
     }
   }
 `;
-
-interface Props {
-  query: TraceHistoryTab_sessions$key;
-}
 
 const RESOLUTION_LABELS: Record<string, string> = {
   RESOLUTION_240P: "240p",
@@ -64,9 +60,13 @@ const CopyButton: FC<{ traceId: string }> = ({ traceId }) => {
   );
 };
 
-export const TraceHistoryTab: FC<Props> = ({ query }) => {
+export const TraceHistoryTab: FC = () => {
   const styles = useTraceHistoryStyles();
-  const data = useFragment(SESSIONS_FRAGMENT, query);
+  const data = useLazyLoadQuery<TraceHistoryTabQuery>(
+    SESSIONS_QUERY,
+    {},
+    { fetchPolicy: "store-and-network" }
+  );
   const sessions = data.playbackHistory;
 
   return (

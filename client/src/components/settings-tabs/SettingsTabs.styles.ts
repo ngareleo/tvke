@@ -1,6 +1,6 @@
 import { makeStyles } from "@griffel/react";
 
-import { tokens } from "~/styles/tokens";
+import { tokens } from "~/styles/tokens.js";
 
 export const useSettingsTabStyles = makeStyles({
   section: {
@@ -9,12 +9,12 @@ export const useSettingsTabStyles = makeStyles({
   sectionTitle: {
     fontSize: "13px",
     fontWeight: "700",
-    color: tokens.colorWhite,
+    color: tokens.colorText,
     marginBottom: "4px",
   },
   sectionDesc: {
     fontSize: "12px",
-    color: tokens.colorMuted,
+    color: tokens.colorTextMuted,
     lineHeight: "1.6",
     marginBottom: "14px",
   },
@@ -23,7 +23,7 @@ export const useSettingsTabStyles = makeStyles({
     fontWeight: "700",
     letterSpacing: "0.12em",
     textTransform: "uppercase",
-    color: tokens.colorMuted2,
+    color: tokens.colorTextFaint,
     marginBottom: "6px",
     display: "block",
   },
@@ -33,15 +33,15 @@ export const useSettingsTabStyles = makeStyles({
     backgroundColor: tokens.colorSurface2,
     border: `1px solid ${tokens.colorBorder}`,
     borderRadius: tokens.radiusSm,
-    color: tokens.colorWhite,
+    color: tokens.colorText,
     fontSize: "12px",
     fontFamily: tokens.fontBody,
     outlineStyle: "none",
     ":focus": {
-      border: `1px solid ${tokens.colorRed}`,
+      border: `1px solid ${tokens.colorGreen}`,
     },
     "::placeholder": {
-      color: tokens.colorMuted2,
+      color: tokens.colorTextFaint,
     },
     boxSizing: "border-box",
   },
@@ -50,18 +50,20 @@ export const useSettingsTabStyles = makeStyles({
     alignItems: "center",
     gap: "6px",
     padding: "8px 16px",
-    backgroundColor: tokens.colorRed,
-    border: `1px solid ${tokens.colorRed}`,
+    backgroundColor: tokens.colorGreen,
+    border: `1px solid ${tokens.colorGreen}`,
     borderRadius: tokens.radiusSm,
-    color: tokens.colorWhite,
+    color: tokens.colorGreenInk,
     fontSize: "12px",
     fontWeight: "700",
     cursor: "pointer",
     marginTop: "10px",
-    transitionProperty: "background",
+    transitionProperty: "background-color, border-color, color",
     transitionDuration: tokens.transition,
     ":hover": {
-      backgroundColor: tokens.colorRedDark,
+      backgroundColor: tokens.colorGreenDeep,
+      border: `1px solid ${tokens.colorGreenDeep}`,
+      color: tokens.colorText,
     },
     ":disabled": {
       opacity: "0.5",
@@ -74,10 +76,10 @@ export const useSettingsTabStyles = makeStyles({
     marginTop: "8px",
   },
   dangerZone: {
-    border: `1px solid rgba(206,17,38,0.3)`,
+    border: `1px solid ${tokens.colorRed}`,
     borderRadius: tokens.radiusMd,
     padding: "16px",
-    backgroundColor: "rgba(206,17,38,0.04)",
+    backgroundColor: "rgba(255, 93, 108, 0.04)",
   },
   dangerTitle: {
     fontSize: "12px",
@@ -87,7 +89,7 @@ export const useSettingsTabStyles = makeStyles({
   },
   dangerDesc: {
     fontSize: "11px",
-    color: "rgba(255,255,255,0.5)",
+    color: tokens.colorTextMuted,
     lineHeight: "1.6",
     marginBottom: "12px",
   },
@@ -96,7 +98,7 @@ export const useSettingsTabStyles = makeStyles({
     alignItems: "center",
     padding: "7px 14px",
     backgroundColor: "transparent",
-    border: `1px solid ${tokens.colorRedBorder}`,
+    border: `1px solid ${tokens.colorRed}`,
     borderRadius: tokens.radiusSm,
     color: tokens.colorRed,
     fontSize: "12px",

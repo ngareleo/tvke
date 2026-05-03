@@ -9,6 +9,16 @@ type DirEntry {
 	path: String!
 }
 
+type Episode {
+	episodeNumber: Int!
+	seasonNumber: Int!
+	title: String
+	durationSeconds: Float
+	onDisk: Boolean!
+	nativeResolution: Resolution
+	videoId: ID
+}
+
 enum JobStatus {
 	PENDING
 	RUNNING
@@ -34,6 +44,21 @@ type LibraryScanProgress {
 	libraryId: ID
 	done: Int
 	total: Int
+	"""
+	Sub-phase of the current scan. Wire values: `"scanning_files"`
+	(file walk + ffprobe), `"discovering_tv"` (TV-show hierarchy
+	build), `"fetching_omdb"` (per-show OMDb fetch), `"auto_matching"`
+	(per-video metadata match). Older clients that don't surface this
+	field continue to render the existing done/total numerics.
+	"""
+	phase: String
+	"""
+	Free-text label of the item currently being processed (movie
+	filename, TV show title, "Breaking Bad S03", …). Drives the
+	"Fetching <X>…" client UI element. `None` when the scanner is
+	between items.
+	"""
+	currentItem: String
 }
 
 type LibraryScanUpdate {
@@ -162,8 +187,12 @@ type Query {
 	transcodeJob(id: ID!): TranscodeJob
 	watchlist: [WatchlistItem!]!
 	"""
-	OMDb search — Step 1 stub; returns empty list. Implemented for real
-	when the OMDb client lands in the Rust server (Step 2 area).
+	OMDb free-text search behind the DetailPane edit picker. Reads
+	the `OmdbClient` off `AppContext` and forwards to its
+	`search_list`. Returns an empty Vec when no API key is configured
+	or the call fails (same shape OMDb uses on quota exhaustion /
+	network failure) so the client renders its "no matches" branch
+	gracefully.
 	"""
 	searchOmdb(query: String!, year: Int): [OmdbSearchResult!]!
 	listDirectory(path: String!): [DirEntry!]!
@@ -178,6 +207,11 @@ enum Resolution {
 	RESOLUTION_720P
 	RESOLUTION_1080P
 	RESOLUTION_4K
+}
+
+type Season {
+	seasonNumber: Int!
+	episodes: [Episode!]!
 }
 
 type SettingEntry {
@@ -223,6 +257,20 @@ type Video implements Node {
 	metadata: VideoMetadata
 	videoStream: VideoStreamInfo
 	audioStream: AudioStreamInfo
+	"""
+	Native resolution rung determined at scan time. Null for rows scanned
+	before the column was added (or for synthetic show rows that carry no
+	playable file). An unknown value in the DB column is logged + degraded
+	to None — the warn-then-degrade contract for enum mappers (§14).
+	"""
+	nativeResolution: Resolution
+	"""
+	For TV-show videos, the full season tree resolved from the seasons +
+	episodes tables joined back to each episode's `Video` row. Movies
+	return an empty list. Episode `Video` rows are batch-fetched once
+	per query so the resolver is N+1-free.
+	"""
+	seasons: [Season!]!
 }
 
 type VideoConnection {

@@ -1,20 +1,11 @@
-import { type FC } from "react";
-import { graphql, useLazyLoadQuery } from "react-relay";
+import { type FC, Suspense } from "react";
 
-import { WatchlistContent } from "~/components/watchlist-content/WatchlistContent.js";
-import type { WatchlistPageContentQuery } from "~/relay/__generated__/WatchlistPageContentQuery.graphql.js";
+import { WatchlistPageContent } from "./WatchlistPageContent.js";
 
-const WATCHLIST_QUERY = graphql`
-  query WatchlistPageContentQuery {
-    watchlist {
-      ...WatchlistContent_watchlistItem
-    }
-  }
-`;
-
-const WatchlistPage: FC = () => {
-  const data = useLazyLoadQuery<WatchlistPageContentQuery>(WATCHLIST_QUERY, {});
-  return <WatchlistContent watchlist={data.watchlist} />;
-};
+const WatchlistPage: FC = () => (
+  <Suspense fallback={null}>
+    <WatchlistPageContent />
+  </Suspense>
+);
 
 export default WatchlistPage;

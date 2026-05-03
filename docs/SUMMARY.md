@@ -34,7 +34,8 @@ Full list: [`code-style/Invariants/00-Never-Violate.md`](code-style/Invariants/0
 7. **One resolver owns each GraphQL field.** async-graphql merges via a single `Object` impl per type; duplicate field methods will not compile, but type-name collisions across the schema would silently overwrite.
 8. **Playback-path resolvers return a typed union for known failure modes — never throw a plain error.** `start_transcode` returns `StartTranscodeResult = TranscodeJob | PlaybackError`. Mid-job failures must set `ActiveJob.error_code` before notifying subscribers. See invariant #11 in `code-style/Invariants/00-Never-Violate.md`.
 9. **The network stream is a pull sink, not a push source.** `routes/stream.rs` uses `axum::Body::from_stream` over an `mpsc::Receiver` — one segment per consumer demand, no internal loop. See invariant #12 in `code-style/Invariants/00-Never-Violate.md`.
-10. **Never swallow errors.** No `expect`/`unwrap`/silent-discard in production Rust code; every fallible path returns `Result`; mutex poisoning is a typed error; resolver errors land in Seq with the request TraceId via the `ErrorLogger` async-graphql extension. See invariant #14 in `code-style/Invariants/00-Never-Violate.md`. Mirrored at the migration level by *tests travel with the port* — the unhappy path is part of the spec at compile/test time AND at runtime.
+10. **Relay operation names must start with the containing filename.** The relay-compiler enforces this; violating it **silently halts project-wide artifact generation** while appearing to pass lint. See invariant #14 in `code-style/Invariants/00-Never-Violate.md`.
+11. **Never swallow errors.** No `expect`/`unwrap`/silent-discard in production Rust code; every fallible path returns `Result`; mutex poisoning is a typed error; resolver errors land in Seq with the request TraceId via the `ErrorLogger` async-graphql extension. See invariant #15 in `code-style/Invariants/00-Never-Violate.md`. Mirrored at the migration level by *tests travel with the port* — the unhappy path is part of the spec at compile/test time AND at runtime.
 
 ## Streaming pipeline in one paragraph
 
@@ -54,7 +55,7 @@ Full rationale: [`code-style/Principles/`](code-style/Principles/README.md). The
 - [`code-style/README.md`](code-style/README.md) — full per-language conventions tree (Rust, TS/React, SQL).
 - [`code-style/Naming/00-Conventions.md`](code-style/Naming/00-Conventions.md) — PascalCase for React components + satellites; camelCase for TS; snake_case for Rust.
 - [`code-style/Server-Conventions/00-Patterns.md`](code-style/Server-Conventions/00-Patterns.md) — explicit resolver return types, presenter layer, ffmpeg path resolution is process-global.
-- [`code-style/Client-Conventions/00-Patterns.md`](code-style/Client-Conventions/00-Patterns.md) — `useLazyLoadQuery` in pages only, fragment-per-component, Griffel only for styles, Nova eventing for user actions (no callback props).
+- [`code-style/Client-Conventions/00-Patterns.md`](code-style/Client-Conventions/00-Patterns.md) — `useLazyLoadQuery` in pages only (see exception for section-tabs), fragment-per-component, Griffel only for styles, Nova eventing for user actions (no callback props).
 - [`code-style/Anti-Patterns/00-What-Not-To-Do.md`](code-style/Anti-Patterns/00-What-Not-To-Do.md) — no ORM, no ad-hoc SQL, no non-null assertions, no literal `className` strings, no duplicate resolvers.
 - [`code-style/Tooling/00-Linting-And-Formatting.md`](code-style/Tooling/00-Linting-And-Formatting.md) — `cargo clippy`/`cargo fmt` (Rust); ESLint v10 + Prettier v3 (TS/React); raw + reviewed-by-hand SQL; Husky + lint-staged on TS/TSX only.
 - Observability rules live with the spans they govern: [`architecture/Observability/01-Logging-Policy.md`](architecture/Observability/01-Logging-Policy.md).
@@ -74,7 +75,7 @@ Full rationale: [`code-style/Principles/`](code-style/Principles/README.md). The
 | Invariants, naming, conventions, anti-patterns, testing policy | [`code-style/`](code-style/README.md) |
 | UI design spec | [`design/`](design/README.md) — split: Prerelease (Moran, frozen) and Release (Xstream, active) |
 | Product spec, customers, roadmap | [`product/`](product/README.md) |
-| Active migrations (Prerelease → Release client redesign) | [`migrations/`](migrations/README.md) |
+| Migrations (retired Prerelease → Release redesign; ready-to-archive) | [`migrations/`](migrations/README.md) |
 
 **For anything deeper than this page, ask the `architect` subagent — it owns the knowledge base and maintains this file.** When you modify code or docs, notify architect with a short change summary before closing the task so the tree stays coherent.
 

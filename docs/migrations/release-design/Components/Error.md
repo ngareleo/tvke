@@ -1,6 +1,6 @@
 # Error (page)
 
-> Status: **baseline** (Spec) · **not started** (Production)
+> Status: **baseline** (Spec) · **done** (Production)
 > Spec created: 2026-05-02 — Runtime-error recovery page mockup. Styled stack trace + "back to library" + "retry" CTAs. Reachable at `/error` in the design lab for QA visibility of error states.
 
 ## Files
@@ -78,24 +78,24 @@ This component is new in Release — no Prerelease equivalent. Prerelease did no
 - User-friendly error messages: map technical error codes to plain-language copy (e.g. "Stream not found" → "This file couldn't be played. Try a different resolution or file.").
 - Retry logic: define what "Retry" does (repeat the same operation, reload the app, navigate back, etc.).
 
-## Porting checklist (`client/src/pages/Error/`)
+## Porting checklist (`client/src/pages/error-page/`)
 
-- [ ] Full-screen layout, `display: flex`, centred content, `backgroundColor: colorBg1`, `paddingTop: tokens.headerHeight` (header clearance)
-- [ ] Red left border accent: `borderLeftWidth: 4px`, `borderLeftColor: colorRed`, `paddingLeft: 28px`
-- [ ] Headline: "Something went wrong" in Anton 64px uppercase
-- [ ] Subhead: description text (14px body font, dimmed) from error state
-- [ ] Stack trace box: monospaced, `backgroundColor: colorSurface`, `border: 1px solid colorBorder`, `paddingLeft: 12px` etc
-- [ ] Optional: collapsible stack trace ("Show details" / "Hide details") with chevron toggle
-- [ ] Error message and stack trace passed via `location.state.error` (or error context)
-- [ ] CTA buttons: "← Back to Library" (white text link) + "Retry" (green text link)
-- [ ] "Back to Library" navigates to `/`
-- [ ] "Retry" calls `handleRetry()` (wired to the actual failed operation's retry logic in production)
-- [ ] Wire error boundary to catch uncaught exceptions and navigate to `/error` with error details
+- [x] Full-screen layout, `display: flex`, centred content, `backgroundColor: colorBg1`, `paddingTop: tokens.headerHeight` (header clearance)
+- [x] Red left border accent: `borderLeftWidth: 4px`, `borderLeftColor: colorRed`, `paddingLeft: 28px`
+- [x] Headline: "Something went wrong" in Anton 64px uppercase
+- [x] Subhead: description text (14px body font, dimmed) from error state
+- [x] Stack trace box: monospaced, `backgroundColor: colorSurface`, `border: 1px solid colorBorder`, `paddingLeft: 12px` etc
+- [x] Optional: collapsible stack trace ("Show details" / "Hide details") with chevron toggle
+- [x] Error message and stack trace passed via props (`error: Error | null`, `componentStack: string | null`) from `ErrorBoundary`. Direct `/error` route renders without props for QA visibility (placeholder copy).
+- [x] CTA buttons: "← Back to library" (white text link) + "Retry" (green text link)
+- [x] "Back to library" navigates to `/` (uses `<a href="/">` rather than `<Link>` so the boundary mounted outside the Router context still works)
+- [x] "Retry" calls `onRetry` prop; falls back to `window.location.reload()` when the page is rendered standalone at `/error`
+- [x] Wire error boundary to render `ErrorPage` when caught (in-place render, not navigation — preserves error context and survives the Router subtree being thrown). The `/error` route exists in addition for QA visibility.
 
 ## Status
 
 - [x] Designed in `design/Release` lab — runtime-error recovery page mockup 2026-05-02, PR #48. Red-bordered error identity, styled stack trace box, and two recovery CTAs ("Back to Library" + "Retry"). Reachable at `/error` for QA verification of error states.
-- [ ] Production implementation (wire error boundary, define location state shape, map error codes to user-friendly messages)
+- [x] Production implementation (M9, 2026-05-03). New `client/src/pages/error-page/ErrorPage.tsx` accepts `{ error?, componentStack?, onRetry? }`. Mounted in two places: (1) `ErrorBoundary` renders it in-place when prod env catches an unhandled render error, passing the captured `Error` + `errorInfo.componentStack` + `handleReset` as `onRetry`; (2) the new `/error` lazy route in `client/src/router.tsx` mounts it standalone for QA. The DevPanel "Preview customer view" toggle in `DevErrorScreen` also routes to `ErrorPage` so devs can see exactly what users see. `ProdErrorScreen` and its prod-only strings + styles in `error-boundary/` are deleted; ErrorBoundary's `previewBack` banner-style still reused. Stack toggle defaults to hidden; expanding shows `${error.name}: ${error.message}\n\n${error.stack}\n\n${componentStack}`. The `<a href="/">` (rather than `<Link to="/">`) for "Back to library" is intentional — the outermost ErrorBoundary may catch above the Router.
 
 ## Notes
 

@@ -1,172 +1,139 @@
 import { makeStyles } from "@griffel/react";
 
-import { GRID_COMPACT, GRID_FULL } from "~/components/film-row/FilmRow.styles.js";
-import { tokens } from "~/styles/tokens";
+import { PROFILE_GRID_COLUMNS } from "~/pages/profiles-page/grid.js";
+import { tokens } from "~/styles/tokens.js";
 
 export const useProfileRowStyles = makeStyles({
-  row: {
+  block: {
+    borderBottomWidth: "1px",
+    borderBottomStyle: "solid",
+    borderBottomColor: tokens.colorBorderSoft,
+  },
+  header: {
     display: "grid",
-    gridTemplateColumns: GRID_FULL,
+    gridTemplateColumns: PROFILE_GRID_COLUMNS,
+    paddingTop: "11px",
+    paddingBottom: "11px",
+    paddingLeft: "24px",
+    paddingRight: "24px",
+    columnGap: "16px",
     alignItems: "center",
-    padding: "0 24px",
-    height: "46px",
-    borderBottom: `1px solid rgba(255,255,255,0.035)`,
     cursor: "pointer",
-    transitionProperty: "background",
+    backgroundColor: "transparent",
+    transitionProperty: "background-color",
     transitionDuration: tokens.transition,
-    borderLeft: "2px solid transparent",
-    position: "relative",
     ":hover": {
-      backgroundColor: tokens.colorSurface2,
+      backgroundColor: "rgba(232, 238, 232, 0.04)",
     },
   },
-  // Compact: pane is open — collapse to chevron | name | actions
-  rowCompact: {
-    gridTemplateColumns: GRID_COMPACT,
+  headerExpanded: {
+    backgroundColor: tokens.colorSurface,
+    ":hover": {
+      backgroundColor: tokens.colorSurface,
+    },
   },
-  rowSelected: {
-    backgroundColor: "rgba(206,17,38,0.05)",
-    borderLeftColor: tokens.colorRed,
-  },
-
   chevron: {
-    display: "flex",
-    alignItems: "center",
-    color: tokens.colorMuted2,
-    flexShrink: "0",
-  },
-  chevronInner: {
-    display: "inline-flex",
-    alignItems: "center",
-    justifyContent: "center",
-    width: "16px",
-    height: "16px",
-    color: tokens.colorMuted2,
-    flexShrink: "0",
-    marginRight: "4px",
-  },
-
-  nameCell: {
-    minWidth: "0",
-    paddingRight: "16px",
-    paddingLeft: "4px",
-  },
-  name: {
-    fontSize: "13px",
-    fontWeight: "600",
-    color: tokens.colorWhite,
-    whiteSpace: "nowrap",
-    overflow: "hidden",
-    textOverflow: "ellipsis",
-  },
-  path: {
-    fontSize: "10px",
-    color: tokens.colorMuted2,
-    fontFamily: "monospace",
-    whiteSpace: "nowrap",
-    overflow: "hidden",
-    textOverflow: "ellipsis",
-    marginTop: "1px",
-  },
-
-  cell: {
-    fontSize: "12px",
-    color: tokens.colorMuted,
-    whiteSpace: "nowrap",
-  },
-
-  actions: {
-    display: "flex",
-    alignItems: "center",
-    gap: "4px",
-    opacity: "0",
-    transitionProperty: "opacity",
+    color: tokens.colorTextMuted,
+    transform: "rotate(0)",
+    transitionProperty: "transform",
     transitionDuration: tokens.transition,
+    display: "inline-flex",
   },
-  actionsVisible: {
-    opacity: "1",
-  },
-
-  scanLabel: {
-    display: "flex",
-    alignItems: "center",
-    gap: "5px",
+  chevronOpen: { transform: "rotate(90deg)" },
+  name: { fontSize: "13px", color: tokens.colorText },
+  path: {
+    fontFamily: tokens.fontMono,
     fontSize: "10px",
-    color: tokens.colorGreen,
-    marginTop: "1px",
+    color: tokens.colorTextMuted,
+    marginTop: "2px",
+    letterSpacing: "0.04em",
   },
-  scanInline: {
+  scanRow: {
     display: "flex",
     alignItems: "center",
-    gap: "5px",
+    columnGap: "8px",
+    fontFamily: tokens.fontMono,
     fontSize: "10px",
     color: tokens.colorGreen,
   },
   scanSpinner: {
-    width: "8px",
-    height: "8px",
-    border: `1.5px solid rgba(39,174,96,0.25)`,
-    borderTopColor: tokens.colorGreen,
+    width: "10px",
+    height: "10px",
     borderRadius: "50%",
-    animationName: {
-      to: { transform: "rotate(360deg)" },
-    },
-    animationDuration: "0.8s",
-    animationTimingFunction: "linear",
+    borderTopWidth: "1.5px",
+    borderRightWidth: "1.5px",
+    borderBottomWidth: "1.5px",
+    borderLeftWidth: "1.5px",
+    borderTopStyle: "solid",
+    borderRightStyle: "solid",
+    borderBottomStyle: "solid",
+    borderLeftStyle: "solid",
+    borderTopColor: "transparent",
+    borderRightColor: tokens.colorGreen,
+    borderBottomColor: tokens.colorGreen,
+    borderLeftColor: tokens.colorGreen,
+    animationName: { to: { transform: "rotate(360deg)" } },
+    animationDuration: "0.9s",
     animationIterationCount: "infinite",
-    flexShrink: "0",
+    animationTimingFunction: "linear",
   },
-
-  matchBar: {
+  matchRow: {
     display: "flex",
     alignItems: "center",
-    gap: "6px",
+    columnGap: "8px",
   },
   matchTrack: {
-    width: "36px",
+    flexGrow: 1,
     height: "3px",
-    background: "rgba(255,255,255,0.08)",
+    backgroundColor: tokens.colorSurface2,
     borderRadius: "2px",
-    overflow: "hidden",
-    flexShrink: "0",
+    overflowX: "hidden",
+    overflowY: "hidden",
   },
   matchFill: {
     height: "100%",
     backgroundColor: tokens.colorGreen,
-    borderRadius: "2px",
   },
-  matchFillWarn: {
-    backgroundColor: tokens.colorYellow,
+  matchFillWarn: { backgroundColor: tokens.colorYellow },
+  matchPct: {
+    fontFamily: tokens.fontMono,
+    fontSize: "10px",
+    color: tokens.colorTextMuted,
+    minWidth: "38px",
+    textAlign: "right",
   },
-
-  children: {
-    overflow: "hidden",
-    maxHeight: "0",
-    transitionProperty: "max-height",
-    transitionDuration: "0.25s",
-    transitionTimingFunction: "ease",
+  matchPctWarn: { color: tokens.colorYellow },
+  size: {
+    fontFamily: tokens.fontMono,
+    fontSize: "11px",
+    color: tokens.colorTextDim,
   },
-  childrenOpen: {
-    maxHeight: "2000px",
+  rowEnd: {
+    fontFamily: tokens.fontMono,
+    fontSize: "9px",
+    color: tokens.colorTextMuted,
+    textAlign: "right",
+    letterSpacing: "0.12em",
   },
-
-  iconBtn: {
-    width: "28px",
-    height: "26px",
-    backgroundColor: tokens.colorSurface2,
-    border: `1px solid ${tokens.colorBorder}`,
-    borderRadius: tokens.radiusSm,
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    fontSize: "12px",
-    cursor: "pointer",
-    color: tokens.colorMuted,
-    transitionProperty: "color, border-color",
+  editLink: {
+    color: tokens.colorGreen,
+    fontFamily: tokens.fontMono,
+    fontSize: "9px",
+    letterSpacing: "0.16em",
+    textTransform: "uppercase",
+    textDecorationLine: "underline",
+    textDecorationColor: tokens.colorGreen,
+    textDecorationThickness: "1px",
+    textUnderlineOffset: "3px",
+    transitionProperty: "color, text-decoration-color",
     transitionDuration: tokens.transition,
     ":hover": {
-      color: tokens.colorWhite,
-      border: `1px solid ${tokens.colorBorder2}`,
+      color: tokens.colorText,
+      textDecorationColor: tokens.colorText,
     },
+  },
+  filmsList: {
+    paddingLeft: "30px",
+    backgroundColor: tokens.colorBg1,
   },
 });
