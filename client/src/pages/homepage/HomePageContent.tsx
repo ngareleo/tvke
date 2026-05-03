@@ -63,7 +63,11 @@ const HOMEPAGE_QUERY = graphql`
 
 export const HomePageContent: FC = () => {
   const styles = useHomePageStyles();
-  const data = useLazyLoadQuery<HomePageContentQuery>(HOMEPAGE_QUERY, {});
+  const data = useLazyLoadQuery<HomePageContentQuery>(
+    HOMEPAGE_QUERY,
+    {},
+    { fetchPolicy: "store-and-network" }
+  );
   const [params, setParams] = useSearchParams();
   const hasLibraries = (data.libraries ?? []).length > 0;
 
