@@ -38,5 +38,5 @@ export const useSearchSuggestionCardStyles = makeStyles({
     overflow: "hidden",
     textOverflow: "ellipsis",
   },
-  year: { fontSize: "11px", color: tokens.colorMuted2 },
+  year: { fontSize: "11px", color: tokens.colorTextMuted },
 });
