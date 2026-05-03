@@ -46,12 +46,9 @@ export const tokens = {
   radiusSm: "2px",
   radiusMd: "4px",
   radiusFull: "999px",
-  space1: "4px",
   space2: "8px",
   space3: "12px",
-  space4: "16px",
   space5: "24px",
-  space6: "32px",
 
   // Animation
   transition: "0.15s",
@@ -59,8 +56,6 @@ export const tokens = {
 
   // Layout
   headerHeight: "52px",
-  sidebarWidth: "220px",
-  sidebarCollapsedWidth: "52px",
 } as const;
 
 export type Tokens = typeof tokens;

@@ -14,33 +14,33 @@ Inline subcomponents (ProfileRow, FilmRow, ProfileChip, PosterCard, ListRow, Vid
 | [AppHeader](AppHeader.md) | `components/AppHeader/AppHeader.{tsx,styles.ts}` | done | done |
 | [AccountMenu](AccountMenu.md) | `components/AccountMenu/AccountMenu.{tsx,styles.ts}` | done | done |
 | [Sidebar](Sidebar.md) | ~~`components/Sidebar/Sidebar.{tsx,styles.ts}`~~ **deleted** | tombstone | done — deleted |
-| [DetailPane](DetailPane.md) | `components/DetailPane/DetailPane.tsx` | baseline | not started |
-| [EdgeHandle](EdgeHandle.md) | `components/EdgeHandle/EdgeHandle.{tsx,styles.ts}` | done | not started |
+| [DetailPane](DetailPane.md) | `components/DetailPane/DetailPane.tsx` | baseline | done |
+| [EdgeHandle](EdgeHandle.md) | `components/EdgeHandle/EdgeHandle.{tsx,styles.ts}` | done | done |
 | [Poster](Poster.md) | `components/Poster/Poster.tsx` | done | done |
-| [Logo](Logo.md) | `components/Logo/{Logo01..Logo07,index}.tsx` | baseline | not started |
-| [Profiles page](Profiles.md) | `pages/Profiles/Profiles.{tsx,styles.ts}` | baseline | not started |
-| [ProfileRow component](ProfileRow.md) | `components/ProfileRow/ProfileRow.{tsx,styles.ts}` | baseline | not started |
-| [FilmRow component](FilmRow.md) | `components/FilmRow/FilmRow.{tsx,styles.ts}` | baseline | not started |
-| [CreateProfile page](CreateProfile.md) | `pages/CreateProfile/CreateProfile.{tsx}` | baseline | not started |
-| [EditProfile page](EditProfile.md) | `pages/EditProfile/EditProfile.{tsx}` | baseline | not started |
-| [ProfileForm component](ProfileForm.md) | `components/ProfileForm/ProfileForm.{tsx,styles.ts}` | baseline | not started |
-| [DirectoryBrowser](DirectoryBrowser.md) | `components/DirectoryBrowser/DirectoryBrowser.{tsx,styles.ts,mockFs.ts}` | baseline | not started |
-| [Library page](Library.md) | `pages/Library/Library.{tsx,styles.ts}` | done | not started |
-| [SearchSlide component](SearchSlide.md) | `components/SearchSlide/SearchSlide.{tsx,styles.ts}` | done | not started |
-| [FilterSlide component](FilterSlide.md) | `components/FilterSlide/FilterSlide.{tsx,styles.ts}` + `filters.ts` | done | not started |
-| [PosterRow component](PosterRow.md) | `components/PosterRow/PosterRow.{tsx,styles.ts}` | done | not started |
-| [FilmTile component](FilmTile.md) | `components/FilmTile/FilmTile.{tsx,styles.ts}` | done | not started |
-| [FilmDetailsOverlay component](FilmDetailsOverlay.md) | `components/FilmDetailsOverlay/FilmDetailsOverlay.{tsx,styles.ts}` | done | not started |
+| [Logo](Logo.md) | `components/Logo/{Logo01..Logo07,index}.tsx` | baseline | done |
+| [Profiles page](Profiles.md) | `pages/Profiles/Profiles.{tsx,styles.ts}` | baseline | done |
+| [ProfileRow component](ProfileRow.md) | `components/ProfileRow/ProfileRow.{tsx,styles.ts}` | baseline | done |
+| [FilmRow component](FilmRow.md) | `components/FilmRow/FilmRow.{tsx,styles.ts}` | baseline | done |
+| [CreateProfile page](CreateProfile.md) | `pages/CreateProfile/CreateProfile.{tsx}` | baseline | done |
+| [EditProfile page](EditProfile.md) | `pages/EditProfile/EditProfile.{tsx}` | baseline | done |
+| [ProfileForm component](ProfileForm.md) | `components/ProfileForm/ProfileForm.{tsx,styles.ts}` | baseline | done |
+| [DirectoryBrowser](DirectoryBrowser.md) | `components/DirectoryBrowser/DirectoryBrowser.{tsx,styles.ts,mockFs.ts}` | baseline | done |
+| [Library page](Library.md) | `pages/Library/Library.{tsx,styles.ts}` | done | done |
+| [SearchSlide component](SearchSlide.md) | `components/SearchSlide/SearchSlide.{tsx,styles.ts}` | done | done |
+| [FilterSlide component](FilterSlide.md) | `components/FilterSlide/FilterSlide.{tsx,styles.ts}` + `filters.ts` | done | done |
+| [PosterRow component](PosterRow.md) | `components/PosterRow/PosterRow.{tsx,styles.ts}` | done | done |
+| [FilmTile component](FilmTile.md) | `components/FilmTile/FilmTile.{tsx,styles.ts}` | done | done |
+| [FilmDetailsOverlay component](FilmDetailsOverlay.md) | `components/FilmDetailsOverlay/FilmDetailsOverlay.{tsx,styles.ts}` | done | done |
 | [SeasonsPanel component](SeasonsPanel.md) | `components/SeasonsPanel/SeasonsPanel.{tsx,styles.ts}` | done | done |
-| [MediaKindBadge component](MediaKindBadge.md) | `components/MediaKindBadge/MediaKindBadge.{tsx,styles.ts}` | done | not started |
+| [MediaKindBadge component](MediaKindBadge.md) | `components/MediaKindBadge/MediaKindBadge.{tsx,styles.ts}` | done | done |
 | [Watchlist page](Watchlist.md) | `pages/Watchlist/Watchlist.{tsx,styles.ts}` | done | done |
 | [Player page](Player.md) | `pages/Player/Player.tsx` | done | done |
 | [Settings page](Settings.md) | `pages/Settings/Settings.tsx` | done | done |
 | [DevPanel](DevPanel.md) | `components/DevPanel/DevPanel.{tsx,styles.ts}` | baseline | n/a — lab only |
 | [DesignSystem page](DesignSystem.md) | `pages/DesignSystem/DesignSystem.tsx` | baseline | n/a — lab only |
-| [Error page](Error.md) | `pages/Error/Error.{tsx,styles.ts}` | baseline | not started |
-| [Goodbye page](Goodbye.md) | `pages/Goodbye/Goodbye.tsx` | baseline | not started |
-| [NotFound page](NotFound.md) | `pages/NotFound/NotFound.tsx` | baseline | not started |
+| [Error page](Error.md) | `pages/Error/Error.{tsx,styles.ts}` | baseline | done |
+| [Goodbye page](Goodbye.md) | `pages/Goodbye/Goodbye.tsx` | baseline | done |
+| [NotFound page](NotFound.md) | `pages/NotFound/NotFound.tsx` | baseline | done |
 
 Status conventions: see the [migration README](../README.md#status-conventions).
 

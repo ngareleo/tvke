@@ -75,7 +75,7 @@ Full rationale: [`code-style/Principles/`](code-style/Principles/README.md). The
 | Invariants, naming, conventions, anti-patterns, testing policy | [`code-style/`](code-style/README.md) |
 | UI design spec | [`design/`](design/README.md) — split: Prerelease (Moran, frozen) and Release (Xstream, active) |
 | Product spec, customers, roadmap | [`product/`](product/README.md) |
-| Active migrations (Prerelease → Release client redesign) | [`migrations/`](migrations/README.md) |
+| Migrations (retired Prerelease → Release redesign; ready-to-archive) | [`migrations/`](migrations/README.md) |
 
 **For anything deeper than this page, ask the `architect` subagent — it owns the knowledge base and maintains this file.** When you modify code or docs, notify architect with a short change summary before closing the task so the tree stays coherent.
 
