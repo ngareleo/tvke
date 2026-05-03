@@ -2,4 +2,5 @@
 //! mounted directly via `async-graphql-axum` and lives in `graphql/`,
 //! not here.
 
+pub mod poster;
 pub mod stream;

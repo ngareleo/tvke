@@ -167,6 +167,7 @@ impl Mutation {
                 rating: None,
                 plot: None,
                 poster_url: None,
+                poster_local_path: None,
                 matched_at: now,
             },
         )?;

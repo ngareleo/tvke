@@ -6,24 +6,25 @@
 //! - videos    → video_streams       ON DELETE CASCADE
 //! - videos    → transcode_jobs      ON DELETE CASCADE
 //! - videos    → video_metadata      ON DELETE CASCADE
-//! - videos    → watchlist_items     ON DELETE CASCADE
+//! - films     → watchlist_items     ON DELETE CASCADE
+//! - shows     → seasons → episodes  ON DELETE CASCADE
 //! - transcode_jobs → segments       ON DELETE CASCADE
 //!
-//! `playback_history` has NO foreign key — rows survive video deletion by
-//! design, because session telemetry must outlive media that's been
-//! removed from the library.
+//! Films and shows are independent of libraries — deleting a library
+//! does NOT cascade to films/shows/watchlist_items, which is the
+//! correct semantic for the logical-entity layer (a Film survives one
+//! of its source libraries being removed as long as another library
+//! still has a copy).
 //!
-//! If `PRAGMA foreign_keys` ever flips back to OFF (it shouldn't — see
-//! `db/mod.rs::pragma_tests`) this test breaks loud, before the player UI
-//! starts showing ghost rows. Most writers (insertJob, insertSegment,
-//! upsertVideo, replaceVideoStreams) ship with the chunker/scanner in
-//! Step 2 — until then the test seeds them via raw SQL through `db.with`.
+//! `playback_history` has NO foreign key — rows survive video deletion
+//! by design.
 
 use std::path::Path;
 
 use rusqlite::params;
 use xstream_server::db::{
-    add_watchlist_item, create_library, delete_library, upsert_video_metadata, Db, VideoMetadataRow,
+    add_watchlist_item, assign_video_to_film, create_library, delete_library, upsert_film,
+    upsert_video_metadata, Db, FilmRow, VideoMetadataRow,
 };
 
 fn fresh_db() -> Db {
@@ -35,6 +36,7 @@ struct ChainIds {
     video_id: String,
     job_id: String,
     history_id: String,
+    film_id: String,
 }
 
 fn seed_full_chain(db: &Db, suffix: &str) -> ChainIds {
@@ -127,17 +129,36 @@ fn seed_full_chain(db: &Db, suffix: &str) -> ChainIds {
             rating: None,
             plot: None,
             poster_url: None,
+            poster_local_path: None,
             matched_at: now.to_string(),
         },
     )
     .expect("upsert metadata");
-    add_watchlist_item(db, &video_id).expect("add watchlist item");
+    // Film + watchlist linkage. The watchlist references films now,
+    // not videos — so seed a Film, link the video to it, then add the
+    // film to the watchlist.
+    let film_id = format!("cascade-film-{suffix}");
+    upsert_film(
+        db,
+        &FilmRow {
+            id: film_id.clone(),
+            imdb_id: Some(format!("tt-cascade-film-{suffix}")),
+            parsed_title_key: Some(format!("cascade-{suffix}|2020")),
+            title: "Cascade Test".to_string(),
+            year: Some(2020),
+            created_at: now.to_string(),
+        },
+    )
+    .expect("upsert film");
+    assign_video_to_film(db, &video_id, &film_id, "main").expect("assign video to film");
+    add_watchlist_item(db, &film_id).expect("add watchlist item");
 
     ChainIds {
         library_id,
         video_id,
         job_id,
         history_id,
+        film_id,
     }
 }
 
@@ -151,7 +172,7 @@ fn count_where(db: &Db, table: &str, id_col: &str, id_val: &str) -> i64 {
 }
 
 #[test]
-fn library_delete_cascades_through_video_to_streams_jobs_segments_metadata_watchlist() {
+fn library_delete_cascades_through_video_to_streams_jobs_segments_metadata() {
     let db = fresh_db();
     let ids = seed_full_chain(&db, "library");
 
@@ -167,8 +188,9 @@ fn library_delete_cascades_through_video_to_streams_jobs_segments_metadata_watch
         count_where(&db, "video_metadata", "video_id", &ids.video_id),
         1
     );
+    assert_eq!(count_where(&db, "films", "id", &ids.film_id), 1);
     assert_eq!(
-        count_where(&db, "watchlist_items", "video_id", &ids.video_id),
+        count_where(&db, "watchlist_items", "film_id", &ids.film_id),
         1
     );
     assert_eq!(
@@ -191,9 +213,14 @@ fn library_delete_cascades_through_video_to_streams_jobs_segments_metadata_watch
         count_where(&db, "video_metadata", "video_id", &ids.video_id),
         0
     );
+
+    // Films and watchlist_items survive a library deletion — films are
+    // not owned by libraries (a Film can have copies in multiple
+    // libraries; deleting one library shouldn't drop the Film).
+    assert_eq!(count_where(&db, "films", "id", &ids.film_id), 1);
     assert_eq!(
-        count_where(&db, "watchlist_items", "video_id", &ids.video_id),
-        0
+        count_where(&db, "watchlist_items", "film_id", &ids.film_id),
+        1
     );
 
     // playback_history is intentionally NOT linked by FK — must survive.
@@ -204,7 +231,7 @@ fn library_delete_cascades_through_video_to_streams_jobs_segments_metadata_watch
 }
 
 #[test]
-fn video_delete_cascades_to_streams_jobs_segments_metadata_watchlist_but_keeps_library() {
+fn video_delete_cascades_to_streams_jobs_segments_metadata_but_keeps_library_and_film() {
     let db = fresh_db();
     let ids = seed_full_chain(&db, "video");
 
@@ -226,9 +253,14 @@ fn video_delete_cascades_to_streams_jobs_segments_metadata_watchlist_but_keeps_l
         count_where(&db, "video_metadata", "video_id", &ids.video_id),
         0
     );
+
+    // Film and watchlist_items survive — deleting a single video file
+    // doesn't unwatchlist the logical Film (other copies may still
+    // exist).
+    assert_eq!(count_where(&db, "films", "id", &ids.film_id), 1);
     assert_eq!(
-        count_where(&db, "watchlist_items", "video_id", &ids.video_id),
-        0
+        count_where(&db, "watchlist_items", "film_id", &ids.film_id),
+        1
     );
 
     // playback_history rows survive video deletion.
@@ -267,7 +299,7 @@ fn transcode_job_delete_cascades_to_segments_only() {
         1
     );
     assert_eq!(
-        count_where(&db, "watchlist_items", "video_id", &ids.video_id),
+        count_where(&db, "watchlist_items", "film_id", &ids.film_id),
         1
     );
 }

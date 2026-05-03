@@ -30,15 +30,17 @@ const SeasonsPanelWrapper = (props: WrapperProps): JSX.Element => (
 );
 
 const buildSeasons = (config: { num: number; available: number }[]) => ({
-  seasons: config.map((cfg, idx) => ({
-    seasonNumber: idx + 1,
-    episodes: Array.from({ length: cfg.num }, (_, i) => ({
-      episodeNumber: i + 1,
-      title: `Episode ${i + 1}`,
-      durationSeconds: 2820,
-      onDisk: i < cfg.available,
+  show: {
+    seasons: config.map((cfg, idx) => ({
+      seasonNumber: idx + 1,
+      episodes: Array.from({ length: cfg.num }, (_, i) => ({
+        episodeNumber: i + 1,
+        title: `Episode ${i + 1}`,
+        durationSeconds: 2820,
+        onDisk: i < cfg.available,
+      })),
     })),
-  })),
+  },
 });
 
 const meta: Meta<WrapperProps> = {

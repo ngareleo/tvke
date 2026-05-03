@@ -38,6 +38,7 @@ pub fn run() {
             //    `08-Tauri-Packaging.md` §3 + `05-Database-Layer.md`.
             let db_path = app_handle.path().app_local_data_dir()?.join("xstream.db");
             let segment_dir = app_handle.path().app_cache_dir()?.join("segments");
+            let poster_dir = app_handle.path().app_cache_dir()?.join("posters");
             let resource_dir = app_handle.path().resource_dir()?;
 
             // 2. Resolve the bundled ffmpeg + ffprobe under
@@ -49,7 +50,7 @@ pub fn run() {
             })?;
 
             // 3. Pick a free port, spawn the embedded server.
-            let handle = spawn_server(db_path, segment_dir, resource_dir, ffmpeg_paths)?;
+            let handle = spawn_server(db_path, segment_dir, poster_dir, resource_dir, ffmpeg_paths)?;
             let port = handle.port;
             app.manage(handle);
 

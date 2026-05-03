@@ -103,6 +103,12 @@ impl Default for StreamConfig {
 pub struct AppConfig {
     pub segment_dir: PathBuf,
     pub db_path: PathBuf,
+    /// Directory holding cached OMDb poster images. Hash-addressed by
+    /// the SHA-1 of the source URL with the original extension preserved
+    /// (e.g. `<dir>/abc123…ef.jpg`). Populated by
+    /// `services::poster_cache`. Tauri-bundled apps point this at
+    /// `app_cache_dir()/posters/`; dev points at `tmp/poster-cache/`.
+    pub poster_dir: PathBuf,
     pub transcode: TranscodeConfig,
     pub stream: StreamConfig,
     pub scan: ScanConfig,
@@ -130,6 +136,21 @@ pub struct ScanConfig {
     /// library. Bounded so `ffprobe` fan-out and FD pressure stay sane on
     /// large libraries — default is 4.
     pub concurrency: usize,
+    /// Period of the profile-availability probe loop. Defaults to
+    /// `interval_ms` when zero (one cycle per scan cadence). The probe
+    /// is cheap (a `stat` per library) so a sub-30s cadence is fine if
+    /// the user wants flips reflected in the UI faster.
+    pub availability_interval_ms: u64,
+}
+
+impl ScanConfig {
+    pub fn availability_interval_ms(&self) -> u64 {
+        if self.availability_interval_ms == 0 {
+            self.interval_ms
+        } else {
+            self.availability_interval_ms
+        }
+    }
 }
 
 impl Default for ScanConfig {
@@ -137,6 +158,7 @@ impl Default for ScanConfig {
         Self {
             interval_ms: 30_000,
             concurrency: 4,
+            availability_interval_ms: 0,
         }
     }
 }
@@ -144,22 +166,25 @@ impl Default for ScanConfig {
 impl AppConfig {
     /// Default config for tests + dev. Per-process isolation during the
     /// cutover (`Plan/02-Streaming.md` §"Decisions to lock" #2): segment
-    /// cache at `tmp/segments-rust/`, SQLite DB at `tmp/xstream-rust.db`.
+    /// cache at `tmp/segments-rust/`, SQLite DB at `tmp/xstream-rust.db`,
+    /// poster cache at `tmp/poster-cache/`.
     pub fn dev_defaults(project_root: &std::path::Path) -> Self {
         Self::with_paths(
             project_root.join("tmp").join("segments-rust"),
             project_root.join("tmp").join("xstream-rust.db"),
+            project_root.join("tmp").join("poster-cache"),
         )
     }
 
-    /// Build an `AppConfig` from explicit paths. The Tauri shell uses this
-    /// with `app_cache_dir/segments` and `app_local_data_dir/xstream.db` so
-    /// per-OS conventions are honoured. Dev uses `dev_defaults`, which
-    /// composes onto this.
-    pub fn with_paths(segment_dir: PathBuf, db_path: PathBuf) -> Self {
+    /// Build an `AppConfig` from explicit paths. The Tauri shell uses
+    /// this with `app_cache_dir/segments`, `app_local_data_dir/xstream.db`,
+    /// and `app_cache_dir/posters` so per-OS conventions are honoured.
+    /// Dev uses `dev_defaults`, which composes onto this.
+    pub fn with_paths(segment_dir: PathBuf, db_path: PathBuf, poster_dir: PathBuf) -> Self {
         Self {
             segment_dir,
             db_path,
+            poster_dir,
             transcode: TranscodeConfig::default(),
             stream: StreamConfig::default(),
             scan: ScanConfig::default(),
@@ -221,9 +246,11 @@ impl AppContext {
     /// Helper for tests + headless boot — supplies a stub `FfmpegPaths`
     /// pointing at `/bin/true` (probe is gated on actual encode args).
     pub fn for_tests(db: Db, segment_dir: PathBuf) -> Self {
+        let poster_dir = segment_dir.parent().map(|p| p.join("poster-cache")).unwrap_or_else(|| PathBuf::from("/tmp/xstream-test-posters"));
         let config = AppConfig {
             segment_dir,
             db_path: PathBuf::from(":memory:"),
+            poster_dir,
             transcode: TranscodeConfig::default(),
             stream: StreamConfig::default(),
             scan: ScanConfig::default(),

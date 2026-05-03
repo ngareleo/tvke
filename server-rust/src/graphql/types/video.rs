@@ -5,13 +5,10 @@ use async_graphql::{Context, Object, SimpleObject, ID};
 
 use super::library::Library;
 use super::node::PageInfo;
-use super::season::Season;
 use crate::db::{
-    self, get_episodes_by_show, get_library_by_id, get_metadata_by_video_id, get_seasons_by_show,
-    get_streams_by_video_id, get_video_by_id, Db, EpisodeRow, VideoRow,
+    self, get_library_by_id, get_metadata_by_video_id, get_streams_by_video_id, Db, VideoRow,
 };
 use crate::graphql::scalars::{MediaType, Resolution};
-use crate::graphql::types::episode::Episode;
 use crate::relay::to_global_id;
 
 #[derive(Clone)]
@@ -159,63 +156,31 @@ impl Video {
         })
     }
 
-    /// For TV-show videos, the full season tree resolved from the seasons +
-    /// episodes tables joined back to each episode's `Video` row. Movies
-    /// return an empty list. Episode `Video` rows are batch-fetched once
-    /// per query so the resolver is N+1-free.
-    async fn seasons(&self, ctx: &Context<'_>) -> async_graphql::Result<Vec<Season>> {
-        let db = ctx.data_unchecked::<Db>();
-
-        // Movies: short-circuit. The seasons/episodes tables stay empty for
-        // movie-typed libraries, but skipping the lookup avoids two
-        // round-trips for the common case.
-        let lib = match get_library_by_id(db, &self.raw.library_id)? {
-            Some(l) => l,
-            None => return Ok(Vec::new()),
+    /// The Show this video is an episode of, when set. Movie videos and
+    /// unmatched episode files return null. Lets the player resolve the
+    /// full season tree from the show context without an extra query.
+    async fn show(
+        &self,
+        ctx: &Context<'_>,
+    ) -> async_graphql::Result<Option<super::show::Show>> {
+        let Some(show_id) = self.raw.show_id.as_deref() else {
+            return Ok(None);
         };
-        if lib.media_type != "tvShows" {
-            return Ok(Vec::new());
-        }
-
-        let seasons = get_seasons_by_show(db, &self.raw.id)?;
-        let episodes = get_episodes_by_show(db, &self.raw.id)?;
-
-        // Resolve every linked episode video row in a single pass before
-        // grouping, so each episode can carry its onDisk + duration +
-        // nativeResolution from the corresponding `Video` row.
-        let mut episode_videos: std::collections::HashMap<String, VideoRow> =
-            std::collections::HashMap::new();
-        for ep in &episodes {
-            if let Some(vid) = &ep.episode_video_id {
-                if !episode_videos.contains_key(vid) {
-                    if let Some(row) = get_video_by_id(db, vid)? {
-                        episode_videos.insert(vid.clone(), row);
-                    }
-                }
-            }
-        }
-
-        let mut tree: Vec<Season> = Vec::with_capacity(seasons.len());
-        for season in seasons {
-            let eps: Vec<Episode> = episodes
-                .iter()
-                .filter(|e| e.season_number == season.season_number)
-                .map(|e| Episode::from_row(e, episode_video_for(e, &episode_videos)))
-                .collect();
-            tree.push(Season {
-                season_number: season.season_number as i32,
-                episodes: eps,
-            });
-        }
-        Ok(tree)
+        let db = ctx.data_unchecked::<Db>();
+        Ok(crate::db::get_show_by_id(db, show_id)?
+            .as_ref()
+            .map(super::show::Show::from_row))
     }
-}
 
-fn episode_video_for<'a>(
-    ep: &EpisodeRow,
-    map: &'a std::collections::HashMap<String, VideoRow>,
-) -> Option<&'a VideoRow> {
-    ep.episode_video_id.as_deref().and_then(|id| map.get(id))
+    /// Episode coordinate `(season, episode)` for episode files; null
+    /// for movies. Convenience for clients that want to highlight the
+    /// active episode without joining back through the show.
+    async fn season_number(&self) -> Option<i32> {
+        self.raw.show_season.map(|n| n as i32)
+    }
+    async fn episode_number(&self) -> Option<i32> {
+        self.raw.show_episode.map(|n| n as i32)
+    }
 }
 
 #[derive(SimpleObject, Clone)]
@@ -257,7 +222,14 @@ impl VideoMetadata {
             cast,
             rating: row.rating,
             plot: row.plot,
-            poster_url: row.poster_url,
+            // Prefer the locally cached copy. The client renders the
+            // returned URL directly; `/poster/<basename>` resolves
+            // against the same origin as the GraphQL endpoint, so the
+            // image lives on the user's disk and works offline.
+            poster_url: crate::graphql::types::poster_url_for_metadata(
+                row.poster_local_path.as_deref(),
+                row.poster_url.as_deref(),
+            ),
         }
     }
 }

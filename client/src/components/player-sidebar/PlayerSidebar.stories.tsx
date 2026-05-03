@@ -46,7 +46,7 @@ const movieResolvers = {
         durationSeconds: 5400,
         metadata: { title: null, year: 2020, genre: "Action", plot: null, posterUrl: null },
         library: { videos: { edges: [] } },
-        seasons: [],
+        show: null,
       };
     }
     return {
@@ -60,7 +60,7 @@ const movieResolvers = {
         plot: "In a post-apocalyptic wasteland, Max teams up with Furiosa to outrun a warlord in a desperate bid for freedom.",
         posterUrl: null,
       },
-      seasons: [],
+      show: null,
     };
   },
 };
@@ -78,26 +78,28 @@ const seriesResolvers = {
       posterUrl: null,
     },
     library: { videos: { edges: [] } },
-    seasons: [
-      {
-        seasonNumber: 1,
-        episodes: Array.from({ length: 8 }, (_, i) => ({
-          episodeNumber: i + 1,
-          title: `Episode ${i + 1}`,
-          durationSeconds: 1800,
-          onDisk: true,
-        })),
-      },
-      {
-        seasonNumber: 2,
-        episodes: Array.from({ length: 10 }, (_, i) => ({
-          episodeNumber: i + 1,
-          title: `Episode ${i + 1}`,
-          durationSeconds: 1800,
-          onDisk: i < 4,
-        })),
-      },
-    ],
+    show: {
+      seasons: [
+        {
+          seasonNumber: 1,
+          episodes: Array.from({ length: 8 }, (_, i) => ({
+            episodeNumber: i + 1,
+            title: `Episode ${i + 1}`,
+            durationSeconds: 1800,
+            onDisk: true,
+          })),
+        },
+        {
+          seasonNumber: 2,
+          episodes: Array.from({ length: 10 }, (_, i) => ({
+            episodeNumber: i + 1,
+            title: `Episode ${i + 1}`,
+            durationSeconds: 1800,
+            onDisk: i < 4,
+          })),
+        },
+      ],
+    },
   }),
 };
 

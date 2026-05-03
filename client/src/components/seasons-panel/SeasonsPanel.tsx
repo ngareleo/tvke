@@ -8,9 +8,11 @@ import { useSeasonsPanelStyles } from "./SeasonsPanel.styles";
 
 const SEASONS_FRAGMENT = graphql`
   fragment SeasonsPanel_video on Video {
-    seasons {
-      seasonNumber
-      ...Season_season
+    show {
+      seasons {
+        seasonNumber
+        ...Season_season
+      }
     }
   }
 `;
@@ -37,7 +39,7 @@ export const SeasonsPanel: FC<SeasonsPanelProps> = ({
 }) => {
   const data = useFragment(SEASONS_FRAGMENT, video);
   const styles = useSeasonsPanelStyles();
-  const seasons = data.seasons;
+  const seasons = useMemo(() => data.show?.seasons ?? [], [data.show]);
 
   const initial = useMemo<Set<number>>(() => {
     const set = new Set<number>();

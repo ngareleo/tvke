@@ -23,12 +23,20 @@ pub struct VideoRow {
     /// `Resolution::from_height`; the GraphQL boundary maps it via `Resolution::from_internal`.
     pub native_resolution: Option<String>,
     /// Logical Film this video belongs to. Set for movie file rows by the
-    /// scanner (after MovieUnit resolution + OMDb match). NULL for TV show
-    /// parent rows, episode file rows, and unmatched movie rows.
+    /// scanner (after MovieUnit resolution + OMDb match). NULL for episode
+    /// file rows and unmatched movie rows.
     pub film_id: Option<String>,
-    /// `'main'` (the canonical movie file in its folder) or `'extra'`
-    /// (trailers, deleted scenes, behind-the-scenes living alongside).
-    /// Defaults to `'main'`. Only meaningful when `film_id` is set.
+    /// Logical Show this video belongs to (episode files only). Together
+    /// with `show_season` + `show_episode` this gives the canonical
+    /// (show, season, episode) coordinate; multiple `videos` rows can
+    /// share the same coordinate when an episode is indexed in two
+    /// libraries.
+    pub show_id: Option<String>,
+    pub show_season: Option<i64>,
+    pub show_episode: Option<i64>,
+    /// `'main'` (the canonical movie file in its folder, or any episode
+    /// file) or `'extra'` (trailers, deleted scenes, behind-the-scenes
+    /// living alongside). Defaults to `'main'`.
     pub role: String,
 }
 
@@ -47,6 +55,9 @@ impl VideoRow {
             content_fingerprint: r.get("content_fingerprint")?,
             native_resolution: r.get("native_resolution")?,
             film_id: r.get("film_id")?,
+            show_id: r.get("show_id")?,
+            show_season: r.get("show_season")?,
+            show_episode: r.get("show_episode")?,
             role: r.get("role")?,
         })
     }
@@ -111,7 +122,12 @@ pub struct NewVideoStream {
 }
 
 /// Insert-or-update a video row keyed by `path`. The library scanner
-/// calls this once per discovered file.
+/// calls this once per discovered file. Note: Film/Show linkage columns
+/// (`film_id`, `show_id`, `show_season`, `show_episode`, `role`) are
+/// NOT written here — they're set by `assign_video_to_film` /
+/// `assign_video_to_show` after the per-file probe completes, so a
+/// re-scan of an already-classified file doesn't accidentally null out
+/// its linkage.
 pub fn upsert_video(db: &Db, row: &VideoRow) -> DbResult<()> {
     db.with(|c| {
         c.execute(
@@ -294,6 +310,73 @@ pub fn sum_file_size_by_library(db: &Db, library_id: &str) -> DbResult<i64> {
             |r| r.get::<_, i64>(0),
         )?;
         Ok(total)
+    })
+}
+
+/// Set `videos.show_id` + `(show_season, show_episode)` for one episode
+/// file. The TV scanner calls this after resolving (or creating) the
+/// Show for the containing series directory.
+pub fn assign_video_to_show(
+    db: &Db,
+    video_id: &str,
+    show_id: &str,
+    season: i64,
+    episode: i64,
+) -> DbResult<()> {
+    db.with(|c| {
+        c.execute(
+            "UPDATE videos SET show_id = ?2, show_season = ?3, show_episode = ?4 WHERE id = ?1",
+            params![video_id, show_id, season, episode],
+        )?;
+        Ok(())
+    })
+}
+
+/// All episode-file `videos` rows for a single (show, season, episode)
+/// coordinate. Multiple rows when the same episode file is indexed in
+/// more than one library. Ordered res-desc, bitrate-desc.
+pub fn get_videos_by_show_episode(
+    db: &Db,
+    show_id: &str,
+    season: i64,
+    episode: i64,
+) -> DbResult<Vec<VideoRow>> {
+    db.with(|c| {
+        let mut stmt = c.prepare(
+            r#"SELECT v.* FROM videos v
+                 WHERE v.show_id = ?1
+                   AND v.show_season = ?2
+                   AND v.show_episode = ?3
+                 ORDER BY
+                   CASE v.native_resolution
+                     WHEN '4k'   THEN 0
+                     WHEN '1080p' THEN 1
+                     WHEN '720p' THEN 2
+                     WHEN '480p' THEN 3
+                     WHEN '360p' THEN 4
+                     WHEN '240p' THEN 5
+                     ELSE 6
+                   END,
+                   v.bitrate DESC"#,
+        )?;
+        let rows = stmt.query_map(params![show_id, season, episode], VideoRow::from_row)?;
+        let collected: rusqlite::Result<Vec<_>> = rows.collect();
+        Ok(collected?)
+    })
+}
+
+/// Every episode `videos` row that belongs to a Show, across all seasons
+/// and episodes. Used by `Show.profiles` (distinct libraries) and to
+/// pre-batch the season tree resolver.
+pub fn get_videos_by_show_id(db: &Db, show_id: &str) -> DbResult<Vec<VideoRow>> {
+    db.with(|c| {
+        let mut stmt = c.prepare(
+            "SELECT * FROM videos WHERE show_id = ?1
+              ORDER BY show_season ASC, show_episode ASC",
+        )?;
+        let rows = stmt.query_map(params![show_id], VideoRow::from_row)?;
+        let collected: rusqlite::Result<Vec<_>> = rows.collect();
+        Ok(collected?)
     })
 }
 
@@ -565,6 +648,9 @@ mod tests {
             content_fingerprint: "1000:abc".to_string(),
             native_resolution: None,
             film_id: None,
+            show_id: None,
+            show_season: None,
+            show_episode: None,
             role: "main".to_string(),
         }
     }

@@ -1,26 +1,32 @@
-//! TV-show discovery for the release-design migration.
+//! TV-show discovery — walks a `tvShows` library and rebuilds the
+//! `shows` / `seasons` / `episodes` rows from the canonical
+//! `<library>/<Show>/<Season>/<Episode>` layout.
 //!
-//! For each `tvShows` library the scanner walks the canonical three-level
-//! layout — `<library>/<Show>/<Season>/<Episode>` — and, in parallel,
-//! queries OMDb for each show's full season/episode tree. The two trees
-//! are merged into the `seasons` + `episodes` tables: episodes that exist
-//! both on disk and in OMDb get both fields populated; episodes only on
-//! disk become rows with `title=None`; episodes only in OMDb become rows
-//! with `episode_video_id=None` (greyed-out "missing on disk" in the UI).
+//! Series identity lives in the `shows` table (not in `videos`); episode
+//! files are regular `videos` rows linked back to a Show by
+//! `(show_id, show_season, show_episode)`. Two libraries indexing the
+//! same series fold into one Show; two libraries indexing the same
+//! episode file produce two `videos` rows pointing at the same
+//! `(show_id, season, episode)` coordinate (axis-2 dedup — the picker
+//! shows them as variants).
 //!
-//! Subscription progress is fired per OMDb call so the client sees granular
-//! progress ("Fetching Breaking Bad S03 episodes…") instead of long pauses.
+//! Per-show flow:
+//! 1. `resolve_show_for_directory` — Show keyed on parsed_title_key.
+//! 2. Walk local files; for each parseable episode, `assign_video_to_show`.
+//! 3. OMDb best-effort: `search_series` → `series_details` →
+//!    `season_episodes` per season.
+//! 4. On match: `link_show_to_imdb` (which may merge into a canonical
+//!    show) + `upsert_show_metadata`.
+//! 5. Merge local + OMDb episode trees; write seasons + episodes rows.
 //!
 //! Failure isolation:
-//! - OMDb miss for a show → fall back to regex-only persistence (local
-//!   episodes still get rows, just without canonical titles).
-//! - Per-season fetch failure → log warn, continue with the seasons we
-//!   already have.
-//! - DB write failure → log error, abort that show, continue with the
-//!   next.
+//! - OMDb miss → fall back to regex-only persistence (local episodes
+//!   still land, no canonical titles).
+//! - Per-season fetch failure → log warn, continue.
+//! - DB write failure → log error, abort that show, continue.
 //!
-//! See `docs/migrations/release-design/Schema-Changes.md` (Post-M2 patches
-//! table) for the algorithm spec and the user's directory-layout heuristic.
+//! See `docs/architecture/Library-Scan/03-Show-Entity.md` for the
+//! architectural picture.
 
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::path::{Path, PathBuf};
@@ -31,8 +37,8 @@ use tracing::{info, info_span, warn, Instrument};
 
 use crate::config::AppContext;
 use crate::db::{
-    get_video_by_id, upsert_episode, upsert_season, upsert_video, upsert_video_metadata,
-    EpisodeRow, LibraryRow, VideoMetadataRow, VideoRow,
+    assign_video_to_show, get_video_by_id, link_show_to_imdb, resolve_show_for_directory,
+    upsert_episode, upsert_season, upsert_show_metadata, EpisodeRow, LibraryRow, ShowMetadataRow,
 };
 use crate::services::omdb::{OmdbClient, OmdbEpisode, OmdbSeriesDetails};
 
@@ -40,8 +46,7 @@ const PHASE_DISCOVERING_TV: &str = "discovering_tv";
 const PHASE_FETCHING_OMDB: &str = "fetching_omdb";
 
 /// Walk every show directory under `library` and run the full discovery
-/// flow per show. Per-show failures are logged and isolated. Subscription
-/// progress is updated at every step so the client sees a moving cursor.
+/// flow per show. Per-show failures are logged and isolated.
 pub async fn discover_tv_shows(ctx: &AppContext, library: &LibraryRow) {
     let span = info_span!("library.tv_discovery", library_name = %library.name);
     async {
@@ -67,10 +72,6 @@ pub async fn discover_tv_shows(ctx: &AppContext, library: &LibraryRow) {
             None,
         );
 
-        // Sequential per-show. The OMDb budget guard already gates
-        // outbound calls; running shows in parallel would buy little
-        // and complicates per-call subscription ordering. The local
-        // file walk is fast enough that this isn't the bottleneck.
         let mut completed = 0u32;
         for show_dir in show_dirs {
             let show_name = match show_dir.file_name().and_then(|n| n.to_str()) {
@@ -121,8 +122,6 @@ pub enum DiscoveryError {
     Db(#[from] crate::error::DbError),
 }
 
-/// Process one show directory: walk local episodes, fetch the OMDb tree
-/// (best-effort), merge, persist.
 async fn discover_one_show(
     ctx: &AppContext,
     library: &LibraryRow,
@@ -130,45 +129,99 @@ async fn discover_one_show(
     show_name: &str,
 ) -> Result<(), DiscoveryError> {
     let local_tree = walk_local_show(show_dir);
-    let show_id = sha1_path(show_dir);
-
-    // Synthesise the show Video row before any episode rows reference it
-    // (the episodes FK is `show_video_id REFERENCES videos(id)`).
     let now = Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
-    let show_row = VideoRow {
-        id: show_id.clone(),
-        library_id: library.id.clone(),
-        path: show_dir.to_str().unwrap_or_default().to_string(),
-        filename: show_name.to_string(),
-        title: Some(show_name.to_string()),
-        duration_seconds: 0.0,
-        file_size_bytes: 0,
-        bitrate: 0,
-        scanned_at: now,
-        // Distinct prefix so the synthetic show fingerprint can never
-        // collide with a real file's `<size>:<sha1>` form.
-        content_fingerprint: format!("show:{show_id}"),
-        native_resolution: None,
-        // TV show parents and episode files are not Films — film_id stays NULL.
-        film_id: None,
-        role: "main".to_string(),
-    };
-    upsert_video(&ctx.db, &show_row)?;
 
-    // OMDb best-effort: the show name from the directory drives the
-    // search. Per-call subscription updates fire as we go.
+    // 1. Show identity — parsed_title_key fallback only; OMDb stamp lands later.
+    let show = resolve_show_for_directory(&ctx.db, show_name, &now)?;
+    let mut show_id = show.id.clone();
+
+    // 2. Link every local episode video → (show_id, season, episode).
+    //    Done before OMDb so a flaky network still produces a usable tree.
+    for (season_n, eps) in &local_tree.seasons {
+        for ep in eps {
+            let video_id = sha1_path(&ep.file_path);
+            // Defensive: only assign if the video row exists. The regular
+            // scan should have created it pre-discovery; if not, log and
+            // skip rather than tripping FK.
+            match get_video_by_id(&ctx.db, &video_id)? {
+                Some(_) => {
+                    if let Err(err) = assign_video_to_show(
+                        &ctx.db,
+                        &video_id,
+                        &show_id,
+                        *season_n,
+                        ep.episode_number,
+                    ) {
+                        warn!(
+                            show = %show_name,
+                            season = season_n,
+                            episode = ep.episode_number,
+                            error = %err,
+                            "tv_discovery: assign_video_to_show failed",
+                        );
+                    }
+                }
+                None => {
+                    warn!(
+                        show = %show_name,
+                        season = season_n,
+                        episode = ep.episode_number,
+                        file = %ep.file_path.display(),
+                        "tv_discovery: episode file has no videos row (probe failed earlier?); skipping link",
+                    );
+                }
+            }
+        }
+    }
+
+    // 3. OMDb best-effort.
     let omdb_tree = if let Some(omdb) = ctx.omdb.as_ref() {
         fetch_omdb_show_tree(ctx, library, omdb, show_name).await
     } else {
         None
     };
 
-    // Persist OMDb show metadata when matched; the synthetic show video
-    // gets a row in `video_metadata` so the GraphQL `Video.metadata`
-    // resolver returns poster/plot/year for the show tile.
-    if let Some(details) = omdb_tree.as_ref().map(|(d, _)| d.clone()) {
-        let metadata_row = VideoMetadataRow {
-            video_id: show_id.clone(),
+    // 4. Stamp imdb_id (may merge into a canonical show row); upsert metadata.
+    if let Some((details, _)) = omdb_tree.as_ref() {
+        let canonical = match link_show_to_imdb(&ctx.db, &show_id, &details.imdb_id) {
+            Ok(c) => c,
+            Err(err) => {
+                warn!(
+                    show = %show_name,
+                    imdb_id = %details.imdb_id,
+                    error = %err,
+                    "tv_discovery: link_show_to_imdb failed",
+                );
+                show_id.clone()
+            }
+        };
+        // If link_show_to_imdb merged us into a canonical row, every
+        // assignment we just wrote now points at the wrong show_id —
+        // re-point.
+        if canonical != show_id {
+            for (season_n, eps) in &local_tree.seasons {
+                for ep in eps {
+                    let video_id = sha1_path(&ep.file_path);
+                    if let Err(err) = assign_video_to_show(
+                        &ctx.db,
+                        &video_id,
+                        &canonical,
+                        *season_n,
+                        ep.episode_number,
+                    ) {
+                        warn!(
+                            show = %show_name,
+                            error = %err,
+                            "tv_discovery: re-assign after merge failed",
+                        );
+                    }
+                }
+            }
+            show_id = canonical;
+        }
+
+        let metadata_row = ShowMetadataRow {
+            show_id: show_id.clone(),
             imdb_id: details.imdb_id.clone(),
             title: details.title.clone(),
             year: details.year,
@@ -178,9 +231,10 @@ async fn discover_one_show(
             rating: details.imdb_rating,
             plot: details.plot.clone(),
             poster_url: details.poster_url.clone(),
+            poster_local_path: None,
             matched_at: Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true),
         };
-        if let Err(err) = upsert_video_metadata(&ctx.db, &metadata_row) {
+        if let Err(err) = upsert_show_metadata(&ctx.db, &metadata_row) {
             warn!(
                 show = %show_name,
                 error = %err,
@@ -202,13 +256,8 @@ async fn discover_one_show(
     Ok(())
 }
 
-/// Snapshot of a show's local file system: which seasons exist on disk
-/// and which (season, episode) tuples were parsed from filenames inside
-/// them.
 #[derive(Debug, Clone, Default)]
 pub struct LocalShowTree {
-    /// `season_number → Vec<(episode_number, file_path)>`. Episodes whose
-    /// filenames don't match `SxxExx` / `NxNN` are dropped here.
     pub seasons: BTreeMap<i64, Vec<LocalEpisode>>,
 }
 
@@ -263,9 +312,6 @@ fn walk_local_show(show_dir: &Path) -> LocalShowTree {
             let Some((file_season, episode_number)) = parse_episode_id(filename) else {
                 continue;
             };
-            // Directory-derived season wins on disagreement (the
-            // directory layout is the authoritative spec). Log so
-            // misnamed files surface in logs.
             if file_season != season_number {
                 warn!(
                     season_dir = %dir_name,
@@ -285,8 +331,6 @@ fn walk_local_show(show_dir: &Path) -> LocalShowTree {
     tree
 }
 
-/// Run the OMDb fetch sequence for one show. Returns `None` (silently)
-/// when no match is found or the API key isn't configured.
 async fn fetch_omdb_show_tree(
     ctx: &AppContext,
     library: &LibraryRow,
@@ -324,22 +368,16 @@ async fn fetch_omdb_show_tree(
                     season_n,
                     "tv_discovery: omdb season fetch returned no episodes",
                 );
-                // Fall through — partial trees are better than nothing.
             }
         }
     }
     Some((details, by_season))
 }
 
-/// Merge the local and OMDb trees into the final episode list, keyed by
-/// `(season_number, episode_number)`. The union covers every episode
-/// known to either side; matched pairs carry both `title` (from OMDb)
-/// and `episode_video_id` (from local).
 pub fn merge_trees(
     local: &LocalShowTree,
     omdb: Option<&BTreeMap<i64, Vec<OmdbEpisode>>>,
 ) -> BTreeMap<i64, Vec<MergedEpisode>> {
-    // Index local files for O(1) lookup by (season, episode).
     let mut local_index: HashMap<(i64, i64), &LocalEpisode> = HashMap::new();
     for (season, eps) in &local.seasons {
         for ep in eps {
@@ -350,25 +388,21 @@ pub fn merge_trees(
     let mut merged: BTreeMap<i64, Vec<MergedEpisode>> = BTreeMap::new();
     let mut seen: HashSet<(i64, i64)> = HashSet::new();
 
-    // Pass 1: OMDb canonical episodes (when present).
     if let Some(by_season) = omdb {
         for (season, eps) in by_season {
             let bucket = merged.entry(*season).or_default();
             for omdb_ep in eps {
                 let key = (*season, omdb_ep.episode_number);
-                let local_match = local_index.get(&key).copied();
                 bucket.push(MergedEpisode {
                     season_number: *season,
                     episode_number: omdb_ep.episode_number,
                     title: Some(omdb_ep.title.clone()),
-                    file_path: local_match.map(|le| le.file_path.clone()),
                 });
                 seen.insert(key);
             }
         }
     }
 
-    // Pass 2: local-only episodes (OMDb miss, or OMDb didn't list them).
     for (season, eps) in &local.seasons {
         let bucket = merged.entry(*season).or_default();
         for ep in eps {
@@ -380,13 +414,11 @@ pub fn merge_trees(
                 season_number: *season,
                 episode_number: ep.episode_number,
                 title: None,
-                file_path: Some(ep.file_path.clone()),
             });
             seen.insert(key);
         }
     }
 
-    // Stable ordering inside each season bucket.
     for bucket in merged.values_mut() {
         bucket.sort_by_key(|e| e.episode_number);
     }
@@ -398,7 +430,6 @@ pub struct MergedEpisode {
     pub season_number: i64,
     pub episode_number: i64,
     pub title: Option<String>,
-    pub file_path: Option<PathBuf>,
 }
 
 fn persist_merged_tree(
@@ -409,36 +440,13 @@ fn persist_merged_tree(
     for (season_number, eps) in merged {
         upsert_season(db, show_id, *season_number)?;
         for ep in eps {
-            // Resolve the episode's video_id only when the file exists
-            // in the videos table (the regular scan should have
-            // populated it; if the probe failed we'd hit an FK
-            // violation otherwise).
-            let episode_video_id = if let Some(path) = ep.file_path.as_ref() {
-                let local_id = sha1_path(path);
-                match get_video_by_id(db, &local_id)? {
-                    Some(_) => Some(local_id),
-                    None => {
-                        warn!(
-                            show_id,
-                            season = ep.season_number,
-                            episode = ep.episode_number,
-                            file = %path.display(),
-                            "tv_discovery: episode file has no videos row (probe failed earlier?); writing without video link",
-                        );
-                        None
-                    }
-                }
-            } else {
-                None
-            };
             upsert_episode(
                 db,
                 &EpisodeRow {
-                    show_video_id: show_id.to_string(),
+                    show_id: show_id.to_string(),
                     season_number: ep.season_number,
                     episode_number: ep.episode_number,
                     title: ep.title.clone(),
-                    episode_video_id,
                 },
             )?;
         }
@@ -486,10 +494,6 @@ fn sha1_path(path: &Path) -> String {
 
 // ── Parse helpers ────────────────────────────────────────────────────────────
 
-/// Parse the leading season number from a directory name like
-/// `"Season 1"`, `"Season 01"`, `"S01"`, `"S1"`, or `"1"`. Returns the
-/// first run of digits parsed as `i64`, rejecting zero. Returns `None`
-/// when the name has no digits.
 pub fn parse_season_number(dirname: &str) -> Option<i64> {
     let digits: String = dirname
         .chars()
@@ -504,13 +508,6 @@ pub fn parse_season_number(dirname: &str) -> Option<i64> {
     }
 }
 
-/// Parse `(season, episode)` from a filename. Recognises:
-/// - `SxxExx` / `SxEx` (case-insensitive): `Show.S01E02.mkv` → `(1, 2)`
-/// - `NxNN`:                                `Show 1x02.mkv`   → `(1, 2)`
-///
-/// Returns `None` when neither pattern matches. The `SxxExx` form takes
-/// precedence — its prefix anchor disambiguates against other digit
-/// runs in the filename.
 pub fn parse_episode_id(filename: &str) -> Option<(i64, i64)> {
     if let Some(p) = parse_sxxexx(filename) {
         return Some(p);
@@ -647,7 +644,6 @@ mod tests {
 
     #[test]
     fn parse_episode_id_prefers_sxxexx_when_both_patterns_present() {
-        // "Show 1x02 S03E04.mkv" — SxxExx anchors to S03E04 first.
         let r = parse_episode_id("Show 1x02 S03E04.mkv");
         assert_eq!(r, Some((3, 4)));
     }
@@ -680,7 +676,7 @@ mod tests {
         let local = local_with_episodes(&[
             (1, 1, "S01E01.mkv"),
             (1, 2, "S01E02.mkv"),
-            (1, 5, "S01E05.mkv"), // local has, OMDb doesn't
+            (1, 5, "S01E05.mkv"),
         ]);
         let mut omdb = BTreeMap::new();
         omdb.insert(
@@ -688,7 +684,7 @@ mod tests {
             vec![
                 omdb_episode(1, "Pilot"),
                 omdb_episode(2, "Cat's Bag"),
-                omdb_episode(3, "Bag's Cat"), // OMDb has, local doesn't
+                omdb_episode(3, "Bag's Cat"),
             ],
         );
 
@@ -697,22 +693,10 @@ mod tests {
         let by_num: HashMap<i64, &MergedEpisode> =
             s1.iter().map(|e| (e.episode_number, e)).collect();
 
-        assert_eq!(by_num.len(), 4); // 1, 2, 3, 5
-
-        // Matched episodes: title from OMDb, file_path from local.
-        let e1 = by_num.get(&1).expect("e1");
-        assert_eq!(e1.title.as_deref(), Some("Pilot"));
-        assert!(e1.file_path.is_some());
-
-        // OMDb-only: title set, no file_path (greyed-out in UI).
-        let e3 = by_num.get(&3).expect("e3");
-        assert_eq!(e3.title.as_deref(), Some("Bag's Cat"));
-        assert!(e3.file_path.is_none());
-
-        // Local-only: no title, file_path set.
-        let e5 = by_num.get(&5).expect("e5");
-        assert!(e5.title.is_none());
-        assert!(e5.file_path.is_some());
+        assert_eq!(by_num.len(), 4);
+        assert_eq!(by_num.get(&1).unwrap().title.as_deref(), Some("Pilot"));
+        assert_eq!(by_num.get(&3).unwrap().title.as_deref(), Some("Bag's Cat"));
+        assert!(by_num.get(&5).unwrap().title.is_none());
     }
 
     #[test]
@@ -723,11 +707,9 @@ mod tests {
         assert_eq!(s1.len(), 2);
         for ep in s1 {
             assert!(ep.title.is_none());
-            assert!(ep.file_path.is_some());
         }
         let s2 = merged.get(&2).expect("season 2");
         assert_eq!(s2.len(), 1);
-        assert!(s2[0].title.is_none());
     }
 
     #[test]
@@ -745,37 +727,34 @@ mod tests {
 
     // ── persist_merged_tree (against in-memory DB) ───────────────────────
 
-    use crate::db::{create_library, get_episodes_by_show, get_seasons_by_show, Db};
+    use crate::db::{
+        create_library, get_episodes_by_show, get_seasons_by_show, upsert_show, Db, ShowRow,
+    };
     use std::path::Path;
 
     fn fresh_db() -> Db {
         Db::open(Path::new(":memory:")).expect("open in-memory db")
     }
 
-    fn seed_show_video(db: &Db, library_id: &str, show_id: &str) {
-        let row = VideoRow {
-            id: show_id.to_string(),
-            library_id: library_id.to_string(),
-            path: format!("/tv/{show_id}"),
-            filename: show_id.to_string(),
-            title: Some(show_id.to_string()),
-            duration_seconds: 0.0,
-            file_size_bytes: 0,
-            bitrate: 0,
-            scanned_at: "2026-01-01T00:00:00.000Z".to_string(),
-            content_fingerprint: format!("show:{show_id}"),
-            native_resolution: None,
-            film_id: None,
-            role: "main".to_string(),
-        };
-        upsert_video(db, &row).expect("upsert show");
+    fn seed_show(db: &Db, id: &str) {
+        upsert_show(
+            db,
+            &ShowRow {
+                id: id.to_string(),
+                imdb_id: None,
+                parsed_title_key: Some(format!("{id}|")),
+                title: id.to_string(),
+                year: None,
+                created_at: "2026-01-01T00:00:00.000Z".to_string(),
+            },
+        )
+        .expect("seed show");
     }
 
     #[test]
     fn persist_merged_tree_writes_seasons_and_episodes() {
         let db = fresh_db();
-        let lib = create_library(&db, "TV", "/tv", "tvShows", &[]).expect("create lib");
-        seed_show_video(&db, &lib.id, "show-aaa");
+        seed_show(&db, "show-aaa");
 
         let mut merged = BTreeMap::new();
         merged.insert(
@@ -785,13 +764,11 @@ mod tests {
                     season_number: 1,
                     episode_number: 1,
                     title: Some("Pilot".to_string()),
-                    file_path: None,
                 },
                 MergedEpisode {
                     season_number: 1,
                     episode_number: 2,
                     title: Some("Second".to_string()),
-                    file_path: None,
                 },
             ],
         );
@@ -803,12 +780,13 @@ mod tests {
         let eps = get_episodes_by_show(&db, "show-aaa").expect("episodes");
         assert_eq!(eps.len(), 2);
         assert_eq!(eps[0].title.as_deref(), Some("Pilot"));
-        assert!(eps[0].episode_video_id.is_none());
     }
 
     // ── End-to-end: tempdir + wiremock OMDb → seasons + episodes ─────────
 
     use crate::config::AppContext;
+    use crate::db::{find_show_by_imdb_id, get_show_metadata, VideoRow};
+    use crate::services::omdb::OmdbClient;
     use std::fs;
     use tempfile::TempDir;
     use wiremock::matchers::{method, path as wm_path, query_param};
@@ -844,16 +822,16 @@ mod tests {
             content_fingerprint: format!("1000000:{}", file_path.display()),
             native_resolution: Some("1080p".to_string()),
             film_id: None,
+            show_id: None,
+            show_season: None,
+            show_episode: None,
             role: "main".to_string(),
         };
-        upsert_video(db, &row).expect("upsert episode video");
+        crate::db::upsert_video(db, &row).expect("upsert episode video");
     }
 
     #[tokio::test]
     async fn discover_tv_shows_unions_local_files_and_omdb_canonical() {
-        // Filesystem: <tmp>/Show A/Season 1/Show.A.S01E01.mkv + S01E02.mkv
-        // OMDb says Show A has S01 with episodes 1, 2, 3 — so the union
-        // is { (1,1)=matched, (1,2)=matched, (1,3)=omdb-only }.
         let dir = TempDir::new().expect("tempdir");
         let library_path = dir.path().join("library");
         let show_dir = library_path.join("Show A");
@@ -865,7 +843,6 @@ mod tests {
         fs::write(&ep2, b"").expect("create ep2");
 
         let server = MockServer::start().await;
-        // search_series → top match
         Mock::given(method("GET"))
             .and(wm_path("/"))
             .and(query_param("s", "Show A"))
@@ -877,7 +854,6 @@ mod tests {
             })))
             .mount(&server)
             .await;
-        // series_details → totalSeasons = 1
         Mock::given(method("GET"))
             .and(query_param("i", "tt7777777"))
             .and(query_param_absent("Season"))
@@ -896,7 +872,6 @@ mod tests {
             })))
             .mount(&server)
             .await;
-        // season_episodes(1) → 3 episodes
         Mock::given(method("GET"))
             .and(query_param("i", "tt7777777"))
             .and(query_param("Season", "1"))
@@ -923,42 +898,43 @@ mod tests {
             &[],
         )
         .expect("create library");
-        // The regular scan would have populated these — seed manually
-        // since this test doesn't exercise process_file (no real
-        // ffprobe).
         seed_episode_video(&ctx.db, &lib.id, &ep1);
         seed_episode_video(&ctx.db, &lib.id, &ep2);
 
         discover_tv_shows(&ctx, &lib).await;
 
-        let show_id = sha1_path(&show_dir);
+        // Show row should exist keyed on imdb_id (canonical after the OMDb match).
+        let show = find_show_by_imdb_id(&ctx.db, "tt7777777")
+            .expect("query")
+            .expect("show row exists post-match");
+        let show_id = show.id.clone();
+
         let seasons = get_seasons_by_show(&ctx.db, &show_id).expect("seasons");
         assert_eq!(seasons.len(), 1);
         assert_eq!(seasons[0].season_number, 1);
 
         let eps = get_episodes_by_show(&ctx.db, &show_id).expect("episodes");
-        assert_eq!(eps.len(), 3, "union of 2 local + 3 OMDb is 3");
+        assert_eq!(eps.len(), 3);
 
-        let by_num: HashMap<i64, &crate::db::EpisodeRow> =
+        let by_num: HashMap<i64, &EpisodeRow> =
             eps.iter().map(|e| (e.episode_number, e)).collect();
+        assert_eq!(by_num.get(&1).unwrap().title.as_deref(), Some("Pilot"));
+        assert_eq!(
+            by_num.get(&2).unwrap().title.as_deref(),
+            Some("Second Step")
+        );
+        assert_eq!(
+            by_num.get(&3).unwrap().title.as_deref(),
+            Some("Third Step")
+        );
 
-        // Matched: title from OMDb, episode_video_id from local.
-        let e1 = by_num.get(&1).expect("e1");
-        assert_eq!(e1.title.as_deref(), Some("Pilot"));
-        assert_eq!(e1.episode_video_id.as_deref(), Some(&*sha1_path(&ep1)));
+        // Episode files now point at the show via show_id/show_season/show_episode.
+        let copies = crate::db::get_videos_by_show_episode(&ctx.db, &show_id, 1, 1)
+            .expect("ep1 copies");
+        assert_eq!(copies.len(), 1);
+        assert_eq!(copies[0].path, ep1.to_str().unwrap_or_default());
 
-        let e2 = by_num.get(&2).expect("e2");
-        assert_eq!(e2.title.as_deref(), Some("Second Step"));
-        assert_eq!(e2.episode_video_id.as_deref(), Some(&*sha1_path(&ep2)));
-
-        // OMDb-only: title set, episode_video_id None.
-        let e3 = by_num.get(&3).expect("e3");
-        assert_eq!(e3.title.as_deref(), Some("Third Step"));
-        assert!(e3.episode_video_id.is_none());
-
-        // Show-level metadata: poster + plot from OMDb landed in
-        // video_metadata for the synthetic show row.
-        let show_meta = crate::db::get_metadata_by_video_id(&ctx.db, &show_id)
+        let show_meta = get_show_metadata(&ctx.db, &show_id)
             .expect("metadata query")
             .expect("metadata exists");
         assert_eq!(show_meta.imdb_id, "tt7777777");
@@ -980,7 +956,6 @@ mod tests {
         fs::write(&ep, b"").expect("create ep");
 
         let server = MockServer::start().await;
-        // search_series → not found
         Mock::given(method("GET"))
             .and(query_param("s", "Unknown Show"))
             .respond_with(ResponseTemplate::new(200).set_body_json(
@@ -1002,22 +977,24 @@ mod tests {
 
         discover_tv_shows(&ctx, &lib).await;
 
-        // Fallback: synthetic show row + season + one episode (no title,
-        // but episode_video_id linked to the local file).
-        let show_id = sha1_path(&show_dir);
+        // Show keyed on parsed_title_key (no imdb_id since OMDb didn't match).
+        let show = crate::db::find_show_by_parsed_title_key(&ctx.db, "unknown show|")
+            .expect("query")
+            .expect("show row exists");
+        let show_id = show.id.clone();
         let eps = get_episodes_by_show(&ctx.db, &show_id).expect("episodes");
         assert_eq!(eps.len(), 1);
         assert!(eps[0].title.is_none());
-        assert_eq!(eps[0].episode_video_id.as_deref(), Some(&*sha1_path(&ep)));
 
-        // No video_metadata for the show — OMDb didn't match.
-        let show_meta = crate::db::get_metadata_by_video_id(&ctx.db, &show_id).expect("query");
+        let copies = crate::db::get_videos_by_show_episode(&ctx.db, &show_id, 1, 1)
+            .expect("copies");
+        assert_eq!(copies.len(), 1);
+
+        // No show_metadata — OMDb didn't match.
+        let show_meta = get_show_metadata(&ctx.db, &show_id).expect("query");
         assert!(show_meta.is_none());
     }
 
-    /// Inverse of wiremock's `query_param` — matches when the named
-    /// param is *not* present. Used to disambiguate `series_details`
-    /// (no Season param) from `season_episodes` (Season=N).
     fn query_param_absent(key: &'static str) -> AbsentQueryParamMatcher {
         AbsentQueryParamMatcher { key }
     }

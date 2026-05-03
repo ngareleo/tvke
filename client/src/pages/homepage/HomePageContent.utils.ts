@@ -3,29 +3,31 @@ import { type Codec, type FilterableFilm, type Hdr, type Resolution } from "~/ut
 
 import { strings } from "./HomePage.strings.js";
 
-type TvEdge = NonNullable<HomePageContentQuery["response"]["tvShows"]>["edges"][number];
-export type VideoNode = TvEdge["node"];
-
 type FilmEdge = NonNullable<HomePageContentQuery["response"]["movies"]>["edges"][number];
 export type FilmNode = FilmEdge["node"];
 type FilmCopyNode = FilmNode["copies"][number];
+/// Compatibility alias: `node` on a FilterRow always points at a Film
+/// copy (Video) — kept under the historical name so existing call sites
+/// continue to compile.
+export type VideoNode = FilmCopyNode;
 
 export interface FilterRow extends FilterableFilm {
-  /** Row's stable id. For TV: the show video id. For movies: the Film id. */
+  /** Row's stable id (the Film id). Shows live in a separate flow and
+   *  don't appear in FilterRow.
+   */
   id: string;
   title: string;
   filename: string;
   director: string;
   genre: string;
-  /**
-   * The Video the FilmTile renders against. For TV: the show video. For
-   * movies: the Film's `bestCopy` (which is structurally a FilmCopyNode
-   * — same as `copies[number]` — so all the FilmTile/Overlay fragment
-   * spreads + extras like fileSizeBytes are present).
+  /** The Film's `bestCopy` Video — what the FilmTile / FilmDetailsOverlay
+   *  fragments render against.
    */
-  node: VideoNode | FilmCopyNode;
-  /** When set, the FilmDetailsOverlay shows a FilmVariants picker. */
-  copies?: ReadonlyArray<FilmCopyNode>;
+  node: FilmCopyNode;
+  /** All copies of the Film, in res-desc/bitrate-desc order — drives the
+   *  FilmVariants picker. Always populated for movies (≥1 copy).
+   */
+  copies: ReadonlyArray<FilmCopyNode>;
 }
 
 const RESOLUTION_LABEL: Record<string, Resolution> = {
@@ -59,22 +61,6 @@ function deriveFilters(
   };
 }
 
-export function toFilterRowFromVideo(node: VideoNode): FilterRow {
-  const filters = deriveFilters(
-    node,
-    node.metadata?.director,
-    node.metadata?.genre,
-    node.metadata?.year
-  );
-  return {
-    id: node.id,
-    title: (node.title || "").toLowerCase(),
-    filename: node.filename.toLowerCase(),
-    ...filters,
-    node,
-  };
-}
-
 export function toFilterRowFromFilm(film: FilmNode): FilterRow {
   const best = film.bestCopy;
   const filters = deriveFilters(
@@ -93,9 +79,6 @@ export function toFilterRowFromFilm(film: FilmNode): FilterRow {
   };
 }
 
-/** Back-compat shim so older callers keep compiling during migration. */
-export const toFilterRow = toFilterRowFromVideo;
-
 export function timeOfDayGreeting(now: Date): string {
   const h = now.getHours();
   if (h < 12) return strings.greetingMorning;
@@ -103,7 +86,7 @@ export function timeOfDayGreeting(now: Date): string {
   return strings.greetingEvening;
 }
 
-export function pickSuggestions(film: FilterRow, all: FilterRow[]): VideoNode[] {
+export function pickSuggestions(film: FilterRow, all: FilterRow[]): FilmCopyNode[] {
   const tokens = film.genre.split(/[·\s/]+/).filter(Boolean);
   const scored: { row: FilterRow; score: number }[] = [];
   for (const f of all) {

@@ -31,6 +31,7 @@ pub struct ServerHandle {
 pub fn spawn_server(
     db_path: PathBuf,
     segment_dir: PathBuf,
+    poster_dir: PathBuf,
     project_root: PathBuf,
     ffmpeg_paths: FfmpegPaths,
 ) -> Result<ServerHandle, SpawnError> {
@@ -43,6 +44,7 @@ pub fn spawn_server(
         port,
         db_path = %db_path.display(),
         segment_dir = %segment_dir.display(),
+        poster_dir = %poster_dir.display(),
         "starting embedded xstream server"
     );
 
@@ -50,6 +52,7 @@ pub fn spawn_server(
         bind_addr,
         db_path,
         segment_dir,
+        poster_dir,
         project_root,
         ffmpeg_override: Some(ffmpeg_paths),
     };

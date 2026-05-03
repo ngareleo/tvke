@@ -17,6 +17,13 @@ pub struct VideoMetadataRow {
     pub rating: Option<f64>,
     pub plot: Option<String>,
     pub poster_url: Option<String>,
+    /// Filename (basename only — e.g. `abc123…ef.jpg`) of the locally
+    /// cached copy of `poster_url`. Resolved against
+    /// `AppConfig::poster_dir`. Set by `services::poster_cache` after a
+    /// successful download. NULL means the image is not yet cached
+    /// locally (or download failed); clients should fall back to
+    /// `poster_url`.
+    pub poster_local_path: Option<String>,
     pub matched_at: String,
 }
 
@@ -33,6 +40,7 @@ impl VideoMetadataRow {
             rating: r.get("rating")?,
             plot: r.get("plot")?,
             poster_url: r.get("poster_url")?,
+            poster_local_path: r.get("poster_local_path")?,
             matched_at: r.get("matched_at")?,
         })
     }
@@ -80,6 +88,11 @@ pub fn count_matched_by_library(db: &Db, library_id: &str) -> DbResult<(i64, i64
 
 pub fn upsert_video_metadata(db: &Db, row: &VideoMetadataRow) -> DbResult<()> {
     db.with(|c| {
+        // `poster_local_path` is managed exclusively by
+        // `services::poster_cache` — the scanner's upsert preserves it
+        // (COALESCE) so a re-match with the same poster_url doesn't
+        // bounce a freshly-downloaded copy. Stale-cache invalidation
+        // when poster_url changes is logged tech debt.
         c.execute(
             r#"INSERT INTO video_metadata
                  (video_id, imdb_id, title, year, genre, director, cast_list,
@@ -111,6 +124,36 @@ pub fn upsert_video_metadata(db: &Db, row: &VideoMetadataRow) -> DbResult<()> {
             ],
         )?;
         Ok(())
+    })
+}
+
+/// Set `video_metadata.poster_local_path` after a successful download.
+/// Called by `services::poster_cache`.
+pub fn set_video_poster_local_path(db: &Db, video_id: &str, basename: &str) -> DbResult<()> {
+    db.with(|c| {
+        c.execute(
+            "UPDATE video_metadata SET poster_local_path = ?2 WHERE video_id = ?1",
+            params![video_id, basename],
+        )?;
+        Ok(())
+    })
+}
+
+/// Pending-download list: every metadata row where the OMDb URL is
+/// known but the local cache has nothing. Returns
+/// `(video_id, poster_url)` pairs.
+pub fn list_videos_needing_poster_download(db: &Db) -> DbResult<Vec<(String, String)>> {
+    db.with(|c| {
+        let mut stmt = c.prepare(
+            r#"SELECT video_id, poster_url FROM video_metadata
+                 WHERE poster_url IS NOT NULL
+                   AND poster_url <> ''
+                   AND (poster_local_path IS NULL OR poster_local_path = '')"#,
+        )?;
+        let rows =
+            stmt.query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)))?;
+        let collected: rusqlite::Result<Vec<_>> = rows.collect();
+        Ok(collected?)
     })
 }
 
@@ -194,6 +237,7 @@ mod tests {
             rating: Some(7.5),
             plot: Some("A plot.".to_string()),
             poster_url: Some("https://example.com/p.jpg".to_string()),
+            poster_local_path: None,
             matched_at: "2026-01-01T00:00:00.000Z".to_string(),
         }
     }

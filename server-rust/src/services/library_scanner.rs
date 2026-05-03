@@ -74,8 +74,24 @@ pub async fn scan_libraries(ctx: &AppContext) {
         info!(library_count = libraries.len(), "library.scan started");
 
         for library in &libraries {
-            // Probe access first — emit `library_skipped` for unreachable
-            // paths (offline mount, deleted directory).
+            // Profile availability is the first-class signal: when the
+            // probe has flagged the library `offline`, skip the scan
+            // outright. The existing `videos`/`films`/`shows` rows stay
+            // put — the user can still browse what's catalogued, only
+            // playback is blocked. The probe re-kicks a one-shot scan
+            // when the library comes back online (see
+            // `services::profile_availability`).
+            if library.status == "offline" {
+                info!(
+                    library_name = %library.name,
+                    path = %library.path,
+                    "library_skipped — offline (probe says path unreachable)",
+                );
+                continue;
+            }
+            // Path-not-accessible fallback for the very first scan
+            // (status defaults to `unknown` until the probe lands one
+            // cycle later).
             if !Path::new(&library.path).exists() {
                 warn!(
                     library_name = %library.name,
@@ -127,7 +143,7 @@ pub async fn scan_libraries(ctx: &AppContext) {
 /// Walk + probe + upsert one library. Per-file errors are logged and the
 /// scan continues; DB-write failures abort the per-file unit but keep the
 /// rest of the library going.
-async fn scan_one_library(ctx: &AppContext, library: &LibraryRow) {
+pub async fn scan_one_library(ctx: &AppContext, library: &LibraryRow) {
     let extensions = parse_extensions(library);
     let library_path = PathBuf::from(&library.path);
 
@@ -266,10 +282,15 @@ async fn process_file(path: &Path, library_id: &str, ctx: &AppContext) -> Result
         scanned_at: Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true),
         content_fingerprint: fingerprint,
         native_resolution,
-        // Film resolution happens in a separate post-step (assign_video_to_film)
-        // after MovieUnit detection + OMDb match. The DB default for `role` is
-        // 'main'; passing it explicitly keeps the upsert clear.
+        // Film/Show resolution happens in separate post-steps:
+        //   movies → resolve_films_for_library → assign_video_to_film
+        //   tvShows → discover_tv_shows → assign_video_to_show
+        // The DB default for `role` is 'main'; passing it explicitly
+        // keeps the upsert clear.
         film_id: None,
+        show_id: None,
+        show_season: None,
+        show_episode: None,
         role: "main".to_string(),
     };
 
@@ -428,6 +449,15 @@ async fn match_one_video(ctx: &AppContext, omdb: &OmdbClient, video_id: &str) {
         }
     };
 
+    // Episode files belong to a Show — the show-level OMDb match lives
+    // in `tv_discovery`. Don't pollute `video_metadata` with a per-file
+    // match keyed on a parsed episode filename ("Show.S01E01" → wrong
+    // OMDb hit). Skip silently; the show row carries the metadata via
+    // `show_metadata`.
+    if video.show_id.is_some() {
+        return;
+    }
+
     let (title, year) = parse_title_from_filename(&video.filename);
     let result: OmdbResult = match omdb.search(&title, year).await {
         Some(r) => r,
@@ -464,6 +494,7 @@ async fn match_one_video(ctx: &AppContext, omdb: &OmdbClient, video_id: &str) {
         rating: result.imdb_rating,
         plot: result.plot,
         poster_url: result.poster_url,
+        poster_local_path: None,
         matched_at: Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true),
     };
 
@@ -1182,6 +1213,8 @@ mod tests {
             media_type: "movies".to_string(),
             env: "user".to_string(),
             video_extensions: ext_json.to_string(),
+            status: "unknown".to_string(),
+            last_seen_at: None,
         }
     }
 
@@ -1317,6 +1350,9 @@ mod tests {
             content_fingerprint: "1000:abc".to_string(),
             native_resolution: None,
             film_id: None,
+            show_id: None,
+            show_season: None,
+            show_episode: None,
             role: "main".to_string(),
         }
     }

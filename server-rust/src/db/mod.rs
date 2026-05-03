@@ -117,7 +117,7 @@ pub use queries::films::{
 pub use queries::jobs::{get_job_by_id, TranscodeJobRow};
 pub use queries::libraries::{
     create_library, delete_library, get_all_libraries, get_library_by_id, update_library,
-    upsert_library, LibraryRow, LibraryUpdate,
+    update_library_status, upsert_library, LibraryRow, LibraryUpdate,
 };
 pub use queries::playback_history::{
     get_playback_history, insert_playback_session, PlaybackHistoryRow,
@@ -126,14 +126,25 @@ pub use queries::seasons::{
     get_episodes_by_show, get_seasons_by_show, upsert_episode, upsert_season, EpisodeRow, SeasonRow,
 };
 pub use queries::user_settings::{get_setting, set_setting};
+pub use queries::show_metadata::{
+    get_show_metadata, list_shows_needing_poster_download, set_show_poster_local_path,
+    upsert_show_metadata, ShowMetadataRow,
+};
+pub use queries::shows::{
+    count_shows, find_show_by_imdb_id, find_show_by_parsed_title_key, get_show_by_id,
+    link_show_to_imdb, list_shows, merge_shows, resolve_show_for_directory, show_id_for,
+    upsert_show, ShowRow, ShowsFilter,
+};
 pub use queries::video_metadata::{
     count_matched_by_library, delete_video_metadata, get_metadata_by_video_id,
-    get_unmatched_video_ids, has_video_metadata, upsert_video_metadata, VideoMetadataRow,
+    get_unmatched_video_ids, has_video_metadata, list_videos_needing_poster_download,
+    set_video_poster_local_path, upsert_video_metadata, VideoMetadataRow,
 };
 pub use queries::videos::{
-    count_videos_by_library, get_streams_by_video_id, get_video_by_id, get_videos,
-    get_videos_by_film_id, get_videos_by_library, replace_video_streams, sum_file_size_by_library,
-    upsert_video, NewVideoStream, VideoFilter, VideoRow, VideoStreamRow, VideosFilter,
+    assign_video_to_show, count_videos_by_library, get_streams_by_video_id, get_video_by_id,
+    get_videos, get_videos_by_film_id, get_videos_by_library, get_videos_by_show_episode,
+    get_videos_by_show_id, replace_video_streams, sum_file_size_by_library, upsert_video,
+    NewVideoStream, VideoFilter, VideoRow, VideoStreamRow, VideosFilter,
 };
 pub use queries::watchlist::{
     add_watchlist_item, get_watchlist, get_watchlist_item_by_film_id, get_watchlist_item_by_id,

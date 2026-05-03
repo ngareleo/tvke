@@ -28,11 +28,13 @@ const FILM_FRAGMENT = graphql`
       rating
       posterUrl
     }
-    seasons {
-      seasonNumber
-      episodes {
-        episodeNumber
-        onDisk
+    show {
+      seasons {
+        seasonNumber
+        episodes {
+          episodeNumber
+          onDisk
+        }
       }
     }
     ...SeasonsPanel_video
@@ -71,9 +73,10 @@ export const FilmRow: FC<FilmRowProps> = ({ video, selected, onOpen, onEdit }) =
     ? (RESOLUTION_LABEL[data.nativeResolution] ?? null)
     : null;
 
-  const seasonsCount = data.seasons.length;
-  const totalEpisodes = data.seasons.reduce((sum, s) => sum + s.episodes.length, 0);
-  const onDiskEpisodes = data.seasons.reduce(
+  const seasons = data.show?.seasons ?? [];
+  const seasonsCount = seasons.length;
+  const totalEpisodes = seasons.reduce((sum, s) => sum + s.episodes.length, 0);
+  const onDiskEpisodes = seasons.reduce(
     (sum, s) => sum + s.episodes.filter((e) => e.onDisk).length,
     0
   );

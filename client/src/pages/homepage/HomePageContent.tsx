@@ -9,6 +9,9 @@ import { FilmTile } from "~/components/film-tile/FilmTile";
 import { FilterSlide } from "~/components/filter-slide/FilterSlide";
 import { PosterRow } from "~/components/poster-row/PosterRow";
 import { SearchSlide } from "~/components/search-slide/SearchSlide";
+import { ShowDetailsOverlay } from "~/components/show-details-overlay/ShowDetailsOverlay";
+import { ShowTile } from "~/components/show-tile/ShowTile";
+import { resolvePosterUrl } from "~/config/rustOrigin";
 import { IconClose, IconSearch } from "~/lib/icons";
 import type { HomePageContentQuery } from "~/relay/__generated__/HomePageContentQuery.graphql";
 import { EMPTY_FILTERS } from "~/utils/filters";
@@ -21,7 +24,6 @@ import {
   pickSuggestions,
   timeOfDayGreeting,
   toFilterRowFromFilm,
-  toFilterRowFromVideo,
 } from "./HomePageContent.utils";
 import { useHeroMode } from "./useHeroMode";
 
@@ -85,10 +87,20 @@ const HOMEPAGE_QUERY = graphql`
         }
       }
     }
-    tvShows: videos(first: 200, mediaType: TV_SHOWS) {
+    tvShows: shows(first: 200) {
       edges {
         node {
-          ...HomePageContent_videoNode @relay(mask: false)
+          id
+          title
+          year
+          metadata {
+            year
+            genre
+            director
+            posterUrl
+          }
+          ...ShowTile_show
+          ...ShowDetailsOverlay_show
         }
       }
     }
@@ -109,14 +121,17 @@ export const HomePageContent: FC = () => {
     () => (data.movies?.edges ?? []).map((edge) => toFilterRowFromFilm(edge.node)),
     [data]
   );
-  const tvShows = useMemo<FilterRow[]>(
-    () => (data.tvShows?.edges ?? []).map((edge) => toFilterRowFromVideo(edge.node)),
-    [data]
-  );
-  const rows = useMemo<FilterRow[]>(() => [...movies, ...tvShows], [movies, tvShows]);
+  // Shows are kept separate from FilterRow — they're a distinct entity
+  // shape (Show, not Video) and render through ShowTile/ShowDetailsOverlay.
+  // Search/filter currently runs against Films only; Show search is
+  // declared tech debt (see docs/todo.md).
+  const tvShowEdges = useMemo(() => data.tvShows?.edges ?? [], [data]);
+  const rows = movies;
 
   const filmId = params.get("film");
   const selectedRow = filmId ? rows.find((r) => r.id === filmId) : undefined;
+  const showId = params.get("show");
+  const selectedShowEdge = showId ? tvShowEdges.find((e) => e.node.id === showId) : undefined;
 
   // Hero slideshow: cycle up to 4 movies that have posters. Lab spec uses
   // 7s interval + 0.7s crossfade + Ken Burns; matched here.
@@ -204,8 +219,27 @@ export const HomePageContent: FC = () => {
     setParams(next);
   }, [params, setParams]);
 
+  const openShow = useCallback(
+    (id: string): void => {
+      const next = new URLSearchParams(params);
+      next.set("show", id);
+      setParams(next);
+    },
+    [params, setParams]
+  );
+
+  const closeShow = useCallback((): void => {
+    const next = new URLSearchParams(params);
+    next.delete("show");
+    setParams(next);
+  }, [params, setParams]);
+
   if (!hasLibraries) {
     return <EmptyLibrariesHero watermark={strings.emptyWatermark} />;
+  }
+
+  if (selectedShowEdge) {
+    return <ShowDetailsOverlay show={selectedShowEdge.node} onClose={closeShow} />;
   }
 
   if (selectedRow) {
@@ -234,7 +268,7 @@ export const HomePageContent: FC = () => {
                 return (
                   <img
                     key={film.id}
-                    src={upgradePosterUrl(url, 1600)}
+                    src={upgradePosterUrl(resolvePosterUrl(url) ?? url, 1600)}
                     alt=""
                     className={mergeClasses(
                       styles.heroImg,
@@ -401,10 +435,14 @@ export const HomePageContent: FC = () => {
               </PosterRow>
             )}
 
-            {tvShows.length > 0 && (
+            {tvShowEdges.length > 0 && (
               <PosterRow title={strings.rowTvShows}>
-                {tvShows.map((r) => (
-                  <FilmTile key={r.id} video={r.node} onClick={() => openFilm(r.id)} />
+                {tvShowEdges.map((edge) => (
+                  <ShowTile
+                    key={edge.node.id}
+                    show={edge.node}
+                    onClick={() => openShow(edge.node.id)}
+                  />
                 ))}
               </PosterRow>
             )}

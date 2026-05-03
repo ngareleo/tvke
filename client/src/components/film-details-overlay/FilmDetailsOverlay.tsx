@@ -51,9 +51,11 @@ const OVERLAY_FRAGMENT = graphql`
     videoStream {
       codec
     }
-    seasons {
-      episodes {
-        onDisk
+    show {
+      seasons {
+        episodes {
+          onDisk
+        }
       }
     }
     ...SeasonsPanel_video
@@ -123,12 +125,13 @@ export const FilmDetailsOverlay: FC<FilmDetailsOverlayProps> = ({
     [copies]
   );
 
-  const totalEpisodes = (data.seasons ?? []).reduce((sum, s) => sum + s.episodes.length, 0);
-  const availableEpisodes = (data.seasons ?? []).reduce(
+  const seasons = data.show?.seasons ?? [];
+  const totalEpisodes = seasons.reduce((sum, s) => sum + s.episodes.length, 0);
+  const availableEpisodes = seasons.reduce(
     (sum, s) => sum + s.episodes.filter((e) => e.onDisk).length,
     0
   );
-  const seasonCount = (data.seasons ?? []).length;
+  const seasonCount = seasons.length;
   const resolution = data.nativeResolution
     ? (RESOLUTION_LABEL[data.nativeResolution] ?? null)
     : null;

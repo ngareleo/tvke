@@ -43,3 +43,37 @@ These items require the OTel metrics SDK (`MeterProvider`) which is not yet wire
 ## Server roadmap
 
 - [ ] **OMDB-002** Round out the OMDb surface area: confirm the `match_video` mutation and the `search_omdb` query are wired through `services::omdb::OmdbClient` end-to-end (ID lookup + free-text search), with the same retry / no-API-key fallback behaviour as `auto_match_library`.
+
+## Show Entity + Profile Availability follow-ups
+
+Logged when the Show entity, profile-availability probe, and pre-prod tech-debt cleanup landed (see `docs/architecture/Library-Scan/03-Show-Entity.md` + `04-Profile-Availability.md`). Each item is a clean-up that surfaced during the planning pass but was deferred to keep the bundle reviewable.
+
+- [ ] **SHOW-WL-001** `addShowToWatchlist` mutation. The `watchlist_items` table is keyed on `film_id` only; shows have no parallel mutation path. Either (a) add `addShowToWatchlist` + a sibling `show_id` column with a CHECK to keep one of the two FKs non-null, or (b) make the watchlist polymorphic via a `WatchlistEntity = Film | Show` union. Dev DB watchlist is empty so deferral has no migration risk.
+
+- [ ] **PROGRESS-001** Continue-watching / watched / queued split. `watchlist_items.progress_seconds` is a single scalar; it doesn't model "in progress vs queued vs watched". Episode-level progress for shows lives here too — currently every progress write goes against the Film, not the Episode.
+
+- [ ] **EXTRA-001** Episode extras (`videos.role = 'extra'` for episodes). The `role` column is shape-ready but unused for TV. Once we ingest "behind the scenes" / "specials" alongside an episode file, hook them in via `role='extra'` so the picker can group them like movie extras.
+
+- [ ] **TITLE-UNIFICATION-001** Polymorphic Title/MediaItem. Film and Show diverged into two parallel surfaces (entity, metadata table, GraphQL type). For features that don't care about the distinction (search, watchlist, recently-added), a `Title` interface or `MediaItem` union may simplify call sites. Not worth doing now; declared so we don't drift further apart unintentionally.
+
+- [ ] **MEDIATYPE-001** `Library.mediaType` redundancy. With Films and Shows as canonical entities, `library.media_type` is mostly bookkeeping the scanner uses to pick a discovery path. Cleanup: derive media type from observed content (Films present → "movies"; Shows present → "tvShows") and treat the column as a hint, not a source of truth.
+
+- [ ] **SHOW-SUGGEST-001** Suggestions for Shows. `pickSuggestions` runs against Films only ("you might also like"). The TV detail overlay has no equivalent rail.
+
+- [ ] **EP-RECONCILE-001** Cross-library episode reconciliation. Two libraries indexing different subsets of a season produce a complete merged season tree (the Show has both libraries in `profiles`), but there's no UX to "play S01 entirely from library A; fall back to B for S02". Today the picker selects bestCopy per episode independently.
+
+- [ ] **AVAIL-PICKER-001** Online/offline-aware bestCopy + picker UI. `Film.bestCopy` and `Episode.bestCopy` should prefer copies whose owning `Library.status = ONLINE`, falling back to offline only if no online copy exists. `FilmVariants` should render offline copies dimmed with a badge and disable the play CTA when the selected copy is offline. The data is in place; the resolver bias and the picker treatment are not.
+
+## Poster cache follow-ups
+
+Logged when `services/poster_cache.rs` and `routes/poster.rs` landed (`docs/architecture/Library-Scan/05-Poster-Caching.md`). Each is a worker refinement that didn't need to ship in the initial bundle.
+
+- [ ] **POSTER-EVICT-001** Disk LRU eviction. The cache directory grows unbounded — every distinct OMDb poster URL ever scanned stays. Add a max-size knob (default e.g. 500 MB) and an LRU sweep based on access mtime. Mirror `services::cache_index` if its eviction logic is reusable.
+
+- [ ] **POSTER-RETRY-001** Backoff on 404 / dead poster URLs. Today a permanently-404 URL retries every 15 s forever. Track per-URL failure counts in memory (or a `poster_failures` table) and cap retries (e.g. 3 attempts, then mark "give up" with a TTL).
+
+- [ ] **POSTER-INVAL-001** Stale-cache invalidation when `poster_url` changes. Re-matching a video to a different IMDb id replaces `video_metadata.poster_url` but the upsert preserves the old `poster_local_path`. Either (a) track the URL the cache was downloaded from in a `poster_url_at_download` column and clear `poster_local_path` when they diverge, or (b) have the worker compare URL-vs-cached-hash on every cycle.
+
+- [ ] **POSTER-FORMAT-001** Image format conversion. OMDb serves a mix of JPEG / PNG / WEBP / GIF. Consider downscaling on cache (e.g. ffmpeg → 600px wide JPEG) so the cache footprint shrinks and the client never has to resize a 2000×3000 source.
+
+- [ ] **POSTER-CONCURRENCY-001** Adaptive concurrency limit. `MAX_CONCURRENCY = 4` is a guess. On a fast pipe it's underprovisioned; on a slow tethered hotspot it's too aggressive. Consider tying it to library size or making it a config knob.
