@@ -694,9 +694,9 @@ fn enumerate_movie_units(library_root: &Path, extensions: &HashSet<String>) -> V
 
 /// For each MovieUnit, find or create its Film and set `videos.film_id`
 /// + `role` for the main file and any extras. Runs after the per-file
-/// `scan_one_library` upsert pass; before OMDb match. Pre-OMDb the Film
-/// is keyed on `parsed_title_key`; the post-OMDb step in `match_one_video`
-/// upgrades it to imdb-keyed and merges duplicates.
+///   `scan_one_library` upsert pass; before OMDb match. Pre-OMDb the Film
+///   is keyed on `parsed_title_key`; the post-OMDb step in `match_one_video`
+///   upgrades it to imdb-keyed and merges duplicates.
 fn resolve_films_for_library(ctx: &AppContext, library: &LibraryRow) {
     let extensions = parse_extensions(library);
     let library_path = PathBuf::from(&library.path);

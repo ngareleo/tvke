@@ -10,6 +10,11 @@ use super::transcode_job::TranscodeJob;
 use super::video::Video;
 use super::watchlist::WatchlistItem;
 
+// Variants are GraphQL-typed structs of varying sizes; boxing one to
+// equalise stack footprint would force every constructor + match arm to
+// add the indirection without any practical benefit (this enum is only
+// ever held briefly during resolver dispatch, never in hot loops).
+#[allow(clippy::large_enum_variant)]
 #[derive(Interface)]
 #[graphql(field(name = "id", ty = "&ID"))]
 pub enum Node {
