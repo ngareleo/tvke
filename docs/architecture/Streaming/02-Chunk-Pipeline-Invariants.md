@@ -64,13 +64,26 @@ What this costs: lookahead holds ~60–90 s of media in JS memory (~100–300 MB
 
 Code: `client/src/services/chunkPipeline.ts::openSlot` (queueing branch), `::drainAndDispatch` (drain + outcome decision).
 
+## 4. At most one lookahead in flight at a time (serial prefetch gate)
+
+The dual-gate for prefetch fires ensures exactly one lookahead chunk is requested per foreground chunk under steady state — preventing multiple orphan ffmpeg processes at the OLD playhead position when the user aggressively seeks. The gate is **serial primary + RAF safety net**:
+
+- **Serial primary (tighter):** prefetch fires only when the prior lookahead completes (`foregroundTranscodeComplete === true`).
+- **RAF safety net (looser):** if the serial condition stalls (e.g. lookahead encodes very slowly), prefetch will also fire when `timeUntilEnd <= clientConfig.playback.prefetchThresholdS (90 s)` to ensure playback doesn't starve.
+
+The serial gate is updated on two events: (1) when `onTranscodeComplete(jobId)` fires from a `transcode.job` COMPLETE event (the lookahead finished encoding), and (2) when `promoteLookahead` is called (the lookahead becomes the new foreground, resetting the gate so a fresh lookahead can be requested). For a zero-time-to-first-frame cold start, the initial chunk (no prior lookahead) skips the serial check and fires immediately. Stale-update filtering (comparing `jobId` to the expected foreground `jobId`) prevents progress events from orphaned jobs (killed before completion) from resetting the gate.
+
+**Verification:** `Seq` queries for `transcode.job` now show at most one lookahead in flight per foreground at any moment — the `playback.lookahead_job_id` snapshot attribute on `playback.session` never overlaps with a second active lookahead. Pre-fix evidence (trace `7f9c6d03…`): 2-3 concurrent lookahead spans under aggressive seek. Post-fix: 1 lookahead per foreground, serialized. Pool cap was bumped from 3 → 5 to accommodate the higher permissiveness of rapid seek-cancel-respawn cycles without hitting `CAPACITY_EXHAUSTED`.
+
+Code: `client/src/services/playbackController.ts::handleSeeking` (cancel-on-seek + serial-gate reset), `::onTranscodeComplete` (gate set on COMPLETE event, filtered by `jobId`), `::promoteLookahead` (gate reset when lookahead becomes foreground), `::startPrefetchLoop` (dual-gate check before firing).
+
 ## How they interact
 
-| Without #1 (PTS) | Without #2 (re-init) | Without #3 (queueing) |
-|---|---|---|
-| Chunks stack at the same PTS, buffer balloons → QuotaExceeded | Chunks N>0 invisible past chunk 0's PTS, playhead skips ahead | Foreground tail fragments into keyframes-only after lookahead init clobber |
+| Without #1 (PTS) | Without #2 (re-init) | Without #3 (queueing) | Without #4 (serial gate) |
+|---|---|---|---|
+| Chunks stack at the same PTS, buffer balloons → QuotaExceeded | Chunks N>0 invisible past chunk 0's PTS, playhead skips ahead | Foreground tail fragments into keyframes-only after lookahead init clobber | Orphan ffmpeg processes accumulate on aggressive seeks; pool fills and rejects new requests |
 
-A trace where the playhead "skips" a whole chunk and later stalls is almost always (2) or (3); a trace where the buffer balloons to hundreds of MB before stalling is (1).
+A trace where the playhead "skips" a whole chunk and later stalls is almost always (2) or (3); a trace where the buffer balloons to hundreds of MB before stalling is (1); a trace showing rising ffmpeg process count during seek storms is (4).
 
 ## Supporting constants
 

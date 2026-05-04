@@ -43,7 +43,7 @@ All ops-tunable timing and policy knobs for ffmpeg process management. Both dev 
 
 | Field | Default | Purpose |
 |---|---|---|
-| `max_concurrent_jobs` | `3` | Cap on concurrently encoding ffmpeg processes (dying jobs excluded from count). |
+| `max_concurrent_jobs` | `5` | Cap on concurrently encoding ffmpeg processes (dying jobs excluded from count). Bumped from 3 to 5 for the serial-lookahead-gate model. |
 | `force_kill_timeout_ms` | `2 000` | SIGTERM → SIGKILL grace per job. Caps the dying-zombie window for 4K-software encodes. |
 | `shutdown_timeout_ms` | `5 000` | Total wait in `kill_all_jobs` before the terminal SIGKILL pass. Must be > `force_kill_timeout_ms`. |
 | `orphan_timeout_ms` | `30 000` | Kill ffmpeg if a job has zero connections after this many ms (covers prefetched chunks where the user seeks away). |

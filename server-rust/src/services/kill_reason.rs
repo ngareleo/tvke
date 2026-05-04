@@ -8,6 +8,11 @@ use tracing::warn;
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum KillReason {
     ClientRequest,
+    /// Explicit cancellation initiated by a client mutation
+    /// (`cancelTranscode`). Distinct from `ClientRequest`, which is the
+    /// fallback used when a kill arrives without a recorded reason.
+    /// Fires on seek-driven cleanup of obsolete prefetched chunks.
+    ClientCancel,
     ClientDisconnected,
     StreamIdleTimeout,
     OrphanNoConnection,
@@ -22,6 +27,7 @@ impl KillReason {
     pub fn as_wire_str(self) -> &'static str {
         match self {
             Self::ClientRequest => "client_request",
+            Self::ClientCancel => "client_cancel",
             Self::ClientDisconnected => "client_disconnected",
             Self::StreamIdleTimeout => "stream_idle_timeout",
             Self::OrphanNoConnection => "orphan_no_connection",
@@ -36,6 +42,7 @@ impl KillReason {
     pub fn from_wire_str(s: &str) -> Option<Self> {
         let mapped = match s {
             "client_request" => Self::ClientRequest,
+            "client_cancel" => Self::ClientCancel,
             "client_disconnected" => Self::ClientDisconnected,
             "stream_idle_timeout" => Self::StreamIdleTimeout,
             "orphan_no_connection" => Self::OrphanNoConnection,
@@ -59,6 +66,7 @@ mod tests {
     fn round_trip_all_variants() {
         for variant in [
             KillReason::ClientRequest,
+            KillReason::ClientCancel,
             KillReason::ClientDisconnected,
             KillReason::StreamIdleTimeout,
             KillReason::OrphanNoConnection,

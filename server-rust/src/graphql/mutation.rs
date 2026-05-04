@@ -39,6 +39,27 @@ impl Mutation {
             .collect())
     }
 
+    /// Cancel a list of in-flight transcode jobs by their global IDs.
+    /// Fire-and-forget — the resolver always returns `true` and any
+    /// per-id failure is logged inside `FfmpegPool::kill_job`. The
+    /// pool's permit-drop runs synchronously, so a follow-up
+    /// `start_transcode` from the same client (e.g. the seek path's new
+    /// foreground chunk) sees the freed slot in <50 ms instead of
+    /// queueing behind the kernel's process reap.
+    async fn cancel_transcode(
+        &self,
+        ctx: &Context<'_>,
+        job_ids: Vec<ID>,
+    ) -> async_graphql::Result<bool> {
+        use crate::services::kill_reason::KillReason;
+        let app_ctx = ctx.data_unchecked::<crate::config::AppContext>();
+        for global_id in job_ids {
+            let (_, local_id) = from_global_id(&global_id)?;
+            app_ctx.pool.kill_job(&local_id, KillReason::ClientCancel);
+        }
+        Ok(true)
+    }
+
     /// Spawn (or reuse) a transcode job for the requested video range.
     /// Returns either a `TranscodeJob` payload (the job is now in the
     /// chunker's job_store and segments will arrive via `/stream/:jobId`)

@@ -584,6 +584,31 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn kill_job_propagates_client_cancel_reason_to_exit_outcome() {
+        // The cancelTranscode GraphQL mutation calls `kill_job(id, ClientCancel)`
+        // for every obsolete job at seek time. The reason must round-trip
+        // through the pool's `ExitOutcome::Killed { reason }` so
+        // `transcode_killed` events in Seq carry `kill_reason: "client_cancel"`
+        // instead of the `ClientRequest` fallback.
+        let pool = FfmpegPool::new(cfg(1));
+        let reservation = pool.try_reserve_slot("seek-victim".into()).expect("slot");
+        let pool_for_kill = pool.clone();
+        let args = [OsStr::new("30").to_owned()];
+        let run_fut = pool.run_to_completion(reservation, Path::new("/bin/sleep"), &args);
+        let kill_fut = async move {
+            tokio::time::sleep(Duration::from_millis(80)).await;
+            pool_for_kill.kill_job("seek-victim", KillReason::ClientCancel);
+        };
+        let (result, _) = tokio::join!(run_fut, kill_fut);
+        match result.expect("run") {
+            ExitOutcome::Killed { reason, .. } => {
+                assert_eq!(reason, KillReason::ClientCancel);
+            }
+            other => panic!("expected Killed with ClientCancel, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
     async fn kill_job_idempotent_second_call_no_op() {
         let pool = FfmpegPool::new(cfg(1));
         let reservation = pool.try_reserve_slot("sleeper".into()).expect("slot");

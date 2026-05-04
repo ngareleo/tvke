@@ -74,7 +74,7 @@ export const VideoPlayer: FC<Props> = ({ video, onStatusChange }) => {
   const [isEnded, setIsEnded] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
 
-  const { status, error, startPlayback, prewarm, seekTo } = useVideoPlayback(
+  const { status, error, startPlayback, prewarm, onTranscodeComplete, seekTo } = useVideoPlayback(
     videoRef,
     data.id,
     data.durationSeconds,
@@ -101,6 +101,14 @@ export const VideoPlayer: FC<Props> = ({ video, onStatusChange }) => {
 
   useJobSubscription(activeJobId, (progress) => {
     setJobProgress(progress);
+    // Bridge server-side `transcodeJobUpdated → COMPLETE` into the
+    // controller's serial-prefetch gate. The controller filters stale
+    // updates (a previous foreground's job id) so it's safe to forward
+    // unconditionally on COMPLETE — `activeJobId` is the current
+    // foreground at the moment this callback was registered.
+    if (progress.status === "COMPLETE" && activeJobId) {
+      onTranscodeComplete(activeJobId);
+    }
     if (progress.status === "ERROR") {
       // Map the typed code to a user-facing line. We don't auto-retry from the
       // subscription path: PROBE_FAILED / ENCODE_FAILED reflect file or

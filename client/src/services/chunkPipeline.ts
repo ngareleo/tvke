@@ -139,6 +139,18 @@ export class ChunkPipeline {
     return this.lookahead !== null;
   }
 
+  /** Returns the raw job IDs of every active slot (foreground + lookahead).
+   *  Used by `handleSeeking` to feed `cancelTranscode` so the server kills
+   *  obsolete prefetched chunks immediately, freeing pool slots for the
+   *  seek's foreground mutation. Returns `[]` when both slots are empty
+   *  (e.g. between teardown and the next session's first chunk). */
+  currentJobIds(): string[] {
+    const ids: string[] = [];
+    if (this.foreground) ids.push(this.foreground.jobId);
+    if (this.lookahead) ids.push(this.lookahead.jobId);
+    return ids;
+  }
+
   /** Promotes the lookahead slot to foreground (called by PlaybackController
    *  when the foreground stream's onStreamEnded fires). Returns the new
    *  foreground's `[chunkStartS, chunkEndS)` bounds so the controller can
@@ -148,7 +160,12 @@ export class ChunkPipeline {
    *  need to wait until the queued segments are appended + any deferred
    *  outcome is dispatched. Production callers can ignore `drain`; tests
    *  await it. */
-  promoteLookahead(): { chunkStartS: number; chunkEndS: number; drain: Promise<void> } {
+  promoteLookahead(): {
+    jobId: string;
+    chunkStartS: number;
+    chunkEndS: number;
+    drain: Promise<void>;
+  } {
     if (!this.lookahead) {
       throw new Error("ChunkPipeline.promoteLookahead: no lookahead to promote");
     }
@@ -161,7 +178,12 @@ export class ChunkPipeline {
     // the drain finishes would race the buffer-state check that
     // PlaybackController.handleChunkEnded does.
     const drain = this.drainAndDispatch(slot);
-    return { chunkStartS: slot.chunkStartS, chunkEndS: slot.chunkEndS, drain };
+    return {
+      jobId: slot.jobId,
+      chunkStartS: slot.chunkStartS,
+      chunkEndS: slot.chunkEndS,
+      drain,
+    };
   }
 
   /** Drains a slot's queued lookahead segments through the same per-segment

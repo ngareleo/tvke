@@ -2,9 +2,11 @@ import { type RefObject, useCallback, useEffect, useRef, useState } from "react"
 import { graphql, useMutation } from "react-relay";
 
 import { clientConfig } from "~/config/appConfig.js";
+import type { useChunkedPlaybackCancelChunksMutation } from "~/relay/__generated__/useChunkedPlaybackCancelChunksMutation.graphql.js";
 import type { useChunkedPlaybackRecordSessionMutation } from "~/relay/__generated__/useChunkedPlaybackRecordSessionMutation.graphql.js";
 import type { useChunkedPlaybackStartChunkMutation } from "~/relay/__generated__/useChunkedPlaybackStartChunkMutation.graphql.js";
 import {
+  type CancelTranscodeChunksFn,
   PlaybackController,
   type PlaybackStatus,
   type RecordSessionFn,
@@ -34,6 +36,11 @@ export interface UseChunkedPlaybackResult {
    * click-path mutation simply spawns fresh, identical to today's
    * behaviour. */
   prewarm: (res: Resolution) => void;
+  /** Bridges `transcodeJobUpdated → status: COMPLETE` subscription updates
+   * into the controller so the serial-prefetch gate can open as soon as the
+   * current foreground's encode is done. Stale updates (a previous chunk's
+   * job ID) are filtered inside the controller. */
+  onTranscodeComplete: (jobId: string) => void;
   /** Seek to an absolute position. Stores the intended target before triggering
    * the seeking DOM event so the controller reads the unclamped value. */
   seekTo: (targetSeconds: number) => void;
@@ -69,6 +76,12 @@ const START_CHUNK_MUTATION = graphql`
   }
 `;
 
+const CANCEL_CHUNKS_MUTATION = graphql`
+  mutation useChunkedPlaybackCancelChunksMutation($jobIds: [ID!]!) {
+    cancelTranscode(jobIds: $jobIds)
+  }
+`;
+
 const RECORD_SESSION_MUTATION = graphql`
   mutation useChunkedPlaybackRecordSessionMutation(
     $traceId: String!
@@ -96,6 +109,8 @@ export function useChunkedPlayback(
   onJobCreated?: (jobId: string | null) => void
 ): UseChunkedPlaybackResult {
   const [startChunk] = useMutation<useChunkedPlaybackStartChunkMutation>(START_CHUNK_MUTATION);
+  const [cancelChunks] =
+    useMutation<useChunkedPlaybackCancelChunksMutation>(CANCEL_CHUNKS_MUTATION);
   const [recordSession] =
     useMutation<useChunkedPlaybackRecordSessionMutation>(RECORD_SESSION_MUTATION);
 
@@ -112,6 +127,8 @@ export function useChunkedPlayback(
   videoDurationSRef.current = videoDurationS;
   const startChunkRef = useRef(startChunk);
   startChunkRef.current = startChunk;
+  const cancelChunksRef = useRef(cancelChunks);
+  cancelChunksRef.current = cancelChunks;
   const recordSessionRef = useRef(recordSession);
   recordSessionRef.current = recordSession;
   const onJobCreatedRef = useRef(onJobCreated);
@@ -184,6 +201,20 @@ export function useChunkedPlayback(
         });
       });
 
+    const cancelTranscodeChunks: CancelTranscodeChunksFn = (rawJobIds) => {
+      // Encode each raw job ID into the Relay global form the server's
+      // `from_global_id` expects. Fire-and-forget — the server's
+      // `pool.kill_job` is sync up to the SIGTERM send; the SIGKILL
+      // escalation is deferred. Errors are logged server-side.
+      if (rawJobIds.length === 0) return;
+      const jobIds = rawJobIds.map((raw) => btoa(`TranscodeJob:${raw}`));
+      cancelChunksRef.current({
+        variables: { jobIds },
+        onCompleted: () => {},
+        onError: () => {},
+      });
+    };
+
     const recordSessionFn: RecordSessionFn = ({ traceId, resolution }) => {
       recordSessionRef.current({
         variables: {
@@ -203,6 +234,7 @@ export function useChunkedPlayback(
         getVideoId: () => videoIdRef.current,
         getVideoDurationS: () => videoDurationSRef.current,
         startTranscodeChunk,
+        cancelTranscodeChunks,
         recordSession: recordSessionFn,
       },
       {
@@ -254,5 +286,9 @@ export function useChunkedPlayback(
     controllerRef.current?.seekTo(targetSeconds);
   }, []);
 
-  return { status, error, startPlayback, prewarm, seekTo };
+  const onTranscodeComplete = useCallback((jobId: string): void => {
+    controllerRef.current?.onTranscodeComplete(jobId);
+  }, []);
+
+  return { status, error, startPlayback, prewarm, onTranscodeComplete, seekTo };
 }

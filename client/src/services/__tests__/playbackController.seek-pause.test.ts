@@ -55,6 +55,8 @@ interface FakePipeline {
   resumeLookahead: () => void;
   cancel: (reason: string) => void;
   cancelCalls: string[];
+  currentJobIds: () => string[];
+  setJobIds: (ids: string[]) => void;
 }
 
 interface FakeTimeline {
@@ -82,6 +84,7 @@ interface PrivateController {
 
 function makeFakePipeline(): FakePipeline {
   const cancelCalls: string[] = [];
+  let jobIds: string[] = [];
   return {
     hasLookahead: () => false,
     resumeLookahead: vi.fn(),
@@ -89,6 +92,10 @@ function makeFakePipeline(): FakePipeline {
       cancelCalls.push(reason);
     },
     cancelCalls,
+    currentJobIds: (): string[] => jobIds,
+    setJobIds: (ids: string[]): void => {
+      jobIds = ids;
+    },
   };
 }
 
@@ -117,9 +124,14 @@ function makeFakeBuffer(): FakeBuffer {
   return buf;
 }
 
-function makeController(opts?: { currentTime?: number; durationS?: number }): {
+function makeController(opts?: {
+  currentTime?: number;
+  durationS?: number;
+  cancelTranscodeChunks?: ReturnType<typeof vi.fn>;
+}): {
   controller: PlaybackController;
   videoEl: HTMLVideoElement;
+  cancelTranscodeChunks: ReturnType<typeof vi.fn>;
 } {
   const videoEl = {
     addEventListener: vi.fn(),
@@ -132,12 +144,14 @@ function makeController(opts?: { currentTime?: number; durationS?: number }): {
     buffered: { length: 0, start: () => 0, end: () => 0 },
     play: vi.fn().mockResolvedValue(undefined),
   } as unknown as HTMLVideoElement;
+  const cancelTranscodeChunks = opts?.cancelTranscodeChunks ?? vi.fn();
   const controller = new PlaybackController(
     {
       videoEl,
       getVideoId: () => "v-1",
       getVideoDurationS: () => opts?.durationS ?? 1800,
       startTranscodeChunk: vi.fn(),
+      cancelTranscodeChunks,
       recordSession: vi.fn(),
     },
     {
@@ -146,7 +160,7 @@ function makeController(opts?: { currentTime?: number; durationS?: number }): {
       onJobCreated: vi.fn(),
     }
   );
-  return { controller, videoEl };
+  return { controller, videoEl, cancelTranscodeChunks };
 }
 
 describe("PlaybackController.waitForStartupBuffer (post-seek stall fix)", () => {
@@ -353,8 +367,9 @@ describe("PlaybackController.handleSeeking (slider snap-back + stale-prefetch fi
     priv: SeekableController;
     buf: FakeBuffer;
     videoEl: HTMLVideoElement;
+    cancelTranscodeChunks: ReturnType<typeof vi.fn>;
   } {
-    const { controller, videoEl } = makeController({ currentTime });
+    const { controller, videoEl, cancelTranscodeChunks } = makeController({ currentTime });
     (videoEl as unknown as { currentTime: number; paused: boolean }).currentTime = currentTime;
     (videoEl as unknown as { paused: boolean }).paused = false;
     const priv = controller as unknown as SeekableController;
@@ -366,7 +381,7 @@ describe("PlaybackController.handleSeeking (slider snap-back + stale-prefetch fi
     priv.timeline = { clearLookahead: vi.fn() };
     priv.chunkEnd = 900; // stale value from a prior chunk — must be reset on seek
     priv.startChunkSeries = vi.fn();
-    return { controller, priv, buf, videoEl };
+    return { controller, priv, buf, videoEl, cancelTranscodeChunks };
   }
 
   it("passes the user's intended seekTime to buf.seek (NOT a snapped chunk boundary)", () => {
@@ -487,5 +502,35 @@ describe("PlaybackController.handleSeeking (slider snap-back + stale-prefetch fi
 
     expect(videoEl.play).toHaveBeenCalledTimes(1);
     expect(priv.status).toBe("playing");
+  });
+
+  it("fires cancelTranscodeChunks for the active foreground+lookahead before flushing", () => {
+    // Pool-contention bug: pre-fix, the seek's foreground mutation queued
+    // ~1.2 s waiting for a slot because the OLD foreground+lookahead jobs
+    // kept ffmpeg running on chunks at the previous playhead. The cancel
+    // call here triggers `pool.kill_job` which drops the semaphore permit
+    // synchronously — the seek's mutation typically sees a free slot in
+    // <50 ms. See trace `6f0ef574…`.
+    const { controller, priv, cancelTranscodeChunks } = setUpSeekable(720);
+    (priv.pipeline as FakePipeline).setJobIds(["job-fg", "job-la"]);
+
+    controller.seekTo(720);
+    priv.handleSeeking();
+
+    expect(cancelTranscodeChunks).toHaveBeenCalledTimes(1);
+    expect(cancelTranscodeChunks).toHaveBeenCalledWith(["job-fg", "job-la"]);
+  });
+
+  it("does NOT call cancelTranscodeChunks when no jobs are active", () => {
+    // Edge case — user seeks before the first chunk's mutation resolved
+    // (rare but possible during cold-start). currentJobIds() returns []
+    // and we shouldn't fire an empty mutation.
+    const { controller, priv, cancelTranscodeChunks } = setUpSeekable(720);
+    (priv.pipeline as FakePipeline).setJobIds([]);
+
+    controller.seekTo(720);
+    priv.handleSeeking();
+
+    expect(cancelTranscodeChunks).not.toHaveBeenCalled();
   });
 });

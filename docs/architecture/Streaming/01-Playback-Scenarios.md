@@ -55,11 +55,12 @@ When the user drags the slider, `VideoPlayer` forwards a `SeekRequested` Nova ev
 
 If `t` lies within the current `SourceBuffer`'s buffered range, playback resumes naturally — no network activity. Otherwise:
 
-1. `StreamingService.cancel()` aborts the current fetch.
-2. `chunkEnd` is reset to `0` synchronously at the top of the seek handler (before any async work) to prevent the RAF prefetch loop from firing a stale chunk request while the seek is in flight.
-3. `BufferManager.seek(t)` flushes the `SourceBuffer` (`remove(0, Infinity)`), resets `timestampOffset`, and sets `video.currentTime = t`.
-4. `RampController.reset()` rewinds the ramp cursor so the seek benefits from the cold-start curve — the next chunk will use `chunkRampS[0]` again.
-5. `startTranscode(videoId, res, seekTime, seekChunkEnd)` fires the seek chunk at the user's actual seek position (no snapping). The duration comes from the (now-reset) ramp, so the first chunk after a seek is fast. `seekChunkEnd = seekTime + rampController.next()` — for `seekTime > 0` mid-file seeks, the ramp typically completes before reaching the next canonical 300 s boundary, so continuation chunks eventually land back on a grid-friendly boundary for efficient cache reuse during forward play.
+1. `PlaybackController.cancelTranscodeChunks()` gathers the current foreground and lookahead job IDs (if any) via `pipeline.currentJobIds()` and fires a `cancelTranscode(jobIds)` mutation (fire-and-forget). This kills cold-start prefetch chunks that were encoding at the OLD position, freeing pool slots before the new seek's transcode starts.
+2. `StreamingService.cancel()` aborts the current fetch.
+3. `chunkEnd` is reset to `0` synchronously at the top of the seek handler (before any async work) to prevent the RAF prefetch loop from firing a stale chunk request while the seek is in flight.
+4. `BufferManager.seek(t)` flushes the `SourceBuffer` (`remove(0, Infinity)`), resets `timestampOffset`, and sets `video.currentTime = t`.
+5. `RampController.reset()` rewinds the ramp cursor so the seek benefits from the cold-start curve — the next chunk will use `chunkRampS[0]` again.
+6. `startTranscode(videoId, res, seekTime, seekChunkEnd)` fires the seek chunk at the user's actual seek position (no snapping). The duration comes from the (now-reset) ramp, so the first chunk after a seek is fast. `seekChunkEnd = seekTime + rampController.next()` — for `seekTime > 0` mid-file seeks, the ramp typically completes before reaching the next canonical 300 s boundary, so continuation chunks eventually land back on a grid-friendly boundary for efficient cache reuse during forward play.
 
 **Seek-anchored behavior:** seeks anchor at the user's exact click position (no snap-back). ffmpeg runs with `-ss seekTime` so segment 0 of the produced fMP4 *is* the user's first useful frame. The duration model means mid-file seeks (`seekTime > 0`) still enjoy the fast first-frame optimization while keeping cache-friendly boundaries for continuation chunks.
 

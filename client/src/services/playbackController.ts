@@ -36,6 +36,15 @@ export type StartTranscodeChunkFn = (
   args: StartTranscodeChunkArgs
 ) => Promise<StartTranscodeChunkResult>;
 
+/** Fire-and-forget cancellation of one or more in-flight transcode jobs by
+ *  raw job ID. Used by `handleSeeking` to evict obsolete prefetched chunks
+ *  at the OLD playhead so the seek's foreground mutation doesn't queue
+ *  behind them in the pool. The server's `FfmpegPool::kill_job` drops the
+ *  semaphore permit synchronously (before the kernel reaps the process),
+ *  so a follow-up `start_transcode` from the same client typically sees
+ *  the freed slot in <50 ms. The hook owns the Relay-id encoding. */
+export type CancelTranscodeChunksFn = (rawJobIds: readonly string[]) => void;
+
 export interface RecordSessionArgs {
   traceId: string;
   resolution: Resolution;
@@ -52,6 +61,9 @@ export interface PlaybackControllerDeps {
   getVideoDurationS: () => number;
   /** Fires the startTranscode mutation for one chunk. The hook owns the Relay plumbing. */
   startTranscodeChunk: StartTranscodeChunkFn;
+  /** Fires the cancelTranscode mutation for a set of jobs. Used at seek
+   *  time to free pool slots for the seek's own foreground chunk. */
+  cancelTranscodeChunks: CancelTranscodeChunksFn;
   /** Fires the recordPlaybackSession mutation. Fire-and-forget; errors are ignored upstream. */
   recordSession: RecordSessionFn;
 }
@@ -110,6 +122,17 @@ export class PlaybackController {
 
   private chunkEnd = 0;
   private prefetchFired = false;
+
+  // Tracks whether the *current foreground chunk's* server-side transcode
+  // has reached `status: COMPLETE` (per `transcodeJobUpdated`). Drives the
+  // serial-prefetch invariant: the next chunk's mutation can fire as soon
+  // as the previous chunk's encode is done, without waiting for the RAF
+  // threshold. Reset to false on every new foreground (start of session,
+  // chunk continuation, recovery, seek). The `foregroundJobId` mirror lets
+  // a late-arriving subscription update for a *previous* chunk's job ID
+  // be safely ignored.
+  private foregroundTranscodeComplete = false;
+  private foregroundJobId: string | null = null;
 
   // Owns the cold-start chunk-duration ramp. Reset at every fresh-playhead
   // anchor (session start, seek, MSE recovery, resolution swap) so the user
@@ -320,6 +343,17 @@ export class PlaybackController {
     this.deps.videoEl.currentTime = targetSeconds;
   }
 
+  /** Notification that a `transcodeJobUpdated` subscription emitted
+   *  `status: COMPLETE` for the given job. If it matches the current
+   *  foreground, opens the serial-prefetch gate so chunk N+1's mutation
+   *  can fire on the next RAF tick without waiting for the
+   *  `prefetchThresholdS` time-until-end fallback. Stale updates (a
+   *  previous chunk's job ID) are ignored. */
+  onTranscodeComplete(jobId: string): void {
+    if (jobId !== this.foregroundJobId) return;
+    this.foregroundTranscodeComplete = true;
+  }
+
   teardown(): void {
     this.resetForNewSession();
     for (const detach of this.detachListeners) detach();
@@ -369,6 +403,8 @@ export class PlaybackController {
 
     this.chunkEnd = 0;
     this.prefetchFired = false;
+    this.foregroundTranscodeComplete = false;
+    this.foregroundJobId = null;
     this.rampController.reset();
     this.hasStartedPlayback = false;
     this.seekTarget = null;
@@ -475,6 +511,11 @@ export class PlaybackController {
 
     const nextStart = chunkEnd;
     this.prefetchFired = false;
+    // The previous foreground's COMPLETE no longer applies to the new
+    // foreground. Reset before either branch sets up the new foreground
+    // so a stale subscription update can't accidentally open the gate
+    // for the wrong chunk.
+    this.foregroundTranscodeComplete = false;
 
     if (this.pipeline?.hasLookahead()) {
       // Lookahead's stream + onStreamEnded are already wired (set at openLookahead
@@ -484,8 +525,9 @@ export class PlaybackController {
       // the slot; we read them back instead of re-deriving (under the ramp,
       // the duration was consumed by the prefetch's `rampController.next()` and
       // can't be recomputed here without double-billing the cursor).
-      const { chunkStartS, chunkEndS } = this.pipeline.promoteLookahead();
+      const { jobId, chunkStartS, chunkEndS } = this.pipeline.promoteLookahead();
       this.chunkEnd = chunkEndS;
+      this.foregroundJobId = jobId;
       this.timeline.clearLookahead();
       this.timeline.setForegroundChunk(chunkStartS, chunkEndS);
       this.updateSessionTimelineAttrs();
@@ -726,6 +768,13 @@ export class PlaybackController {
     void jobIdPromise
       .then((rawJobId) => {
         if (!this.pipeline) return; // Tore down between request and response.
+        // Track the foreground's job ID so a `transcodeJobUpdated → COMPLETE`
+        // subscription update on this exact chunk can open the
+        // serial-prefetch gate. A subsequent foreground (next chunk,
+        // recovery, seek) overwrites this, so a late update for an old
+        // chunk's job is safely filtered in `onTranscodeComplete`.
+        this.foregroundJobId = rawJobId;
+        this.foregroundTranscodeComplete = false;
         this.timeline.setForegroundChunk(startS, chunkEnd);
         this.updateSessionTimelineAttrs();
         this.pipeline.startForeground({
@@ -820,6 +869,8 @@ export class PlaybackController {
     this.buffer = null;
     this.chunkEnd = 0;
     this.prefetchFired = false;
+    this.foregroundTranscodeComplete = false;
+    this.foregroundJobId = null;
     // Recovery is a fresh-playhead anchor — small first chunk so playback
     // resumes quickly without re-encoding the full steady-state window.
     this.rampController.reset();
@@ -880,7 +931,18 @@ export class PlaybackController {
       const hasLookahead = this.pipeline.hasLookahead();
       if (!hasLookahead && !this.prefetchFired && chunkEnd > 0 && chunkEnd < videoDurationS) {
         const timeUntilEnd = chunkEnd - videoEl.currentTime;
-        if (timeUntilEnd <= clientConfig.playback.prefetchThresholdS) {
+        // Dual-gate: serial primary + RAF safety net. The serial gate
+        // (`foregroundTranscodeComplete`) admits as soon as the current
+        // foreground's `transcode.job` ends with COMPLETE — caps speculative
+        // parallelism at "one prefetched lookahead in flight at a time" so
+        // a seek can't queue behind an old prefetched chunk. The RAF
+        // threshold (`timeUntilEnd ≤ prefetchThresholdS`) stays as a
+        // fallback: if encode falls below realtime and the foreground's
+        // COMPLETE hasn't arrived yet, fire anyway so the playhead doesn't
+        // catch the buffer.
+        const serialGateOpen = this.foregroundTranscodeComplete;
+        const rafGateOpen = timeUntilEnd <= clientConfig.playback.prefetchThresholdS;
+        if (serialGateOpen || rafGateOpen) {
           this.prefetchFired = true;
           // Record the FIRST prefetch fire of the session as a span attribute —
           // a key signal for the cold-start ramp doing its job (expected ≤1 s
@@ -1115,6 +1177,22 @@ export class PlaybackController {
     // range, so close it here with a distinct reason. Also clears the pending
     // buffering-debounce timer so we don't double-fire the spinner.
     this.stallTracker.end("seek");
+    // Evict obsolete server-side jobs at the OLD playhead so the seek's
+    // own foreground mutation doesn't queue behind them in the pool. We
+    // gather IDs from BOTH pipelines (foreground + lookahead, plus any
+    // bgPipeline still warming a resolution swap) before pipeline.cancel
+    // tears the slots down — once cancelled, currentJobIds() may yield
+    // stale state. Fire-and-forget; the server's `pool.kill_job` drops
+    // the semaphore permit synchronously so the seek's mutation usually
+    // sees free capacity in <50 ms (versus ~1.2 s pre-fix, see trace
+    // `6f0ef574…`).
+    const obsoleteJobIds = [
+      ...(this.pipeline?.currentJobIds() ?? []),
+      ...(this.bgPipeline?.currentJobIds() ?? []),
+    ];
+    if (obsoleteJobIds.length > 0) {
+      this.deps.cancelTranscodeChunks(obsoleteJobIds);
+    }
     // Seek is a fresh-playhead anchor. Reset the ramp so the seek-anchored
     // first chunk is small (fast time-to-first-frame after seek, parity with
     // cold start) and let the prefetch RAF eager-warm the continuation in
@@ -1159,6 +1237,8 @@ export class PlaybackController {
     this.pipeline?.cancel("seek");
     this.timeline.clearLookahead();
     this.prefetchFired = false;
+    this.foregroundTranscodeComplete = false;
+    this.foregroundJobId = null;
     // Set chunkEnd to the small seek-chunk's end so the RAF prefetch fires
     // immediately (timeUntilEnd ≤ `prefetchThresholdS = 90` trivially holds
     // for a ramp[0]-sized window), eager-warming ffmpeg for the continuation chunk.

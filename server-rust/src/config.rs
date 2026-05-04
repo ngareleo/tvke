@@ -66,7 +66,7 @@ pub struct TranscodeConfig {
 impl Default for TranscodeConfig {
     fn default() -> Self {
         Self {
-            max_concurrent_jobs: 3,
+            max_concurrent_jobs: 5,
             force_kill_timeout_ms: 2_000,
             shutdown_timeout_ms: 5_000,
             orphan_timeout_ms: 30_000,
@@ -393,7 +393,7 @@ mod tests {
     #[test]
     fn transcode_config_uses_documented_defaults() {
         let t = TranscodeConfig::default();
-        assert_eq!(t.max_concurrent_jobs, 3);
+        assert_eq!(t.max_concurrent_jobs, 5);
         assert_eq!(t.force_kill_timeout_ms, 2_000);
         assert_eq!(t.shutdown_timeout_ms, 5_000);
         assert_eq!(t.orphan_timeout_ms, 30_000);

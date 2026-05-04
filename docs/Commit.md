@@ -15,6 +15,13 @@ Entry shape (each entry ends with the divider line described above):
 
 <!-- ENTRIES BELOW — newest first; each ends with a bare `---` line. The architect's next invocation will treat the no-entries state as the first-run case and prepend a bootstrap entry at HEAD. -->
 
+## [pending-commit] — 2026-05-04 — Seek-cancel latency reduction: serial-lookahead gate + pool cap 3→5 (same-session curation)
+
+**Files:** `docs/server/GraphQL-Schema/00-Surface.md`, `docs/architecture/Streaming/01-Playback-Scenarios.md`, `docs/architecture/Streaming/02-Chunk-Pipeline-Invariants.md`, `docs/architecture/Streaming/06-FfmpegPool.md`, `docs/server/Config/00-AppConfig.md`, `docs/architecture/Observability/server/00-Spans.md`, `docs/architecture/Observability/client/00-Spans.md`
+**Why:** Curator sync for feat/library-film-entity PR #59 (third slice): seek-latency optimization landed. Three coupled changes: (1) New `cancelTranscode(jobIds: [ID!]!): Boolean!` mutation + `KillReason::ClientCancel` variant. (2) Serial-lookahead-gate dual-check: prefetch fires only when prior lookahead completes OR timeUntilEnd ≤ 90 s (serial primary + RAF safety net). New invariant (#4): at most one lookahead in flight. Stale-update filtering prevents orphaned jobs from resetting gate. (3) Pool cap bumped 3 → 5 to accommodate rapid seek-cancel-respawn cycles. Updated seven doc files: GraphQL-Schema (cancelTranscode mutation added), Streaming/01-Playback-Scenarios (seek scenario §1 documents cancel-on-seek call before fetch abort), 02-Chunk-Pipeline-Invariants (new §4 invariant + interaction table updated), 06-FfmpegPool (cap formula + config table updated to 5, KillReason enum expanded with ClientCancel rationale, pool-cap discussion clarified), AppConfig (max_concurrent_jobs: 5 with rationale), Observability server/00-Spans (concurrency_cap_reached event attributes updated to cap 5, transcode_killed event documents client_cancel reason), Observability client/00-Spans (transcode.request row expanded with serial-gate note; pre-fix prefetch double-fire is now audit-able).
+
+---
+
 ## [pending-commit] — 2026-05-04 — TTFF reduction: page-mount prewarm + uniform startup buffer (same-session curation)
 
 **Files:** `docs/SUMMARY.md`, `docs/client/Config/00-ClientConfig.md`, `docs/architecture/Streaming/00-Protocol.md`, `docs/architecture/Streaming/01-Playback-Scenarios.md`, `docs/client/Components/VideoPlayer.md`, `docs/architecture/Observability/client/00-Spans.md`

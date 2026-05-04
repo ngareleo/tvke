@@ -407,6 +407,12 @@ type Mutation {
   """
   removeFilmFromWatchlist(filmId: ID!): Boolean!
   """
+  Cancel one or more in-flight transcode jobs. Fire-and-forget; always returns true.
+  Per-job failures are logged internally. Wired to the client-driven cancel-on-seek
+  path so aggressive seeks don't accumulate orphan ffmpeg processes.
+  """
+  cancelTranscode(jobIds: [ID!]!): Boolean!
+  """
   Update the user's playback progress on a film. Upserts a watch_progress row.
   """
   updateWatchProgress(
