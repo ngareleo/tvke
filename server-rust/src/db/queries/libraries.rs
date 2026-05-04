@@ -13,6 +13,13 @@ pub struct LibraryRow {
     pub media_type: String, // internal: "movies" | "tvShows"
     pub env: String,
     pub video_extensions: String, // JSON-encoded string array
+    /// Reachability status set by the profile-availability probe.
+    /// `'online' | 'offline' | 'unknown'`. Defaults to `'unknown'` for
+    /// fresh rows; the probe upgrades within one cycle (~30s).
+    pub status: String,
+    /// ISO-8601 timestamp of the last successful probe (online or
+    /// offline — both update this). Null until first probe.
+    pub last_seen_at: Option<String>,
 }
 
 impl LibraryRow {
@@ -24,6 +31,8 @@ impl LibraryRow {
             media_type: r.get("media_type")?,
             env: r.get("env")?,
             video_extensions: r.get("video_extensions")?,
+            status: r.get("status")?,
+            last_seen_at: r.get("last_seen_at")?,
         })
     }
 }
@@ -134,6 +143,18 @@ pub fn delete_library(db: &Db, id: &str) -> DbResult<bool> {
     })
 }
 
+/// Set `libraries.status` and `libraries.last_seen_at` for one library.
+/// Used by `services::profile_availability` after each probe cycle.
+pub fn update_library_status(db: &Db, id: &str, status: &str, last_seen_at: &str) -> DbResult<()> {
+    db.with(|c| {
+        c.execute(
+            "UPDATE libraries SET status = ?2, last_seen_at = ?3 WHERE id = ?1",
+            params![id, status, last_seen_at],
+        )?;
+        Ok(())
+    })
+}
+
 pub fn update_library(
     db: &Db,
     id: &str,
@@ -213,6 +234,8 @@ mod tests {
             media_type: "movies".to_string(),
             env: "user".to_string(),
             video_extensions: r#"[".mkv"]"#.to_string(),
+            status: "unknown".to_string(),
+            last_seen_at: None,
         };
         upsert_library(&db, &row).expect("upsert");
         let fetched = get_library_by_id(&db, "lib-up")
@@ -232,6 +255,8 @@ mod tests {
             media_type: "movies".to_string(),
             env: "dev".to_string(),
             video_extensions: r#"[".mkv"]"#.to_string(),
+            status: "unknown".to_string(),
+            last_seen_at: None,
         };
         upsert_library(&db, &first).expect("first");
 
@@ -244,6 +269,8 @@ mod tests {
             media_type: "tvShows".to_string(),
             env: "user".to_string(),
             video_extensions: r#"[".mp4"]"#.to_string(),
+            status: "unknown".to_string(),
+            last_seen_at: None,
         };
         upsert_library(&db, &second).expect("conflict update");
 

@@ -3,16 +3,31 @@ import { type Codec, type FilterableFilm, type Hdr, type Resolution } from "~/ut
 
 import { strings } from "./HomePage.strings.js";
 
-export type VideoEdge = NonNullable<HomePageContentQuery["response"]["videos"]>["edges"][number];
-export type VideoNode = VideoEdge["node"];
+type FilmEdge = NonNullable<HomePageContentQuery["response"]["movies"]>["edges"][number];
+export type FilmNode = FilmEdge["node"];
+type FilmCopyNode = FilmNode["copies"][number];
+/// Compatibility alias: `node` on a FilterRow always points at a Film
+/// copy (Video) — kept under the historical name so existing call sites
+/// continue to compile.
+export type VideoNode = FilmCopyNode;
 
 export interface FilterRow extends FilterableFilm {
+  /** Row's stable id (the Film id). Shows live in a separate flow and
+   *  don't appear in FilterRow.
+   */
   id: string;
   title: string;
   filename: string;
   director: string;
   genre: string;
-  node: VideoNode;
+  /** The Film's `bestCopy` Video — what the FilmTile / FilmDetailsOverlay
+   *  fragments render against.
+   */
+  node: FilmCopyNode;
+  /** All copies of the Film, in res-desc/bitrate-desc order — drives the
+   *  FilmVariants picker. Always populated for movies (≥1 copy).
+   */
+  copies: ReadonlyArray<FilmCopyNode>;
 }
 
 const RESOLUTION_LABEL: Record<string, Resolution> = {
@@ -21,22 +36,46 @@ const RESOLUTION_LABEL: Record<string, Resolution> = {
   RESOLUTION_720P: "720p",
 };
 
-export function toFilterRow(node: VideoNode): FilterRow {
+interface NodeShape {
+  readonly nativeResolution: string | null | undefined;
+  readonly videoStream: { readonly codec: string } | null | undefined;
+}
+
+function deriveFilters(
+  node: NodeShape,
+  metaDirector: string | null | undefined,
+  metaGenre: string | null | undefined,
+  metaYear: number | null | undefined
+) {
   const codec = (node.videoStream?.codec ?? "HEVC") as Codec;
   const resolution: Resolution = node.nativeResolution
     ? (RESOLUTION_LABEL[node.nativeResolution] ?? "1080p")
     : "1080p";
   return {
-    id: node.id,
-    title: (node.title || "").toLowerCase(),
-    filename: node.filename.toLowerCase(),
-    director: (node.metadata?.director ?? "").toLowerCase(),
-    genre: (node.metadata?.genre ?? "").toLowerCase(),
+    director: (metaDirector ?? "").toLowerCase(),
+    genre: (metaGenre ?? "").toLowerCase(),
     resolution,
     hdr: null as Hdr | null,
     codec,
-    year: node.metadata?.year ?? null,
-    node,
+    year: metaYear ?? null,
+  };
+}
+
+export function toFilterRowFromFilm(film: FilmNode): FilterRow {
+  const best = film.bestCopy;
+  const filters = deriveFilters(
+    best,
+    film.metadata?.director,
+    film.metadata?.genre,
+    film.metadata?.year ?? film.year ?? null
+  );
+  return {
+    id: film.id,
+    title: (film.title || "").toLowerCase(),
+    filename: best.filename.toLowerCase(),
+    ...filters,
+    node: best,
+    copies: film.copies,
   };
 }
 
@@ -47,7 +86,7 @@ export function timeOfDayGreeting(now: Date): string {
   return strings.greetingEvening;
 }
 
-export function pickSuggestions(film: FilterRow, all: FilterRow[]): VideoNode[] {
+export function pickSuggestions(film: FilterRow, all: FilterRow[]): FilmCopyNode[] {
   const tokens = film.genre.split(/[·\s/]+/).filter(Boolean);
   const scored: { row: FilterRow; score: number }[] = [];
   for (const f of all) {

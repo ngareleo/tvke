@@ -45,7 +45,7 @@ const movieMockResolvers = {
     },
     videoStream: { codec: "hevc" },
     audioStream: { codec: "atmos", channels: 8 },
-    seasons: [],
+    show: null,
   }),
 };
 

@@ -1,6 +1,7 @@
 import { mergeClasses } from "@griffel/react";
 import { type FC, useEffect, useState } from "react";
 
+import { resolvePosterUrl } from "~/config/rustOrigin.js";
 import { upgradePosterUrl } from "~/utils/formatters.js";
 
 import { strings } from "./Poster.strings.js";
@@ -36,9 +37,15 @@ export const Poster: FC<PosterProps> = ({ url, alt, className, width = 800 }) =>
     );
   }
 
+  // For locally cached posters (`/poster/<basename>`) prepend the
+  // server origin so the dev client (different port from the server)
+  // can fetch them. Then run the OMDb size upgrader, which is a no-op
+  // on local URLs.
+  const resolved = resolvePosterUrl(url) ?? url;
+
   return (
     <img
-      src={upgradePosterUrl(url, width)}
+      src={upgradePosterUrl(resolved, width)}
       alt={alt}
       loading="lazy"
       onError={() => setErrored(true)}

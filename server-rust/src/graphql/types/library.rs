@@ -8,7 +8,7 @@ use crate::db::{
     self, count_matched_by_library, count_videos_by_library, get_videos_by_library,
     sum_file_size_by_library, Db, LibraryRow,
 };
-use crate::graphql::scalars::MediaType;
+use crate::graphql::scalars::{MediaType, ProfileStatus};
 use crate::relay::{decode_cursor, encode_cursor, to_global_id};
 
 const MAX_PAGE_SIZE: i32 = 100;
@@ -21,6 +21,14 @@ pub struct Library {
     pub path: String,
     pub media_type: MediaType,
     pub video_extensions: Vec<String>,
+    /// Reachability of this library's storage path. `ONLINE` when the
+    /// path stats as a directory, `OFFLINE` when it doesn't (drive
+    /// unplugged, NAS unreachable), `UNKNOWN` until the first probe
+    /// cycle lands. Driven by `services::profile_availability`.
+    pub status: ProfileStatus,
+    /// ISO-8601 timestamp of the most recent probe. Null until the first
+    /// probe runs.
+    pub last_seen_at: Option<String>,
     #[graphql(skip)]
     pub raw_id: String,
 }
@@ -57,6 +65,15 @@ impl Library {
                 MediaType::Movies
             }),
             video_extensions,
+            status: ProfileStatus::from_internal(&row.status).unwrap_or_else(|| {
+                tracing::warn!(
+                    library_id = %row.id,
+                    raw = %row.status,
+                    "libraries.status held an unknown value — defaulting to UNKNOWN"
+                );
+                ProfileStatus::Unknown
+            }),
+            last_seen_at: row.last_seen_at.clone(),
             raw_id: row.id.clone(),
         }
     }

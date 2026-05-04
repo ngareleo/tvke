@@ -50,7 +50,7 @@ const meta: Meta<WrapperProps> = {
             rating: 8.4,
             posterUrl: null,
           },
-          seasons: [],
+          show: null,
         }),
       },
     },

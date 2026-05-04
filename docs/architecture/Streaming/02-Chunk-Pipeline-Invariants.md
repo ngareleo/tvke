@@ -10,12 +10,13 @@ The chunker spawns ffmpeg with `-ss <chunkStartS>`, no `-output_ts_offset`. ffmp
 
 `mode = "segments"` (NOT `"sequence"`) is required because `"sequence"` auto-advances `timestampOffset` per append and would fight the explicit per-chunk assignment — segments would interleave from foreground+lookahead at the buffer's timeline end and the buffer would balloon unbounded (426 MB / 128 s buffered ahead → `QuotaExceededError` × 3 → user-visible stall, observed historically).
 
-### Forward play vs. seek anchoring
+### Per-session ramp model
 
-- **Forward play / lookahead** chunks are anchored on the canonical 300 s grid (`chunkStartS = N × 300`) from chunk 2 onward. The **first chunk** in a new play session uses `[0, clientConfig.playback.firstChunkDurationS)` = `[0, 30)` rather than `[0, 300)`. This is a deliberate one-off cache key (distinct from any pre-existing `[0, 300)` warm entry) that shrinks the time-to-first-frame by letting the prefetch RAF fire at ~0 s rather than ~210 s, so chunk 2 (`[30, 330)`) starts encoding in parallel almost immediately. Subsequent chunks resume the canonical grid via the `nextSnap` cap. The cache-key (`jobId = sha1("v3|content|res|start|end")`) hits across replays for every chunk that falls on the canonical grid.
-- **Seek chunks** are anchored at the user's actual `seekTime` (NOT the snap boundary). This avoids forcing ffmpeg to encode the chunk-prefix segments the user doesn't need before producing their first useful one — the chunker spawns `-ss seekTime` so segment 0 is already what the user wants. The seek chunk window ends at `min(seekTime + clientConfig.playback.firstChunkDurationS, nextSnap, videoDurationS)` — the 30 s cap ensures the prefetch RAF trips immediately after the seek, eager-warming the next ffmpeg job in parallel. If `nextSnap` is closer than 30 s, the window is clamped to `nextSnap` so the continuation chunk (still requested on the canonical grid) is still cache-friendly.
+- **Initial chunk** (session start, seek, MSE recovery, resolution switch) uses the first duration from the ramp (`clientConfig.playback.chunkRampS[0]` = 10 s by default). The `RampController` cursor is owned by each `PlaybackController` and resets at every anchor point, ensuring every fresh playhead benefits from the cold-start curve.
+- **Continuation chunks** step through the ramp in order (`chunkRampS[1]`, `[2]`, …) and eventually land on `chunkSteadyStateS` when the ramp tail is exhausted. The ramp shape (`[10, 15, 20, 30, 45, 60]`) is designed to minimize time-to-first-frame while avoiding the giant orphan ffmpeg jobs that a fixed 300 s window left behind on pause or seek.
+- **Chunk cache key** is `jobId = sha1("v3|content|res|start|end")`, deterministic on `start` and `end` boundaries. Chunks that land on grid-friendly `start` boundaries (e.g., when continuation chunks round up to `chunkSteadyStateS = 60`) hit cache across replays.
 
-Trade-off: seek chunks are one-offs that don't cache across re-seeks. Re-seeking to the same exact second misses cache. Acceptable; interactive scrubbing dominates over second-precise re-seeking. Pre-fix evidence (trace `9da5539d…`): fresh-cache mid-chunk seek wall-clock latency was 16-60 s because ffmpeg had to grind through the chunk-prefix encode before reaching the user's segment. Post-fix: ~1-2 s (VAAPI cold-start + first-segment latency).
+Trade-off: the ramp is optimized for cold-start and interactive responsiveness. Seek chunks and continuation chunks after a seek may not cache across re-seeks to the same position (the `start` boundary may differ on the second seek depending on where the ramp is at that moment). Acceptable; interactive scrubbing dominates over second-precise re-seeking. Pre-ramp evidence (trace `9da5539d…`): mid-chunk seek wall-clock latency was 16-60 s because ffmpeg had to encode chunk-prefix segments before producing the user's first segment. Post-ramp: ~2-5 s (ffmpeg cold-start + first-segment latency).
 
 Code: `client/src/services/bufferManager.ts::setTimestampOffset`, `client/src/services/chunkPipeline.ts::processSegment` (calls it on every `isInit === true`), `client/src/services/playbackController.ts::handleSeeking` (anchors at `seekTime`), `server-rust/src/services/chunker.rs::job_id` (hash version `v3` — `v2` invalidated `output_ts_offset`-era chunks; `v3` invalidates chunks encoded without the `dump_extra=keyframe` BSF, see § 1a).
 
@@ -63,18 +64,32 @@ What this costs: lookahead holds ~60–90 s of media in JS memory (~100–300 MB
 
 Code: `client/src/services/chunkPipeline.ts::openSlot` (queueing branch), `::drainAndDispatch` (drain + outcome decision).
 
+## 4. At most one lookahead in flight at a time (serial prefetch gate)
+
+The dual-gate for prefetch fires ensures exactly one lookahead chunk is requested per foreground chunk under steady state — preventing multiple orphan ffmpeg processes at the OLD playhead position when the user aggressively seeks. The gate is **serial primary + RAF safety net**:
+
+- **Serial primary (tighter):** prefetch fires only when the prior lookahead completes (`foregroundTranscodeComplete === true`).
+- **RAF safety net (looser):** if the serial condition stalls (e.g. lookahead encodes very slowly), prefetch will also fire when `timeUntilEnd <= clientConfig.playback.prefetchThresholdS (90 s)` to ensure playback doesn't starve.
+
+The serial gate is updated on two events: (1) when `onTranscodeComplete(jobId)` fires from a `transcode.job` COMPLETE event (the lookahead finished encoding), and (2) when `promoteLookahead` is called (the lookahead becomes the new foreground, resetting the gate so a fresh lookahead can be requested). For a zero-time-to-first-frame cold start, the initial chunk (no prior lookahead) skips the serial check and fires immediately. Stale-update filtering (comparing `jobId` to the expected foreground `jobId`) prevents progress events from orphaned jobs (killed before completion) from resetting the gate.
+
+**Verification:** `Seq` queries for `transcode.job` now show at most one lookahead in flight per foreground at any moment — the `playback.lookahead_job_id` snapshot attribute on `playback.session` never overlaps with a second active lookahead. Pre-fix evidence (trace `7f9c6d03…`): 2-3 concurrent lookahead spans under aggressive seek. Post-fix: 1 lookahead per foreground, serialized. Pool cap was bumped from 3 → 5 to accommodate the higher permissiveness of rapid seek-cancel-respawn cycles without hitting `CAPACITY_EXHAUSTED`.
+
+Code: `client/src/services/playbackController.ts::handleSeeking` (cancel-on-seek + serial-gate reset), `::onTranscodeComplete` (gate set on COMPLETE event, filtered by `jobId`), `::promoteLookahead` (gate reset when lookahead becomes foreground), `::startPrefetchLoop` (dual-gate check before firing).
+
 ## How they interact
 
-| Without #1 (PTS) | Without #2 (re-init) | Without #3 (queueing) |
-|---|---|---|
-| Chunks stack at the same PTS, buffer balloons → QuotaExceeded | Chunks N>0 invisible past chunk 0's PTS, playhead skips ahead | Foreground tail fragments into keyframes-only after lookahead init clobber |
+| Without #1 (PTS) | Without #2 (re-init) | Without #3 (queueing) | Without #4 (serial gate) |
+|---|---|---|---|
+| Chunks stack at the same PTS, buffer balloons → QuotaExceeded | Chunks N>0 invisible past chunk 0's PTS, playhead skips ahead | Foreground tail fragments into keyframes-only after lookahead init clobber | Orphan ffmpeg processes accumulate on aggressive seeks; pool fills and rejects new requests |
 
-A trace where the playhead "skips" a whole chunk and later stalls is almost always (2) or (3); a trace where the buffer balloons to hundreds of MB before stalling is (1).
+A trace where the playhead "skips" a whole chunk and later stalls is almost always (2) or (3); a trace where the buffer balloons to hundreds of MB before stalling is (1); a trace showing rising ffmpeg process count during seek storms is (4).
 
 ## Supporting constants
 
 | Constant | Value | Source | Role |
 |---|---|---|---|
-| `clientConfig.playback.firstChunkDurationS` | `30` | [`client/src/config/appConfig.ts`](../../../client/src/config/appConfig.ts) | Window length of the first chunk after Play and after a seek. Short enough that `clientConfig.playback.prefetchThresholdS = 90` trips almost immediately (at `currentTime ≥ firstChunkDurationS − 90`, clamped to 0), eager-warming ffmpeg for the next chunk in parallel. Reduces time-to-first-frame and time-to-first-frame-after-seek by overlapping chunk N+1's ffmpeg cold-start with chunk N's initial fill. Does not affect the steady-state 300 s cadence. |
+| `clientConfig.playback.chunkRampS` | `[10, 15, 20, 30, 45, 60]` | [`client/src/config/appConfig.ts`](../../../client/src/config/appConfig.ts) | Per-session cold-start ramp (seconds). Each `RampController.next()` call (once per chunk request) returns the next duration and advances the cursor. When the ramp tail is exhausted, `next()` returns `chunkSteadyStateS` for all subsequent calls until `reset()` is invoked. Reset at session start, every seek, MSE-detached recovery, and resolution switch so every fresh playhead benefits from the fast first-chunk curve. Replaces the old fixed 300 s / 30 s two-tier model. |
+| `clientConfig.playback.chunkSteadyStateS` | `60` | [`client/src/config/appConfig.ts`](../../../client/src/config/appConfig.ts) | Chunk duration after the ramp tail is exhausted (seconds). Tuned separately from the ramp so steady-state can be widened later without changing the cold-start curve. `60` is 5× smaller than the pre-ramp fixed 300 s, trading slightly more ffmpeg restarts for better pause/seek responsiveness and lower orphan-job overhead. |
 | `clientConfig.playback.minRealChunkBytes` | `1024` | [`client/src/config/appConfig.ts`](../../../client/src/config/appConfig.ts) | Threshold under which a finished chunk's `slot.totalMediaBytes` is treated as a placeholder (ffmpeg emits a ~24-byte tail when `-ss <start>` lands past the encoded content). At 1024 we sit comfortably above any placeholder ffmpeg has been observed to write and well below any real fmp4 init+segment, so the "completed" vs "no_real_content" outcome decision is unambiguous. Drives whether `dispatchOutcome` calls `BufferManager.markStreamDone()` (which fires `MediaSource.endOfStream()`). The `chunk_no_real_content` event on the `chunk.stream` span is the trace-side signal. |
 

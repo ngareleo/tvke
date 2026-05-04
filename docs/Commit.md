@@ -15,6 +15,77 @@ Entry shape (each entry ends with the divider line described above):
 
 <!-- ENTRIES BELOW — newest first; each ends with a bare `---` line. The architect's next invocation will treat the no-entries state as the first-run case and prepend a bootstrap entry at HEAD. -->
 
+## 427da30 — 2026-05-04 — Loading UX consolidation: remove overlay, keep play-button spinner (same-session curation)
+
+**Files:** `docs/client/Components/VideoPlayer.md`, `docs/client/Components/ControlBar.md`
+**Why:** Curator sync for feat/library-film-entity PR #59: UX feedback consolidated loading affordances. Removed full-area `loadingOverlay` (56×56 spinner on dimmed scrim), which duplicated and obscured the play-button icon morph. ControlBar's 20×20 spinner morph (green top arc, 0.75s spin) is now the sole loading signal, staying on-screen without mouse movement. Controls forced `visible: true` during loading so the morphed play button remains visible during stalls. Two doc files updated: VideoPlayer spec clarified that loading state has no separate overlay and documented control-visibility force; ControlBar spec expanded play-button behavior note to explain icon morphing as the in-place, modern affordance.
+
+---
+
+## 8941fcb — 2026-05-04 — Probe-cache: ffprobe result caching per video_id (same-session curation)
+
+**Files:** `docs/server/Config/00-AppConfig.md`, `docs/architecture/Streaming/06-FfmpegPool.md`, `docs/architecture/Observability/server/00-Spans.md`
+**Why:** Curator sync for feat/library-film-entity PR #59 (probe-cache slice): Seq trace 354eefb4… showed seek latency dominated by ~2.4 s ffmpeg cold-start; ~150–200 ms per chunk was a fresh ffprobe on the same source file. Within a session, the same file is ffprobed 5–10 times (ramp + each seek). Cache + lazy-fill per `video_id` eliminates ~1 s cumulative server work; per-seek win is ~150–200 ms. Three doc files updated: AppConfig (new AppContext §Probe cache subsection documenting keying, lazy fill, no-explicit-invalidation policy, miss-path error handling), Streaming/06-FfmpegPool (new paragraph in "Why a separate module" linking the two sibling caches), Observability server spans (transcode.job row expanded with probe performance note re cache hits/misses).
+
+---
+
+## 0dc8774 — 2026-05-04 — Seek-cancel latency reduction: serial-lookahead gate + pool cap 3→5 (same-session curation)
+
+**Files:** `docs/server/GraphQL-Schema/00-Surface.md`, `docs/architecture/Streaming/01-Playback-Scenarios.md`, `docs/architecture/Streaming/02-Chunk-Pipeline-Invariants.md`, `docs/architecture/Streaming/06-FfmpegPool.md`, `docs/server/Config/00-AppConfig.md`, `docs/architecture/Observability/server/00-Spans.md`, `docs/architecture/Observability/client/00-Spans.md`
+**Why:** Curator sync for feat/library-film-entity PR #59 (third slice): seek-latency optimization landed. Three coupled changes: (1) New `cancelTranscode(jobIds: [ID!]!): Boolean!` mutation + `KillReason::ClientCancel` variant. (2) Serial-lookahead-gate dual-check: prefetch fires only when prior lookahead completes OR timeUntilEnd ≤ 90 s (serial primary + RAF safety net). New invariant (#4): at most one lookahead in flight. Stale-update filtering prevents orphaned jobs from resetting gate. (3) Pool cap bumped 3 → 5 to accommodate rapid seek-cancel-respawn cycles. Updated seven doc files: GraphQL-Schema (cancelTranscode mutation added), Streaming/01-Playback-Scenarios (seek scenario §1 documents cancel-on-seek call before fetch abort), 02-Chunk-Pipeline-Invariants (new §4 invariant + interaction table updated), 06-FfmpegPool (cap formula + config table updated to 5, KillReason enum expanded with ClientCancel rationale, pool-cap discussion clarified), AppConfig (max_concurrent_jobs: 5 with rationale), Observability server/00-Spans (concurrency_cap_reached event attributes updated to cap 5, transcode_killed event documents client_cancel reason), Observability client/00-Spans (transcode.request row expanded with serial-gate note; pre-fix prefetch double-fire is now audit-able).
+
+---
+
+## f68ba91 — 2026-05-04 — TTFF reduction: page-mount prewarm + uniform startup buffer (same-session curation)
+
+**Files:** `docs/SUMMARY.md`, `docs/client/Config/00-ClientConfig.md`, `docs/architecture/Streaming/00-Protocol.md`, `docs/architecture/Streaming/01-Playback-Scenarios.md`, `docs/client/Components/VideoPlayer.md`, `docs/architecture/Observability/client/00-Spans.md`
+**Why:** Curator sync for feat/library-film-entity PR #59 (second slice): two TTFF-reduction changes landed. (1) Page-mount prewarm pattern: `VideoPlayer` fires `startTranscode(videoId, nativeMax, 0, 10)` on mount with errors swallowed; ffmpeg silently encodes chunk 0 while the user views the poster. Click-path cache-hits if resolution is unchanged; orphan-timeout (30 s) safety-kills unclaimed warmups. (2) Uniform startup buffer: `startupBufferS` is now 2 seconds for all resolutions (was per-resolution 2–6 s); the ramp's 10 s first chunk provides an 8 s safety margin. Updated six doc files: SUMMARY (streaming paragraph mentions prewarm + uniform buffer), ClientConfig (startupBufferS row changed to 2s with rationale), Streaming protocol (Startup Buffer section rewritten), Playback-Scenarios (prewarm phase section added, initial-playback flow updated, startupBufferS references changed), VideoPlayer spec (Mount-time prewarm subsection + safety invariants added), Observability client spans (transcode.request row documented with prewarm pattern note).
+
+---
+
+## 0071cfa — 2026-05-04 — OBS-STDERR-001: silent-failure detection + cascade (same-session curation)
+
+**Files:** `docs/architecture/Observability/server/00-Spans.md`, `docs/server/Hardware-Acceleration/01-HDR-Pad-Artifact.md`, `docs/todo.md`
+**Why:** Curator sync: OBS-STDERR-001 landed on feat/library-film-entity. Silent-failure detection (ffmpeg clean exit + zero segments) now triggers cascade fallback; per-tier `transcode_silent_failure` events carry `tier`, `ffmpeg_stderr` tail, `chunk_start_s`, `chunk_end_s` for Seq filterability; cascade exhaustion emits distinct `transcode_silent_failure_cascade_exhausted` event. HDR-Pad-Artifact §VAAPI rewritten: cascade is now the structural mitigation (no longer pending). OBS-STDERR-001 item removed from todo.md.
+
+---
+
+## f708e64 — 2026-05-04 — Chunk-duration ramp controller (same-session curation)
+
+**Files:** `docs/SUMMARY.md`, `docs/architecture/Streaming/00-Protocol.md`, `docs/architecture/Streaming/01-Playback-Scenarios.md`, `docs/architecture/Streaming/02-Chunk-Pipeline-Invariants.md`, `docs/client/Config/00-ClientConfig.md`, `docs/client/Feature-Flags/00-Registry.md`, `docs/architecture/Observability/client/00-Spans.md`, `docs/server/Hardware-Acceleration/01-HDR-Pad-Artifact.md`, `docs/todo.md`
+**Why:** Curator sync for feat/library-film-entity branch: ramp-controller PR (#59) landed a per-session chunk-duration ramp (`[10, 15, 20, 30, 45, 60]` seconds, then 60 s steady-state), replacing the old fixed 300 s / 30 s two-tier model. Ramp resets at session start, every seek, MSE recovery, and resolution switch, so all anchor points enjoy fast cold-start parity. Removed VAAPI HDR workaround (the ramp reaches the bug surface; OBS-STDERR-001 is the escalation). Removed `flag.devForceShortChunkAtZero` (obsolete under ramp model). Updated nine doc files: SUMMARY (streaming paragraph), Streaming protocol & scenarios & invariants (chunk descriptions), ClientConfig (chunkRampS / chunkSteadyStateS replace chunkDurationS / firstChunkDurationS), Feature Flags (removed flag), Observability client spans (chunk.end_s replaces chunk.number), HDR-Pad-Artifact (ramp model section), todo.md (CHUNK-001 reframed for per-resolution calibration post-ramp).
+
+---
+
+## a7479d5 — 2026-05-03 — Show entity + profile availability + local poster cache (sync)
+
+**Files:** `docs/architecture/Library-Scan/03-Show-Entity.md` (NEW), `docs/architecture/Library-Scan/04-Profile-Availability.md` (NEW), `docs/architecture/Library-Scan/05-Poster-Caching.md` (NEW), `docs/architecture/Library-Scan/README.md`, `docs/architecture/Observability/server/00-Spans.md`, `docs/server/DB-Schema/00-Tables.md`, `docs/server/GraphQL-Schema/00-Surface.md`, `docs/server/Config/00-AppConfig.md`, `docs/client/Components/ShowTile.md` (NEW), `docs/client/Components/ShowDetailsOverlay.md` (NEW), `docs/client/Components/README.md`, `docs/client/Components/Poster.md`, `docs/client/Components/ProfileRow.md`, `docs/client/Components/SeasonsPanel.md`, `docs/client/Components/FilmDetailsOverlay.md`, `docs/client/Components/PlayerContent.md`, `docs/INDEX.md`, `docs/SUMMARY.md`, `docs/todo.md`
+**Why:** Curator sync for feat/library-film-entity branch at HEAD a7479d5. PR #59 landed three layers on top of the Film entity: (1) Show entity (TV mirror, two dedup axes, drop of synthetic show-Video pattern); (2) profile availability probe (`libraries.status`/`last_seen_at`, scanner skip on offline); (3) local OMDb poster cache (`services::poster_cache` + `GET /poster/:basename` + `posterUrl` rewrite). Three new architecture docs, DB-Schema + GraphQL-Schema reconciled, two new component specs (ShowTile, ShowDetailsOverlay), Poster/ProfileRow/SeasonsPanel/FilmDetailsOverlay/PlayerContent updated for new fragment shapes, INDEX + SUMMARY refreshed, observability spans extended with `library.tv_discovery`, `library.availability_probe`, `poster_cache.poll`. 12 declared tech-debt items in `docs/todo.md` (5 for poster cache, 7 for Show entity / availability picker UI).
+**Source commits scanned:** d3c25af..a7479d5
+
+---
+
+## (pending Film entity merge) — 2026-05-03 — Film entity architecture + DB + GraphQL + component specs
+
+**Files:** `docs/architecture/Library-Scan/02-Film-Entity.md` (NEW), `docs/architecture/Library-Scan/README.md`, `docs/server/DB-Schema/00-Tables.md`, `docs/server/GraphQL-Schema/00-Surface.md`, `docs/client/Components/FilmVariants.md` (NEW), `docs/client/Components/FilmDetailsOverlay.md`, `docs/client/Components/Library.md`, `docs/client/Components/README.md`, `docs/INDEX.md`
+**Why:** Curator sync for feat/library-film-entity branch (code landed uncommitted): Added Film logical-dedup entity for movies with 1+ video copies. Documented dedup keys (imdb_id, parsed_title_key), scanner three-pass flow, role semantics, watchlist/progress linking, GraphQL Film type + mutations, and new FilmVariants component spec.
+
+---
+
+## (current HEAD) — 2026-05-03 — AppHeader spec refinement: spinHoldover + mutationPending
+
+**Files:** `docs/client/Components/AppHeader.md`
+**Why:** Spec clarification after code change landed. The scan button spin is now driven by `mutationPending || spinHoldover` (2s click-triggered holdover); prior spec entry incorrectly said mutation-only with no holdover. Updated both the detailed behaviour section and the Scan Button subsection to document the combined state machine.
+
+---
+
+## b594485 — 2026-05-03
+
+**Files:** `docs/client/Components/AppHeader.md`, `docs/client/Components/FilmDetailsOverlay.md`, `docs/client/Components/VideoArea.md`
+**Why:** Spec curation after four bug-fix PRs: AppHeader scan button now wires GraphQL mutation (not 2s timeout); FilmDetailsOverlay prefers OMDb title; VideoArea poster unmounts on play (not opacity-fade) and topbar has no status badge.
+
+---
+
 ## 29b5c41 — 2026-05-03
 
 **Files:** `docs/architecture/Streaming/06-FfmpegPool.md`, `docs/server/FFmpeg-Caveats/00-Overview.md`

@@ -54,6 +54,7 @@ pub fn build_router(state: AppState) -> AppResult<Router> {
         .route("/healthz", get(healthz))
         .route("/graphql", graphql_method)
         .route("/stream/:job_id", get(routes::stream::stream_handler))
+        .route("/poster/:basename", get(routes::poster::get_poster))
         // Pass AppContext via Extension rather than State so we don't have
         // to thread an `S` type parameter through every router builder.
         .layer(axum::Extension(ctx))
@@ -117,6 +118,9 @@ pub struct ServerConfig {
     /// Segment cache root. Dev: `tmp/segments-rust/`. Tauri:
     /// `app_cache_dir/segments/`.
     pub segment_dir: PathBuf,
+    /// OMDb poster cache root. Dev: `tmp/poster-cache/`. Tauri:
+    /// `app_cache_dir/posters/`. See `services::poster_cache`.
+    pub poster_dir: PathBuf,
     /// Used as a fallback root for the ffmpeg manifest probe when
     /// `ffmpeg_override` is `None`. Dev: workspace root. Tauri:
     /// `app.path().resource_dir()`.
@@ -186,10 +190,18 @@ pub async fn run(config: ServerConfig) -> AppResult<()> {
     let hw_accel = resolve_hw_accel(&ffmpeg_paths.ffmpeg, hw_mode).await?;
     tracing::info!(kind = hw_accel.kind_str(), "Hardware acceleration selected");
 
-    let mut app_config = AppConfig::with_paths(config.segment_dir.clone(), config.db_path.clone());
+    let mut app_config = AppConfig::with_paths(
+        config.segment_dir.clone(),
+        config.db_path.clone(),
+        config.poster_dir.clone(),
+    );
     if let Err(err) = tokio::fs::create_dir_all(&app_config.segment_dir).await {
         tracing::warn!(error = %err, dir = %app_config.segment_dir.display(),
             "could not create segment dir up-front — chunker will retry per-job");
+    }
+    if let Err(err) = tokio::fs::create_dir_all(&app_config.poster_dir).await {
+        tracing::warn!(error = %err, dir = %app_config.poster_dir.display(),
+            "could not create poster cache dir up-front — worker will retry");
     }
 
     // OMDb auto-match key resolution. Env wins; the persisted
@@ -217,6 +229,16 @@ pub async fn run(config: ServerConfig) -> AppResult<()> {
     // `ScanState::mark_started`, so two ticks that overlap a long scan
     // don't double-walk.
     services::library_scanner::spawn_periodic_scan(ctx.clone());
+
+    // Profile availability probe — stats every library path on the same
+    // cadence and updates `libraries.status` / `last_seen_at`. On
+    // offline→online flips it kicks a one-shot scan to catch up.
+    services::profile_availability::spawn_periodic_availability(ctx.clone());
+
+    // Poster cache worker — downloads OMDb posters into
+    // `app_config.poster_dir` so subsequent requests serve from disk and
+    // the client works offline.
+    services::poster_cache::spawn_periodic_poster_cache(ctx.clone());
 
     let state = AppState::new(ctx);
     let app = build_router(state)?;

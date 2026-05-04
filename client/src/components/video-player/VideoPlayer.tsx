@@ -74,15 +74,41 @@ export const VideoPlayer: FC<Props> = ({ video, onStatusChange }) => {
   const [isEnded, setIsEnded] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
 
-  const { status, error, startPlayback, seekTo } = useVideoPlayback(
+  const { status, error, startPlayback, prewarm, onTranscodeComplete, seekTo } = useVideoPlayback(
     videoRef,
     data.id,
     data.durationSeconds,
     setActiveJobId
   );
 
+  // Kick off chunk 0's transcode the moment the player page mounts, so
+  // ffmpeg encodes init.mp4 + the first segments while the user looks at
+  // the poster. By the time they click Play, the deterministic job-id
+  // cache hits and TTFF collapses to the buffer-fill cost. We warm at the
+  // resolution we'll start with (`nativeMax`); if the user toggles
+  // resolution before pressing Play, the click-path mutation simply
+  // produces a different job-id and spawns fresh — identical to today.
+  // Mount-only by design: re-warming on resolution change would double
+  // ffmpeg load on every selector toggle, with the abandoned warmup
+  // tearing itself down via the server's 30 s orphan-no-connection
+  // timer. eslint-disable-next-line: data.id is captured in the hook's
+  // own ref so we depend only on it, not on `prewarm` (stable callback)
+  // or `nativeMax` (derived).
+  useEffect(() => {
+    prewarm(nativeMax);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- mount-per-video, see comment above
+  }, [data.id]);
+
   useJobSubscription(activeJobId, (progress) => {
     setJobProgress(progress);
+    // Bridge server-side `transcodeJobUpdated → COMPLETE` into the
+    // controller's serial-prefetch gate. The controller filters stale
+    // updates (a previous foreground's job id) so it's safe to forward
+    // unconditionally on COMPLETE — `activeJobId` is the current
+    // foreground at the moment this callback was registered.
+    if (progress.status === "COMPLETE" && activeJobId) {
+      onTranscodeComplete(activeJobId);
+    }
     if (progress.status === "ERROR") {
       // Map the typed code to a user-facing line. We don't auto-retry from the
       // subscription path: PROBE_FAILED / ENCODE_FAILED reflect file or
@@ -248,12 +274,11 @@ export const VideoPlayer: FC<Props> = ({ video, onStatusChange }) => {
         />
       )}
 
-      {/* Loading spinner overlay */}
-      {status === "loading" && (
-        <div className={styles.loadingOverlay}>
-          <div className={styles.loadingSpinner} />
-        </div>
-      )}
+      {/* No full-area loading overlay — the loading affordance is the
+          ControlBar's play disc, which morphs its inner icon to a spinner
+          when status === "loading" (see ControlBar.tsx playIcon). The
+          controls are forced visible during loading below so the morphed
+          disc is always on-screen during a stall. */}
 
       {/* Transcode progress label */}
       {progressLabel && <div className={styles.progressLabel}>{progressLabel}</div>}
@@ -274,7 +299,11 @@ export const VideoPlayer: FC<Props> = ({ video, onStatusChange }) => {
           videoRef={videoRef}
           resolution={resolution}
           status={status}
-          isVisible={controlsVisible && !isEnded}
+          // Force controls visible during loading so the play-disc spinner
+          // morph (the only loading affordance after the overlay was
+          // removed) stays on-screen even if the user hasn't moved the
+          // mouse for a few seconds.
+          isVisible={(controlsVisible || status === "loading") && !isEnded}
           isFullscreen={isFullscreen}
         />
       </NovaEventingInterceptor>

@@ -6,11 +6,13 @@
 
 Before the pool existed the cap state (`live`, `dying`, `inflight`) lived inside the chunker. Rapid back-to-back seeks deterministically exhausted the 3-slot cap because SIGTERM'd 4K-software encodes held their slot for up to 20 s while flushing (trace `1ac6637ead86d6b65df08637cbabfacd`, 2026-04-27). Extracting the pool allowed the cap formula to exclude dying jobs immediately and enforce a 2 s SIGKILL escalation. Today `PoolInner` (in `server-rust/src/services/ffmpeg_pool.rs`) owns five fields: `live: DashMap<String, LivePid>`, `inflight: DashSet<String>`, `dying: DashSet<String>`, `kill_reasons: DashMap<String, KillReason>`, and `escalation_cancel: DashMap<String, Arc<Notify>>` (the per-job notifier the SIGKILL escalation task awaits).
 
+The pool works alongside two sibling per-server-lifetime caches on `AppContext`: `vaapi_state` (per-source VAAPI capability state, keyed by `video_id`) and `probe_cache` (per-source ffprobe results, keyed by `video_id`). Both are populated lazily and cleared only on server restart. See [`../../server/Config/00-AppConfig.md#probe-cache`](../../server/Config/00-AppConfig.md#probe-cache) for the ffprobe cache design.
+
 ## Cap formula
 
 ```
 used_slots = live.len() − dying.len() + inflight.len()
-cap hit    = used_slots >= TranscodeConfig::max_concurrent_jobs (default 3)
+cap hit    = used_slots >= TranscodeConfig::max_concurrent_jobs (default 5)
 ```
 
 - `live` — spawned ffmpeg processes, live or dying.
@@ -23,7 +25,7 @@ The pool's tunable knobs live on `AppConfig` (`server-rust/src/config.rs`) so se
 
 | Field | Default | Purpose |
 |---|---|---|
-| `transcode.max_concurrent_jobs` | 3 | Cap limit. |
+| `transcode.max_concurrent_jobs` | 5 | Cap limit. Bumped from 3 to 5 to accommodate rapid seek-cancel-respawn cycles under the serial-lookahead-gate model; at 3, aggressive seeks can exhaust slots with cancel-in-flight and new-request queued. |
 | `transcode.force_kill_timeout_ms` | 2 000 | SIGTERM → SIGKILL grace per job. |
 | `transcode.shutdown_timeout_ms` | 5 000 | Total wait in `kill_all_jobs` before the terminal SIGKILL pass. |
 | `transcode.orphan_timeout_ms` | 30 000 | Kill ffmpeg if a job has zero connections after this long (chunker timer). |
@@ -72,7 +74,7 @@ Idempotent: calling `kill_job` twice on the same id is a no-op after the first c
 
 ```rust
 pub enum KillReason {
-    ClientRequest,
+    ClientCancel,
     ClientDisconnected,
     StreamIdleTimeout,
     OrphanNoConnection,
@@ -82,7 +84,17 @@ pub enum KillReason {
 }
 ```
 
-All kill-reason strings are now type-checked at the call site. The `cascade_retry` reason is used when the chunker kills a VAAPI job to retry at a lower tier.
+All kill-reason strings are now type-checked at the call site. The enum variants distinguish:
+
+- `ClientCancel` — User-initiated cancel via the `cancelTranscode` mutation; wired to the client's seek handler to kill stale prefetches.
+- `ClientDisconnected` — (Deprecated fallback, now subsumed by `ClientCancel`) Stream `/stream/:jobId` lost connection.
+- `StreamIdleTimeout` — `/stream/:jobId` idle >180 s with an active connection.
+- `OrphanNoConnection` — Job has zero connections after 30 s (prefetch that wasn't claimed).
+- `MaxEncodeTimeout` — Encoding exceeded `chunk_duration_s × max_encode_rate_multiplier` wall-clock budget.
+- `CascadeRetry` — Chunker killed this tier (e.g. VAAPI) to retry at a lower tier.
+- `ServerShutdown` — Server terminating; kill all jobs gracefully.
+
+The `cascade_retry` reason is used when the chunker kills a VAAPI job to retry at a lower tier.
 
 ## Shutdown sweep
 

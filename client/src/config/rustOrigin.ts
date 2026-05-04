@@ -36,3 +36,18 @@ export function graphqlWsUrl(): string {
 export function streamUrl(jobId: string): string {
   return `${HTTP_ORIGIN}/stream/${jobId}`;
 }
+
+/**
+ * Rewrite a `posterUrl` from GraphQL into a fetchable URL. The server
+ * returns `/poster/<basename>` for locally cached posters; we prepend
+ * the server origin so the dev client (running on a different port from
+ * the server) can fetch them. Absolute URLs (the OMDb fallback) are
+ * passed through unchanged.
+ */
+export function resolvePosterUrl(url: string | null | undefined): string | null {
+  if (!url) return null;
+  if (url.startsWith("/poster/")) {
+    return `${HTTP_ORIGIN}${url}`;
+  }
+  return url;
+}

@@ -18,6 +18,21 @@ Entries whose `env` does not match the current `RUST_ENV` are silently ignored. 
 
 ---
 
+## AppContext (server-rust/src/config.rs)
+
+`AppContext` is the top-level application state shared across all request handlers. It wraps `AppConfig` (the configuration tuple) alongside two per-server-lifetime caches: `vaapi_state` (VAAPI capability state per source file, keyed by `video_id`) and `probe_cache` (ffprobe results per source file, keyed by `video_id`).
+
+### Probe cache
+
+`probe_cache: Arc<DashMap<String, FileMetadata>>` caches ffprobe results (codec, stream layout, HDR/SDR state) for the lifetime of the server. Since ffprobe runs on every chunk's `run_cascade` entry and answers the same question for every chunk of the same file, caching eliminates ~150–200 ms of wall-clock per chunk — a ~1 s cumulative win per session on typical 5–10 re-encodes of the same source.
+
+- **Keyed by** `video_id` (matches `vaapi_state`, so cache rotation is automatic when the library re-scans and produces new video IDs).
+- **Filled lazily** — the first chunk of any source misses the cache, runs ffprobe, and clones the result into the DashMap.
+- **No explicit invalidation** — a user replacing a file on disk and rescanning is a server-restart event today. If multi-session durability becomes a need, invalidation can be keyed to library re-scan completion (drop entries for video_ids that were deleted in the new scan).
+- **Errors on the miss path** — if ffprobe fails, it fails the same way as before caching (cascade to software on non-zero exit, or silent-failure detection on clean exit with zero segments).
+
+The chunker's `run_cascade` first checks `ctx.probe_cache.get(&video_id)` before invoking ffprobe; on hit it reuses the cached metadata, on miss it runs ffprobe and inserts the result.
+
 ## AppConfig (server-rust/src/config.rs)
 
 `AppConfig` is exported from `server-rust/src/config.rs` as the `config` singleton. It composes five groups of fields:
@@ -27,10 +42,13 @@ Entries whose `env` does not match the current `RUST_ENV` are silently ignored. 
 | Field | Env var | Dev default | Prod default | Notes |
 |---|---|---|---|---|
 | `port` | `PORT` | `3002` | `8080` | |
-| `segment_dir` | `SEGMENT_DIR` | `./tmp/segments` | `./tmp/segments` | Override in tests to route to a per-PID temp dir |
-| `db_path` | `DB_PATH` | `./tmp/xstream.db` | `./tmp/xstream.db` | Override in tests; persistent storage recommended in prod |
-| `scan_interval_ms` | `SCAN_INTERVAL_MS` | `30000` | `30000` | |
+| `segment_dir` | `SEGMENT_DIR` | `./tmp/segments-rust/` | (Tauri) `app_cache_dir/segments/` | Override in tests to route to a per-PID temp dir |
+| `db_path` | `DB_PATH` | `./tmp/xstream-rust.db` | (Tauri) `app_local_data_dir/xstream.db` | Override in tests; persistent storage recommended in prod |
+| `poster_dir` | — | `./tmp/poster-cache/` | (Tauri) `app_cache_dir/posters/` | OMDb poster cache root. Files are content-addressed by `sha1(url)+ext`. See [`../../architecture/Library-Scan/05-Poster-Caching.md`](../../architecture/Library-Scan/05-Poster-Caching.md). |
+| `scan_interval_ms` | `SCAN_INTERVAL_MS` | `30000` | `30000` | Period of the background re-scan loop. |
+| `availability_interval_ms` | — | `0` (= `scan_interval_ms`) | same | Period of the profile-availability probe. `0` falls back to `scan_interval_ms`. See [`../../architecture/Library-Scan/04-Profile-Availability.md`](../../architecture/Library-Scan/04-Profile-Availability.md). |
 | `hardware_acceleration` | `HW_ACCEL` | `"auto"` | `"auto"` | `"off"` forces software encode |
+| `omdb_api_key` | `OMDB_API_KEY` | `None` (auto-match disabled) | env override or persisted `omdbApiKey` user setting | Free-tier 1000/day cap — exhaustion logs warn + skips remaining calls. |
 
 `SEGMENT_DIR` and `DB_PATH` are honored in dev (not just prod) so the test harness can route writes to a per-PID temp dir — see [`../../architecture/Testing/00-Side-Effects-Policy.md`](../../architecture/Testing/00-Side-Effects-Policy.md). Don't set them by hand in your dev shell unless you know what you're doing.
 
@@ -40,7 +58,7 @@ All ops-tunable timing and policy knobs for ffmpeg process management. Both dev 
 
 | Field | Default | Purpose |
 |---|---|---|
-| `max_concurrent_jobs` | `3` | Cap on concurrently encoding ffmpeg processes (dying jobs excluded from count). |
+| `max_concurrent_jobs` | `5` | Cap on concurrently encoding ffmpeg processes (dying jobs excluded from count). Bumped from 3 to 5 for the serial-lookahead-gate model. |
 | `force_kill_timeout_ms` | `2 000` | SIGTERM → SIGKILL grace per job. Caps the dying-zombie window for 4K-software encodes. |
 | `shutdown_timeout_ms` | `5 000` | Total wait in `kill_all_jobs` before the terminal SIGKILL pass. Must be > `force_kill_timeout_ms`. |
 | `orphan_timeout_ms` | `30 000` | Kill ffmpeg if a job has zero connections after this many ms (covers prefetched chunks where the user seeks away). |
@@ -75,16 +93,17 @@ In production, `segment_dir` and `db_path` should be set to persistent storage l
 
 ```
 tmp/
-├── xstream.db                    # SQLite database (WAL mode)
-├── xstream.db-shm                # WAL shared memory file
-├── xstream.db-wal                # WAL write-ahead log
-└── segments/
-    └── <jobId>/               # SHA-1 of (content_fingerprint + resolution + startS + endS)
-        ├── init.mp4           # fMP4 init segment (moov box)
-        ├── segment_0000.m4s
-        ├── segment_0001.m4s
-        ├── ...
-        └── segments.txt       # ffmpeg segment list (internal use)
+├── xstream-rust.db                # SQLite database (WAL mode)
+├── xstream-rust.db-shm            # WAL shared memory file
+├── xstream-rust.db-wal            # WAL write-ahead log
+├── segments-rust/
+│   └── <jobId>/                   # SHA-1 of (content_fingerprint + resolution + startS + endS)
+│       ├── init.mp4               # fMP4 init segment (moov box)
+│       ├── segment_0000.m4s
+│       ├── segment_0001.m4s
+│       └── …
+└── poster-cache/
+    └── <sha1(url)>.<ext>          # one file per cached OMDb poster URL (.jpg/.png/.webp/.gif)
 ```
 
 Job IDs are deterministic — the same video, resolution, start time, and end time always produce the same ID. If a client requests a chunk that was previously encoded, the server finds the existing directory on disk and streams from cache without launching a new ffmpeg process.

@@ -40,11 +40,13 @@ const DETAIL_PANE_FRAGMENT = graphql`
       codec
       channels
     }
-    seasons {
-      seasonNumber
-      episodes {
-        episodeNumber
-        onDisk
+    show {
+      seasons {
+        seasonNumber
+        episodes {
+          episodeNumber
+          onDisk
+        }
       }
     }
     ...SeasonsPanel_video
@@ -100,12 +102,13 @@ export const DetailPane: FC<DetailPaneProps> = ({
     : null;
   const durationLabel = formatDurationHuman(data.durationSeconds);
 
-  const totalEpisodes = (data.seasons ?? []).reduce((sum, s) => sum + s.episodes.length, 0);
-  const onDiskEpisodes = (data.seasons ?? []).reduce(
+  const seasons = data.show?.seasons ?? [];
+  const totalEpisodes = seasons.reduce((sum, s) => sum + s.episodes.length, 0);
+  const onDiskEpisodes = seasons.reduce(
     (sum, s) => sum + s.episodes.filter((e) => e.onDisk).length,
     0
   );
-  const seasonsCount = data.seasons.length;
+  const seasonsCount = seasons.length;
 
   const playHref = `/player/${data.id}`;
   const playLabel = strings.play;

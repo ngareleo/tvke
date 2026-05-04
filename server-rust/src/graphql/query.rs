@@ -3,13 +3,15 @@
 use async_graphql::{Context, Object, ID};
 
 use crate::db::{
-    self, get_job_by_id, get_library_by_id, get_video_by_id, get_videos, get_watchlist,
-    get_watchlist_item_by_id, Db,
+    self, count_films, count_shows, get_film_by_id, get_job_by_id, get_library_by_id,
+    get_show_by_id, get_video_by_id, get_videos, get_watchlist, get_watchlist_item_by_id,
+    list_films, list_shows, Db, FilmsFilter, ShowsFilter,
 };
 use crate::graphql::scalars::MediaType;
 use crate::graphql::types::{
-    DirEntry, Library, Node, OmdbSearchResult, PlaybackSession, SettingEntry, TranscodeJob, Video,
-    VideoConnection, VideoEdge, WatchlistItem,
+    DirEntry, Film, FilmConnection, FilmEdge, Library, Node, OmdbSearchResult, PlaybackSession,
+    SettingEntry, Show, ShowConnection, ShowEdge, TranscodeJob, Video, VideoConnection, VideoEdge,
+    WatchlistItem,
 };
 use crate::relay::from_global_id;
 
@@ -29,6 +31,8 @@ impl Query {
                 Ok(get_library_by_id(db, &local_id)?.map(|r| Library::from_row(&r).into()))
             }
             "Video" => Ok(get_video_by_id(db, &local_id)?.map(|r| Video::from_row(&r).into())),
+            "Film" => Ok(get_film_by_id(db, &local_id)?.map(|r| Film::from_row(&r).into())),
+            "Show" => Ok(get_show_by_id(db, &local_id)?.map(|r| Show::from_row(&r).into())),
             "TranscodeJob" => {
                 Ok(get_job_by_id(db, &local_id)?.map(|r| TranscodeJob::from_row(&r).into()))
             }
@@ -84,6 +88,93 @@ impl Query {
         let db = ctx.data_unchecked::<Db>();
         let (_, local_id) = from_global_id(&id)?;
         Ok(get_video_by_id(db, &local_id)?.map(|r| Video::from_row(&r)))
+    }
+
+    /// Films are the homepage Movies row's source of truth — paginated,
+    /// server-filterable. One Film per logical movie; multiple `videos`
+    /// (file copies) hang off `Film.copies`. See
+    /// `docs/architecture/Library-Scan/01-Filename-Conventions.md`.
+    async fn films(
+        &self,
+        ctx: &Context<'_>,
+        first: Option<i32>,
+        library_id: Option<ID>,
+        search: Option<String>,
+    ) -> async_graphql::Result<FilmConnection> {
+        let db = ctx.data_unchecked::<Db>();
+        let local_library_id = library_id
+            .as_deref()
+            .map(|s| from_global_id(s))
+            .transpose()?
+            .map(|(_, id)| id);
+        let limit = first.unwrap_or(200) as i64;
+        let filter = FilmsFilter {
+            library_id: local_library_id,
+            search,
+        };
+        let total = count_films(db, filter.clone())? as i32;
+        let rows = list_films(db, limit, filter)?;
+        Ok(FilmConnection {
+            edges: rows
+                .iter()
+                .map(|row| FilmEdge {
+                    node: Film::from_row(row),
+                    cursor: String::new(),
+                })
+                .collect(),
+            page_info: Default::default(),
+            total_count: total,
+        })
+    }
+
+    async fn film(&self, ctx: &Context<'_>, id: ID) -> async_graphql::Result<Option<Film>> {
+        let db = ctx.data_unchecked::<Db>();
+        let (_, local_id) = from_global_id(&id)?;
+        Ok(get_film_by_id(db, &local_id)?.map(|r| Film::from_row(&r)))
+    }
+
+    /// Shows are the homepage TV row's source of truth — paginated,
+    /// server-filterable. One Show per logical series; multiple `videos`
+    /// (episode files, possibly across libraries) hang off
+    /// `Show.seasons → episode.copies`. See
+    /// `docs/architecture/Library-Scan/03-Show-Entity.md`.
+    async fn shows(
+        &self,
+        ctx: &Context<'_>,
+        first: Option<i32>,
+        library_id: Option<ID>,
+        search: Option<String>,
+    ) -> async_graphql::Result<ShowConnection> {
+        let db = ctx.data_unchecked::<Db>();
+        let local_library_id = library_id
+            .as_deref()
+            .map(|s| from_global_id(s))
+            .transpose()?
+            .map(|(_, id)| id);
+        let limit = first.unwrap_or(200) as i64;
+        let filter = ShowsFilter {
+            library_id: local_library_id,
+            search,
+        };
+        let total = count_shows(db, filter.clone())? as i32;
+        let rows = list_shows(db, limit, filter)?;
+        Ok(ShowConnection {
+            edges: rows
+                .iter()
+                .map(|row| ShowEdge {
+                    node: Show::from_row(row),
+                    cursor: String::new(),
+                })
+                .collect(),
+            page_info: Default::default(),
+            total_count: total,
+        })
+    }
+
+    async fn show(&self, ctx: &Context<'_>, id: ID) -> async_graphql::Result<Option<Show>> {
+        let db = ctx.data_unchecked::<Db>();
+        let (_, local_id) = from_global_id(&id)?;
+        Ok(get_show_by_id(db, &local_id)?.map(|r| Show::from_row(&r)))
     }
 
     async fn transcode_job(

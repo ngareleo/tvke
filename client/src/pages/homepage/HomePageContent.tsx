@@ -9,6 +9,9 @@ import { FilmTile } from "~/components/film-tile/FilmTile";
 import { FilterSlide } from "~/components/filter-slide/FilterSlide";
 import { PosterRow } from "~/components/poster-row/PosterRow";
 import { SearchSlide } from "~/components/search-slide/SearchSlide";
+import { ShowDetailsOverlay } from "~/components/show-details-overlay/ShowDetailsOverlay";
+import { ShowTile } from "~/components/show-tile/ShowTile";
+import { resolvePosterUrl } from "~/config/rustOrigin";
 import { IconClose, IconSearch } from "~/lib/icons";
 import type { HomePageContentQuery } from "~/relay/__generated__/HomePageContentQuery.graphql";
 import { EMPTY_FILTERS } from "~/utils/filters";
@@ -20,42 +23,85 @@ import {
   type FilterRow,
   pickSuggestions,
   timeOfDayGreeting,
-  toFilterRow,
+  toFilterRowFromFilm,
 } from "./HomePageContent.utils";
 import { useHeroMode } from "./useHeroMode";
+
+// Two co-located fragments — one on Video (TV row + each Film copy) and
+// one on Film (movie row). Spread unmasked so the page reads fields off
+// the response directly without per-tile useFragment indirection.
+const _VIDEO_NODE_FRAGMENT = graphql`
+  fragment HomePageContent_videoNode on Video {
+    id
+    title
+    filename
+    mediaType
+    nativeResolution
+    metadata {
+      year
+      genre
+      director
+      posterUrl
+    }
+    videoStream {
+      codec
+    }
+    ...FilmTile_video
+    ...FilmDetailsOverlay_video
+  }
+`;
+
+const _FILM_NODE_FRAGMENT = graphql`
+  fragment HomePageContent_filmNode on Film {
+    id
+    title
+    year
+    metadata {
+      year
+      genre
+      director
+      posterUrl
+    }
+    bestCopy {
+      ...HomePageContent_videoNode @relay(mask: false)
+      fileSizeBytes
+      bitrate
+    }
+    copies {
+      ...HomePageContent_videoNode @relay(mask: false)
+      fileSizeBytes
+      bitrate
+    }
+  }
+`;
 
 const HOMEPAGE_QUERY = graphql`
   query HomePageContentQuery {
     libraries {
       id
     }
-    videos(first: 200) {
+    movies: films(first: 200) {
+      edges {
+        node {
+          ...HomePageContent_filmNode @relay(mask: false)
+        }
+      }
+    }
+    tvShows: shows(first: 200) {
       edges {
         node {
           id
           title
-          filename
-          mediaType
-          nativeResolution
+          year
           metadata {
             year
             genre
             director
             posterUrl
           }
-          videoStream {
-            codec
-          }
-          ...FilmTile_video
-          ...FilmDetailsOverlay_video
+          ...ShowTile_show
+          ...ShowDetailsOverlay_show
         }
-      }
-    }
-    watchlist {
-      id
-      progressSeconds
-      video {
-        id
       }
     }
   }
@@ -71,25 +117,21 @@ export const HomePageContent: FC = () => {
   const [params, setParams] = useSearchParams();
   const hasLibraries = (data.libraries ?? []).length > 0;
 
-  const rows = useMemo<FilterRow[]>(
-    () => (data.videos?.edges ?? []).map((edge) => toFilterRow(edge.node)),
+  const movies = useMemo<FilterRow[]>(
+    () => (data.movies?.edges ?? []).map((edge) => toFilterRowFromFilm(edge.node)),
     [data]
   );
-
-  const watchlistEntries = useMemo(() => {
-    const items = data.watchlist ?? [];
-    const rowsById = new Map(rows.map((r) => [r.id, r]));
-    return items
-      .map((item) => {
-        const row = rowsById.get(item.video.id);
-        if (!row) return null;
-        return { id: item.id, row, progressSeconds: item.progressSeconds };
-      })
-      .filter((x): x is { id: string; row: FilterRow; progressSeconds: number } => x !== null);
-  }, [data, rows]);
+  // Shows are kept separate from FilterRow — they're a distinct entity
+  // shape (Show, not Video) and render through ShowTile/ShowDetailsOverlay.
+  // Search/filter currently runs against Films only; Show search is
+  // declared tech debt (see docs/todo.md).
+  const tvShowEdges = useMemo(() => data.tvShows?.edges ?? [], [data]);
+  const rows = movies;
 
   const filmId = params.get("film");
   const selectedRow = filmId ? rows.find((r) => r.id === filmId) : undefined;
+  const showId = params.get("show");
+  const selectedShowEdge = showId ? tvShowEdges.find((e) => e.node.id === showId) : undefined;
 
   // Hero slideshow: cycle up to 4 movies that have posters. Lab spec uses
   // 7s interval + 0.7s crossfade + Ken Burns; matched here.
@@ -137,16 +179,6 @@ export const HomePageContent: FC = () => {
     [heroIndex]
   );
 
-  const continueWatching = useMemo(
-    () => watchlistEntries.filter((w) => w.progressSeconds > 0),
-    [watchlistEntries]
-  );
-  const watchlistRest = useMemo(
-    () => watchlistEntries.filter((w) => w.progressSeconds === 0),
-    [watchlistEntries]
-  );
-  const newReleases = useMemo(() => rows.slice(0, 12), [rows]);
-
   const {
     search,
     setSearch,
@@ -187,8 +219,27 @@ export const HomePageContent: FC = () => {
     setParams(next);
   }, [params, setParams]);
 
+  const openShow = useCallback(
+    (id: string): void => {
+      const next = new URLSearchParams(params);
+      next.set("show", id);
+      setParams(next);
+    },
+    [params, setParams]
+  );
+
+  const closeShow = useCallback((): void => {
+    const next = new URLSearchParams(params);
+    next.delete("show");
+    setParams(next);
+  }, [params, setParams]);
+
   if (!hasLibraries) {
     return <EmptyLibrariesHero watermark={strings.emptyWatermark} />;
+  }
+
+  if (selectedShowEdge) {
+    return <ShowDetailsOverlay show={selectedShowEdge.node} onClose={closeShow} />;
   }
 
   if (selectedRow) {
@@ -196,6 +247,7 @@ export const HomePageContent: FC = () => {
     return (
       <FilmDetailsOverlay
         video={selectedRow.node}
+        copies={selectedRow.copies}
         suggestions={suggestions}
         onSelectSuggestion={openFilm}
         onClose={closeFilm}
@@ -216,7 +268,7 @@ export const HomePageContent: FC = () => {
                 return (
                   <img
                     key={film.id}
-                    src={upgradePosterUrl(url, 1600)}
+                    src={upgradePosterUrl(resolvePosterUrl(url) ?? url, 1600)}
                     alt=""
                     className={mergeClasses(
                       styles.heroImg,
@@ -360,7 +412,7 @@ export const HomePageContent: FC = () => {
               </div>
               <div className={styles.searchGrid}>
                 {searchResults.map((r) => (
-                  <FilmTile key={r.id} video={r.node} onClick={openFilm} />
+                  <FilmTile key={r.id} video={r.node} onClick={() => openFilm(r.id)} />
                 ))}
               </div>
             </div>
@@ -375,26 +427,22 @@ export const HomePageContent: FC = () => {
           )
         ) : (
           <>
-            {continueWatching.length > 0 && (
-              <PosterRow title={strings.rowContinueWatching}>
-                {continueWatching.map(({ id, row }) => (
-                  <FilmTile key={id} video={row.node} onClick={openFilm} />
+            {movies.length > 0 && (
+              <PosterRow title={strings.rowMovies}>
+                {movies.map((r) => (
+                  <FilmTile key={r.id} video={r.node} onClick={() => openFilm(r.id)} />
                 ))}
               </PosterRow>
             )}
 
-            {newReleases.length > 0 && (
-              <PosterRow title={strings.rowNewReleases}>
-                {newReleases.map((r) => (
-                  <FilmTile key={r.id} video={r.node} onClick={openFilm} />
-                ))}
-              </PosterRow>
-            )}
-
-            {watchlistRest.length > 0 && (
-              <PosterRow title={strings.rowWatchlist}>
-                {watchlistRest.map(({ id, row }) => (
-                  <FilmTile key={id} video={row.node} onClick={openFilm} />
+            {tvShowEdges.length > 0 && (
+              <PosterRow title={strings.rowTvShows}>
+                {tvShowEdges.map((edge) => (
+                  <ShowTile
+                    key={edge.node.id}
+                    show={edge.node}
+                    onClick={() => openShow(edge.node.id)}
+                  />
                 ))}
               </PosterRow>
             )}

@@ -49,6 +49,7 @@ fn build_config_from_env() -> AppResult<ServerConfig> {
 
     let db_path = xstream_server::db::default_db_path();
     let segment_dir = project_root.join("tmp").join("segments-rust");
+    let poster_dir = project_root.join("tmp").join("poster-cache");
 
     let bind_addr_str =
         std::env::var("XSTREAM_BIND_ADDR").unwrap_or_else(|_| "127.0.0.1:3002".to_string());
@@ -64,6 +65,7 @@ fn build_config_from_env() -> AppResult<ServerConfig> {
         bind_addr,
         db_path,
         segment_dir,
+        poster_dir,
         project_root,
         ffmpeg_override: None,
     })

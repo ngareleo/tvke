@@ -13,16 +13,19 @@ import type { Resolution } from "~/types.js";
 
 export interface ClientConfig {
   playback: {
-    /** Encoded-segment window for steady-state forward play. Each chunk
-     *  mutation requests this many seconds of media. */
-    chunkDurationS: number;
-    /** Window length for the first chunk after a mid-file seek (startS > 0).
-     *  Picked short enough that the prefetch RAF (`prefetchThresholdS = 90`)
-     *  trips immediately and eager-warms ffmpeg for the next chunk. NOT used
-     *  at startS = 0 — `-ss 0 -t 30` on VAAPI HDR 4K silently produces zero
-     *  segments (trace 1bac05bd…). See
-     *  `docs/server/Hardware-Acceleration/01-HDR-Pad-Artifact.md`. */
-    firstChunkDurationS: number;
+    /** Per-chunk duration ramp (seconds). Each new playback session — and
+     *  every seek — re-enters this sequence at index 0, advancing one step
+     *  per chunk request until the tail is reached. Smaller initial chunks
+     *  cut time-to-first-frame; the steady growth keeps the buffer filling
+     *  without producing the giant orphan ffmpeg jobs a fixed 300 s window
+     *  left behind on pause/seek. After the tail, every subsequent request
+     *  uses `chunkSteadyStateS`. */
+    chunkRampS: readonly number[];
+    /** Steady-state chunk size after the ramp tail (seconds). Applied to
+     *  every chunk past `chunkRampS.length`. Tunable separately from the
+     *  ramp tail so the steady state can be widened later without changing
+     *  the cold-start curve. */
+    chunkSteadyStateS: number;
     /** How close to the end of the current chunk (in seconds) we start
      *  prefetching the next one. Sized to absorb ffmpeg cold-start (~25-30 s
      *  on 4K VAAPI) plus a HW→SW fallback (~30 s of failed VAAPI before the
@@ -30,10 +33,15 @@ export interface ClientConfig {
      *  tail near 20 s. */
     prefetchThresholdS: number;
     /** Minimum buffered seconds before `video.play()` is called on initial
-     *  load. Larger resolutions need more lead-time because the first frames
-     *  take longer to decode/render. The 4K value was reduced from 10 s after
-     *  a Seq cold-start trace showed the startup-buffer fill phase accounted
-     *  for ~69 % of TTFF (~2.1 s of a ~3.1 s total). */
+     *  load. Held uniformly low across resolutions: the ramp's 10 s first
+     *  chunk gives an 8 s safety margin against post-play decoder stalls
+     *  even at 4K, since the playhead can only catch the buffer if ffmpeg
+     *  falls below realtime — which is itself a stall worth surfacing
+     *  rather than hiding behind a deeper gate. Earlier per-resolution
+     *  values (4 s @ 720p, 6 s @ 1080p, 5 s @ 4K) were rooted in the
+     *  pre-ramp 30 s first-chunk window and the assumption that a higher
+     *  resolution implied a longer cold start; under the ramp + the
+     *  page-mount prewarm, that's no longer the dominant variable. */
     startupBufferS: Record<Resolution, number>;
     /** Show the mid-playback buffering spinner only after this much continuous
      *  stall. Brief decoder hiccups under the threshold are swallowed. */
@@ -52,10 +60,6 @@ export interface ClientConfig {
      *  false positives right at the buffered-end edge where the decoder may
      *  still stall briefly. */
     seekBufferedToleranceS: number;
-    /** Nudge added to seekTime when computing the next snap boundary, so
-     *  seeks that land exactly on a 300 s grid boundary still produce a
-     *  non-degenerate chunk (NOT [N, N) zero-length). */
-    seekSnapNudgeS: number;
     /** Poller interval driving the BufferManager backpressure check while
      *  the user is paused (`timeupdate` is silent during pause, so we tick
      *  manually). */
@@ -89,22 +93,21 @@ export interface ClientConfig {
 
 export const clientConfig: ClientConfig = {
   playback: {
-    chunkDurationS: 300,
-    firstChunkDurationS: 30,
+    chunkRampS: [10, 15, 20, 30, 45, 60] as const,
+    chunkSteadyStateS: 60,
     prefetchThresholdS: 90,
     startupBufferS: {
       "240p": 2,
       "360p": 2,
-      "480p": 3,
-      "720p": 4,
-      "1080p": 6,
-      "4k": 5,
+      "480p": 2,
+      "720p": 2,
+      "1080p": 2,
+      "4k": 2,
     },
     bufferingSpinnerDelayMs: 2000,
     minRealChunkBytes: 1024,
     firstRenderGraceMs: 5000,
     seekBufferedToleranceS: 0.5,
-    seekSnapNudgeS: 0.001,
     userPausePollIntervalMs: 1000,
     maxRecoveryAttempts: 3,
     defaultBackoffMs: [500, 1000, 2000] as const,

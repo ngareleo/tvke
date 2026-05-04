@@ -10,13 +10,88 @@ type DirEntry {
 }
 
 type Episode {
-	episodeNumber: Int!
 	seasonNumber: Int!
+	episodeNumber: Int!
 	title: String
-	durationSeconds: Float
+	"""
+	True when at least one `videos` row exists for this episode
+	coordinate. False renders the row dimmed in the seasons panel
+	(OMDb-known but missing on disk).
+	"""
 	onDisk: Boolean!
+	"""
+	Duration sourced from the bestCopy (every copy of the same
+	episode is the same logical file). Null when off-disk.
+	"""
+	durationSeconds: Float
+	"""
+	Native resolution of the bestCopy. Null when off-disk or when
+	the column was unset for older rows.
+	"""
 	nativeResolution: Resolution
+	"""
+	Every file row for this episode coordinate. Ordered res-desc /
+	bitrate-desc so the picker renders best-first.
+	"""
+	copies: [Video!]!
+	"""
+	First entry of `copies` (best-quality) or null when off-disk.
+	Drives the default play target.
+	"""
+	bestCopy: Video
+	"""
+	Convenience: the bestCopy's library, when present. Lets the
+	client mark an episode "offline" when its host library's status
+	is OFFLINE without an extra round-trip.
+	"""
+	library: Library
+	"""
+	Carry-over for clients still keying on a single video id. The
+	Relay node id of the bestCopy when present, null otherwise.
+	Tech debt: clients should migrate to `bestCopy.id` and this
+	field disappears.
+	"""
 	videoId: ID
+}
+
+type Film implements Node {
+	id: ID!
+	title: String!
+	year: Int
+	"""
+	Lifted from the bestCopy's `video_metadata` row (all copies of the
+	same Film share the same OMDb match). Null for unmatched films.
+	"""
+	metadata: VideoMetadata
+	"""
+	`role='main'` rows — the canonical movie file in each containing
+	folder. Sorted highest-resolution first, then by bitrate desc, so
+	the variant picker renders best-first by default.
+	"""
+	copies: [Video!]!
+	"""
+	`role='extra'` rows — trailers, deleted scenes, behind-the-scenes
+	living alongside the main file in the movie's folder.
+	"""
+	extras: [Video!]!
+	"""
+	First entry in `copies` after the resolution+bitrate sort. Errors if
+	the Film has no main copies (a Film row with zero `role='main'`
+	videos is an invariant violation; the scanner shouldn't produce
+	one).
+	"""
+	bestCopy: Video!
+}
+
+type FilmConnection {
+	edges: [FilmEdge!]!
+	pageInfo: PageInfo!
+	totalCount: Int!
+}
+
+type FilmEdge {
+	node: Film!
+	cursor: String!
 }
 
 enum JobStatus {
@@ -32,6 +107,18 @@ type Library implements Node {
 	path: String!
 	mediaType: MediaType!
 	videoExtensions: [String!]!
+	"""
+	Reachability of this library's storage path. `ONLINE` when the
+	path stats as a directory, `OFFLINE` when it doesn't (drive
+	unplugged, NAS unreachable), `UNKNOWN` until the first probe
+	cycle lands. Driven by `services::profile_availability`.
+	"""
+	status: ProfileStatus!
+	"""
+	ISO-8601 timestamp of the most recent probe. Null until the first
+	probe runs.
+	"""
+	lastSeenAt: String
 	stats: LibraryStats!
 	"""
 	MAX_PAGE_SIZE = 100 (enforced server-side regardless of this default)
@@ -88,6 +175,16 @@ type Mutation {
 	"""
 	scanLibraries: [Library!]!
 	"""
+	Cancel a list of in-flight transcode jobs by their global IDs.
+	Fire-and-forget — the resolver always returns `true` and any
+	per-id failure is logged inside `FfmpegPool::kill_job`. The
+	pool's permit-drop runs synchronously, so a follow-up
+	`start_transcode` from the same client (e.g. the seek path's new
+	foreground chunk) sees the freed slot in <50 ms instead of
+	queueing behind the kernel's process reap.
+	"""
+	cancelTranscode(jobIds: [ID!]!): Boolean!
+	"""
 	Spawn (or reuse) a transcode job for the requested video range.
 	Returns either a `TranscodeJob` payload (the job is now in the
 	chunker's job_store and segments will arrive via `/stream/:jobId`)
@@ -104,9 +201,9 @@ type Mutation {
 	"""
 	matchVideo(videoId: ID!, imdbId: String!): Video!
 	unmatchVideo(videoId: ID!): Video!
-	addToWatchlist(videoId: ID!): WatchlistItem!
+	addFilmToWatchlist(filmId: ID!): WatchlistItem!
 	removeFromWatchlist(id: ID!): Boolean!
-	updateWatchProgress(videoId: ID!, progressSeconds: Float!): WatchlistItem!
+	updateWatchProgress(filmId: ID!, progressSeconds: Float!): WatchlistItem!
 	setSetting(key: String!, value: String!): Boolean!
 	recordPlaybackSession(traceId: String!, videoId: ID!, resolution: Resolution!): PlaybackSession!
 }
@@ -179,11 +276,49 @@ type PlaybackSession {
 	startedAt: String!
 }
 
+enum ProfileStatus {
+	"""
+	Library path is reachable and is a directory — content is
+	playable. Set by `services::profile_availability` after a
+	successful probe.
+	"""
+	ONLINE
+	"""
+	Library path is missing, denied, or no longer a directory.
+	Existing rows stay catalogued (so the user can still browse) but
+	playback is blocked at the picker.
+	"""
+	OFFLINE
+	"""
+	Default for fresh rows — the probe has not run yet (it lands one
+	cycle after server start). Treated as "trust nothing" by the
+	client.
+	"""
+	UNKNOWN
+}
+
 type Query {
 	node(id: ID!): Node
 	libraries: [Library!]!
 	videos(first: Int, libraryId: ID, search: String, mediaType: MediaType): VideoConnection!
 	video(id: ID!): Video
+	"""
+	Films are the homepage Movies row's source of truth — paginated,
+	server-filterable. One Film per logical movie; multiple `videos`
+	(file copies) hang off `Film.copies`. See
+	`docs/architecture/Library-Scan/01-Filename-Conventions.md`.
+	"""
+	films(first: Int, libraryId: ID, search: String): FilmConnection!
+	film(id: ID!): Film
+	"""
+	Shows are the homepage TV row's source of truth — paginated,
+	server-filterable. One Show per logical series; multiple `videos`
+	(episode files, possibly across libraries) hang off
+	`Show.seasons → episode.copies`. See
+	`docs/architecture/Library-Scan/03-Show-Entity.md`.
+	"""
+	shows(first: Int, libraryId: ID, search: String): ShowConnection!
+	show(id: ID!): Show
 	transcodeJob(id: ID!): TranscodeJob
 	watchlist: [WatchlistItem!]!
 	"""
@@ -217,6 +352,55 @@ type Season {
 type SettingEntry {
 	key: String!
 	value: String
+}
+
+type Show implements Node {
+	id: ID!
+	title: String!
+	year: Int
+	"""
+	OMDb-matched details. Null for unmatched shows.
+	"""
+	metadata: ShowMetadata
+	"""
+	Distinct libraries that contain at least one episode file for
+	this show. Surfaces the "Available in: <profiles>" line in the
+	detail overlay.
+	"""
+	profiles: [Library!]!
+	"""
+	Full season tree merged from `seasons` + `episodes`. Each
+	`Episode` carries its `copies` (every `videos` row with a
+	matching coordinate) — N+1-free: every video row is fetched once
+	up front and grouped by coordinate.
+	"""
+	seasons: [Season!]!
+}
+
+type ShowConnection {
+	edges: [ShowEdge!]!
+	pageInfo: PageInfo!
+	totalCount: Int!
+}
+
+type ShowEdge {
+	node: Show!
+	cursor: String!
+}
+
+"""
+OMDb-derived show metadata. Mirrors `VideoMetadata`.
+"""
+type ShowMetadata {
+	imdbId: String!
+	title: String!
+	year: Int
+	genre: String
+	director: String
+	cast: [String!]!
+	rating: Float
+	plot: String
+	posterUrl: String
 }
 
 union StartTranscodeResult = TranscodeJob | PlaybackError
@@ -265,12 +449,18 @@ type Video implements Node {
 	"""
 	nativeResolution: Resolution
 	"""
-	For TV-show videos, the full season tree resolved from the seasons +
-	episodes tables joined back to each episode's `Video` row. Movies
-	return an empty list. Episode `Video` rows are batch-fetched once
-	per query so the resolver is N+1-free.
+	The Show this video is an episode of, when set. Movie videos and
+	unmatched episode files return null. Lets the player resolve the
+	full season tree from the show context without an extra query.
 	"""
-	seasons: [Season!]!
+	show: Show
+	"""
+	Episode coordinate `(season, episode)` for episode files; null
+	for movies. Convenience for clients that want to highlight the
+	active episode without joining back through the show.
+	"""
+	seasonNumber: Int
+	episodeNumber: Int
 }
 
 type VideoConnection {
@@ -308,7 +498,7 @@ type WatchlistItem implements Node {
 	addedAt: String!
 	progressSeconds: Float!
 	notes: String
-	video: Video!
+	film: Film!
 }
 
 """

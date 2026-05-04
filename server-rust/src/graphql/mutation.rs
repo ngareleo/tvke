@@ -39,6 +39,27 @@ impl Mutation {
             .collect())
     }
 
+    /// Cancel a list of in-flight transcode jobs by their global IDs.
+    /// Fire-and-forget — the resolver always returns `true` and any
+    /// per-id failure is logged inside `FfmpegPool::kill_job`. The
+    /// pool's permit-drop runs synchronously, so a follow-up
+    /// `start_transcode` from the same client (e.g. the seek path's new
+    /// foreground chunk) sees the freed slot in <50 ms instead of
+    /// queueing behind the kernel's process reap.
+    async fn cancel_transcode(
+        &self,
+        ctx: &Context<'_>,
+        job_ids: Vec<ID>,
+    ) -> async_graphql::Result<bool> {
+        use crate::services::kill_reason::KillReason;
+        let app_ctx = ctx.data_unchecked::<crate::config::AppContext>();
+        for global_id in job_ids {
+            let (_, local_id) = from_global_id(&global_id)?;
+            app_ctx.pool.kill_job(&local_id, KillReason::ClientCancel);
+        }
+        Ok(true)
+    }
+
     /// Spawn (or reuse) a transcode job for the requested video range.
     /// Returns either a `TranscodeJob` payload (the job is now in the
     /// chunker's job_store and segments will arrive via `/stream/:jobId`)
@@ -167,6 +188,7 @@ impl Mutation {
                 rating: None,
                 plot: None,
                 poster_url: None,
+                poster_local_path: None,
                 matched_at: now,
             },
         )?;
@@ -182,13 +204,13 @@ impl Mutation {
         Ok(Video::from_row(&video))
     }
 
-    async fn add_to_watchlist(
+    async fn add_film_to_watchlist(
         &self,
         ctx: &Context<'_>,
-        video_id: ID,
+        film_id: ID,
     ) -> async_graphql::Result<WatchlistItem> {
         let db = ctx.data_unchecked::<Db>();
-        let (_, local_id) = from_global_id(&video_id)?;
+        let (_, local_id) = from_global_id(&film_id)?;
         let row = add_watchlist_item(db, &local_id)?;
         Ok(WatchlistItem::from_row(&row))
     }
@@ -206,13 +228,13 @@ impl Mutation {
     async fn update_watch_progress(
         &self,
         ctx: &Context<'_>,
-        video_id: ID,
+        film_id: ID,
         progress_seconds: f64,
     ) -> async_graphql::Result<WatchlistItem> {
         let db = ctx.data_unchecked::<Db>();
-        let (_, local_id) = from_global_id(&video_id)?;
+        let (_, local_id) = from_global_id(&film_id)?;
         let row = update_watchlist_progress(db, &local_id, progress_seconds)?
-            .ok_or_else(|| async_graphql::Error::new("No watchlist item for video"))?;
+            .ok_or_else(|| async_graphql::Error::new("No watchlist item for film"))?;
         Ok(WatchlistItem::from_row(&row))
     }
 

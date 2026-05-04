@@ -29,7 +29,7 @@ use sha1::{Digest, Sha1};
 use tokio::sync::mpsc;
 use tracing::{error, info, info_span, warn, Instrument};
 
-use crate::config::{profile_for, AppContext, VaapiVideoState};
+use crate::config::{profile_for, AppContext, VaapiVideoState, VaapiVideoStateMap};
 use crate::db::queries::jobs::{
     insert_job as db_insert_job, update_job_status, JobStatusUpdate, TranscodeJobRow,
 };
@@ -350,6 +350,40 @@ enum CascadeTier {
     Software,
 }
 
+/// Picks the next cascade tier after the current one has failed — either by
+/// exiting non-zero, or by exiting cleanly with zero segments produced (the
+/// VAAPI HDR silent-success class). Updates the per-video VAAPI cache so
+/// subsequent jobs for the same source skip the failing tier without
+/// retrying ffmpeg. Returns `None` when no further tier remains.
+///
+/// Co-located with the cascade loop because the tier sequencing and the
+/// state-cache writes are inseparable: every promotion has a `vaapi_state`
+/// side effect that future calls to `run_cascade` read at tier-selection
+/// time. Both the `ExitOutcome::Error` arm and the silent-failure path in
+/// `ExitOutcome::Complete` route through this helper to keep cascade
+/// behavior consistent across failure shapes.
+fn decide_cascade_next_tier(
+    current: CascadeTier,
+    is_hdr: bool,
+    video_id: &str,
+    vaapi_state: &VaapiVideoStateMap,
+) -> Option<CascadeTier> {
+    match (current, is_hdr) {
+        (CascadeTier::FastVaapi, false) => {
+            vaapi_state.insert(video_id.to_owned(), VaapiVideoState::NeedsSwPad);
+            Some(CascadeTier::SwPadVaapi)
+        }
+        // HDR cascade skips sw-pad — same filter chain at both VAAPI tiers,
+        // so falling to Software is the only meaningful next step.
+        (CascadeTier::FastVaapi, true) => Some(CascadeTier::Software),
+        (CascadeTier::SwPadVaapi, _) => {
+            vaapi_state.insert(video_id.to_owned(), VaapiVideoState::HwUnsafe);
+            Some(CascadeTier::Software)
+        }
+        (CascadeTier::Software, _) => None,
+    }
+}
+
 #[allow(clippy::too_many_arguments)]
 async fn run_cascade(
     ctx: AppContext,
@@ -378,30 +412,45 @@ async fn run_cascade(
         JobStatusUpdate::default(),
     );
 
-    // Probe — cache the metadata once, reuse across cascade tiers.
-    let mut file = FfmpegFile::new(&input_path);
-    let probe_result = file.probe(&ctx.ffmpeg_paths.ffprobe).await;
-    let metadata = match probe_result {
-        Ok(m) => m.clone(),
-        Err(err) => {
-            initial_reservation.release();
-            let msg = format!("ffprobe failed: {err}");
-            error!(error = %err, "ffprobe failed");
-            job.with_inner_mut(|i| {
-                i.status = JobStatus::Error;
-                i.error = Some(msg.clone());
-                i.error_code = Some(PlaybackErrorCode::ProbeFailed);
-            });
-            let _ = update_job_status(
-                &ctx.db,
-                &job_id_owned,
-                "error",
-                JobStatusUpdate {
-                    error: Some(&msg),
-                    ..Default::default()
-                },
-            );
-            return;
+    // Probe — first look up the per-source cache on `AppContext`, populated
+    // lazily by the first chunk for each `video_id`. ffprobe is stable per
+    // file (HDR/SDR detection, codec, stream layout don't drift between
+    // chunks of the same source), and rerunning it adds ~150-200ms to
+    // every chunk's wall-clock that lands directly in the seek-to-first-
+    // frame budget. Cache miss → run ffprobe + insert; cache hit →
+    // skip the subprocess. Within a single cascade we keep `metadata` in
+    // a local so retries across tiers don't re-key the map.
+    let video_id = job.with_inner(|i| i.video_id.clone());
+    let metadata = if let Some(cached) = ctx.probe_cache.get(&video_id) {
+        cached.clone()
+    } else {
+        let mut file = FfmpegFile::new(&input_path);
+        match file.probe(&ctx.ffmpeg_paths.ffprobe).await {
+            Ok(m) => {
+                let owned = m.clone();
+                ctx.probe_cache.insert(video_id.clone(), owned.clone());
+                owned
+            }
+            Err(err) => {
+                initial_reservation.release();
+                let msg = format!("ffprobe failed: {err}");
+                error!(error = %err, "ffprobe failed");
+                job.with_inner_mut(|i| {
+                    i.status = JobStatus::Error;
+                    i.error = Some(msg.clone());
+                    i.error_code = Some(PlaybackErrorCode::ProbeFailed);
+                });
+                let _ = update_job_status(
+                    &ctx.db,
+                    &job_id_owned,
+                    "error",
+                    JobStatusUpdate {
+                        error: Some(&msg),
+                        ..Default::default()
+                    },
+                );
+                return;
+            }
         }
     };
 
@@ -410,8 +459,8 @@ async fn run_cascade(
     let watcher_handle = spawn_segment_watcher(ctx.clone(), job.clone(), segment_dir.clone());
 
     // Cascade tier sequencing. Per-source state cache promotes a known-bad
-    // video straight to the right tier on subsequent chunks.
-    let video_id = job.with_inner(|i| i.video_id.clone());
+    // video straight to the right tier on subsequent chunks. `video_id` was
+    // hoisted above for the probe-cache lookup.
     let mut tier = match (ctx.vaapi_state.get(&video_id).map(|r| *r), &ctx.hw_accel) {
         (Some(VaapiVideoState::HwUnsafe), _) | (_, HwAccelConfig::Software) => {
             CascadeTier::Software
@@ -556,8 +605,38 @@ async fn run_cascade(
         };
 
         match outcome {
-            ExitOutcome::Complete { .. } => {
-                break Some(outcome);
+            ExitOutcome::Complete { ref stderr_tail } => {
+                let segment_count = job.with_inner(|i| i.completed_count());
+                if segment_count > 0 {
+                    // Successful encode at this tier.
+                    break Some(outcome);
+                }
+                // Silent failure: clean exit, zero segments. The VAAPI HDR
+                // 4K class — `-ss 0 -t SHORT` exits successfully but writes
+                // nothing. Treat as cascade-eligible: the next tier may
+                // produce real output (typically Software for HDR, sw-pad
+                // for SDR). The per-tier event carries `ffmpeg_stderr` and
+                // `tier` so Seq can answer "which tier silent-failed?"
+                // without correlating across spans.
+                let tail = stderr_tail.clone();
+                warn!(
+                    tier = ?tier,
+                    ffmpeg_stderr = %tail,
+                    chunk_start_s = start_time_seconds.unwrap_or(0.0),
+                    chunk_end_s = end_time_seconds.unwrap_or(0.0),
+                    "transcode_silent_failure"
+                );
+                match decide_cascade_next_tier(tier, metadata.is_hdr, &video_id, &ctx.vaapi_state) {
+                    Some(next) => {
+                        tier = next;
+                        continue;
+                    }
+                    None => {
+                        // Final tier silent-failed — fall through to the
+                        // post-loop handler, which marks the job Error.
+                        break Some(outcome);
+                    }
+                }
             }
             ExitOutcome::Killed { .. } => {
                 break Some(outcome);
@@ -568,41 +647,15 @@ async fn run_cascade(
             } => {
                 let tail = stderr_tail.clone();
                 let code_for_log = code;
-                // Decide next tier.
-                let next_tier = match (tier, metadata.is_hdr) {
-                    (CascadeTier::FastVaapi, false) => {
-                        ctx.vaapi_state
-                            .insert(video_id.clone(), VaapiVideoState::NeedsSwPad);
-                        warn!(
-                            ffmpeg_exit_code = ?code_for_log,
-                            ffmpeg_stderr = %tail,
-                            "Fast VAAPI failed — retrying with sw-pad"
-                        );
-                        Some(CascadeTier::SwPadVaapi)
-                    }
-                    (CascadeTier::FastVaapi, true) => {
-                        // HDR cascade skips sw-pad — same chain at both tiers.
-                        Some(CascadeTier::Software)
-                    }
-                    (CascadeTier::SwPadVaapi, _) => {
-                        ctx.vaapi_state
-                            .insert(video_id.clone(), VaapiVideoState::HwUnsafe);
-                        warn!(
-                            ffmpeg_exit_code = ?code_for_log,
-                            ffmpeg_stderr = %tail,
-                            "Sw-pad VAAPI failed — falling back to software"
-                        );
-                        Some(CascadeTier::Software)
-                    }
-                    (CascadeTier::Software, _) => {
-                        // Final tier failed — surface the error.
-                        None
-                    }
-                };
-
-                match next_tier {
-                    Some(t) => {
-                        tier = t;
+                warn!(
+                    tier = ?tier,
+                    ffmpeg_exit_code = ?code_for_log,
+                    ffmpeg_stderr = %tail,
+                    "transcode_tier_failed"
+                );
+                match decide_cascade_next_tier(tier, metadata.is_hdr, &video_id, &ctx.vaapi_state) {
+                    Some(next) => {
+                        tier = next;
                         continue;
                     }
                     None => {
@@ -636,12 +689,18 @@ async fn run_cascade(
     match final_outcome {
         Some(ExitOutcome::Complete { .. }) => {
             let segment_count = job.with_inner(|i| i.completed_count());
-            // Silent-failure event — clean exit, zero segments. The HDR 4K
-            // VAAPI silent-success class.
+            // Per-tier `transcode_silent_failure` events have already fired
+            // from inside the cascade loop (with `tier`, `ffmpeg_stderr`,
+            // and chunk bounds). Reaching this branch with zero segments
+            // means the cascade exhausted every tier — surface as fatal
+            // and write the DB row. Don't re-emit the per-tier event;
+            // emit a distinct "exhausted" record so Seq can distinguish
+            // "this tier silent-failed" from "every tier silent-failed".
             if segment_count == 0 {
-                warn!(
+                error!(
                     chunk_start_s = start_time_seconds.unwrap_or(0.0),
-                    "transcode_silent_failure: clean exit but zero segments written"
+                    chunk_end_s = end_time_seconds.unwrap_or(0.0),
+                    "transcode_silent_failure_cascade_exhausted"
                 );
                 job.with_inner_mut(|i| {
                     i.status = JobStatus::Error;
@@ -908,5 +967,145 @@ mod tests {
     #[test]
     fn format_seconds_keeps_decimal_for_fractional_values() {
         assert_eq!(format_seconds(30.5), "30.5");
+    }
+
+    // ── decide_cascade_next_tier ──────────────────────────────────────────
+    //
+    // The helper drives both the non-zero-exit cascade (`ExitOutcome::Error`)
+    // and the silent-failure cascade (`ExitOutcome::Complete` with zero
+    // segments). The matrix below covers every (tier, is_hdr) input plus the
+    // load-bearing side effect on the per-video VAAPI cache.
+
+    use std::sync::Arc;
+
+    use dashmap::DashMap;
+
+    fn empty_cache() -> VaapiVideoStateMap {
+        Arc::new(DashMap::new())
+    }
+
+    #[test]
+    fn fast_vaapi_sdr_failure_promotes_to_sw_pad_and_caches_needs_sw_pad() {
+        let cache = empty_cache();
+        let next = decide_cascade_next_tier(CascadeTier::FastVaapi, false, "v1", &cache);
+        assert_eq!(next, Some(CascadeTier::SwPadVaapi));
+        assert_eq!(
+            cache.get("v1").map(|r| *r),
+            Some(VaapiVideoState::NeedsSwPad)
+        );
+    }
+
+    #[test]
+    fn fast_vaapi_hdr_failure_skips_sw_pad_and_does_not_cache() {
+        // HDR shares the same filter chain at FastVaapi and SwPadVaapi, so
+        // there's no reason to retry sw-pad — go straight to Software.
+        // No state insert because SwPadVaapi was never tried.
+        let cache = empty_cache();
+        let next = decide_cascade_next_tier(CascadeTier::FastVaapi, true, "v1", &cache);
+        assert_eq!(next, Some(CascadeTier::Software));
+        assert!(cache.get("v1").is_none());
+    }
+
+    #[test]
+    fn sw_pad_vaapi_failure_falls_back_to_software_and_caches_hw_unsafe() {
+        let cache = empty_cache();
+        let next = decide_cascade_next_tier(CascadeTier::SwPadVaapi, false, "v1", &cache);
+        assert_eq!(next, Some(CascadeTier::Software));
+        assert_eq!(cache.get("v1").map(|r| *r), Some(VaapiVideoState::HwUnsafe));
+    }
+
+    #[test]
+    fn sw_pad_vaapi_failure_caches_hw_unsafe_for_hdr_too() {
+        let cache = empty_cache();
+        let next = decide_cascade_next_tier(CascadeTier::SwPadVaapi, true, "v2", &cache);
+        assert_eq!(next, Some(CascadeTier::Software));
+        assert_eq!(cache.get("v2").map(|r| *r), Some(VaapiVideoState::HwUnsafe));
+    }
+
+    #[test]
+    fn software_failure_returns_none_for_either_dynamic_range() {
+        // Software is the final tier — no further fallback. No cache write
+        // either (cache only encodes VAAPI capability, not SW failures).
+        let cache = empty_cache();
+        assert_eq!(
+            decide_cascade_next_tier(CascadeTier::Software, false, "v3", &cache),
+            None
+        );
+        assert_eq!(
+            decide_cascade_next_tier(CascadeTier::Software, true, "v3", &cache),
+            None
+        );
+        assert!(cache.get("v3").is_none());
+    }
+
+    #[test]
+    fn cascade_overwrites_earlier_state_when_tier_re_promotes() {
+        // After FastVaapi/SDR fails (NeedsSwPad), if the SwPadVaapi attempt
+        // also fails, the cache should be promoted to HwUnsafe — the more
+        // pessimistic state. Verifies write-not-skip semantics on `insert`.
+        let cache = empty_cache();
+        decide_cascade_next_tier(CascadeTier::FastVaapi, false, "v4", &cache);
+        assert_eq!(
+            cache.get("v4").map(|r| *r),
+            Some(VaapiVideoState::NeedsSwPad)
+        );
+        decide_cascade_next_tier(CascadeTier::SwPadVaapi, false, "v4", &cache);
+        assert_eq!(cache.get("v4").map(|r| *r), Some(VaapiVideoState::HwUnsafe));
+    }
+
+    // ── probe_cache ───────────────────────────────────────────────────────
+    //
+    // The full cache-aware path inside `run_cascade` requires a real ffprobe
+    // binary + a real source file, so it lives in `cascade_integration.rs`
+    // territory rather than this unit suite. Here we assert the cache's
+    // shape: AppContext initialises an empty map, FileMetadata round-trips
+    // through it, and lookups by `video_id` are cheap (DashMap, lock-free).
+
+    use crate::config::ProbeMetadataCache;
+    use crate::services::ffmpeg_file::FileMetadata;
+
+    fn synthetic_metadata(is_hdr: bool) -> FileMetadata {
+        FileMetadata {
+            duration_seconds: 7200.0,
+            file_size_bytes: 1_000_000_000,
+            bitrate_kbps: 12_000,
+            video_streams: Vec::new(),
+            audio_streams: Vec::new(),
+            subtitle_stream_count: 0,
+            is_high_bit_depth: is_hdr,
+            is_hdr,
+        }
+    }
+
+    #[test]
+    fn probe_cache_returns_inserted_metadata_by_video_id() {
+        let cache: ProbeMetadataCache = Arc::new(DashMap::new());
+        let meta = synthetic_metadata(false);
+        cache.insert("video-1".into(), meta.clone());
+        let hit = cache.get("video-1").expect("present");
+        assert_eq!(hit.duration_seconds, 7200.0);
+        assert!(!hit.is_hdr);
+    }
+
+    #[test]
+    fn probe_cache_distinguishes_hdr_from_sdr_per_video_id() {
+        // The cascade picks SDR vs HDR filter chain off `is_hdr`; cache
+        // entries must not collide between sibling videos.
+        let cache: ProbeMetadataCache = Arc::new(DashMap::new());
+        cache.insert("sdr-video".into(), synthetic_metadata(false));
+        cache.insert("hdr-video".into(), synthetic_metadata(true));
+        assert_eq!(cache.get("sdr-video").map(|m| m.is_hdr), Some(false));
+        assert_eq!(cache.get("hdr-video").map(|m| m.is_hdr), Some(true));
+    }
+
+    #[test]
+    fn probe_cache_overwrites_on_repeat_insert() {
+        // Library re-scan that replaces a video's metadata entry should
+        // surface the new probe result on the next chunk; DashMap.insert
+        // overwrites by default, which is what we want.
+        let cache: ProbeMetadataCache = Arc::new(DashMap::new());
+        cache.insert("v".into(), synthetic_metadata(false));
+        cache.insert("v".into(), synthetic_metadata(true));
+        assert_eq!(cache.get("v").map(|m| m.is_hdr), Some(true));
     }
 }

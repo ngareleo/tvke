@@ -22,13 +22,15 @@ const VIDEO_FRAGMENT = graphql`
     id
     title
     mediaType
-    seasons {
-      seasonNumber
-      episodes {
-        episodeNumber
-        title
-        durationSeconds
-        onDisk
+    show {
+      seasons {
+        seasonNumber
+        episodes {
+          episodeNumber
+          title
+          durationSeconds
+          onDisk
+        }
       }
     }
     ...VideoArea_video
@@ -50,7 +52,8 @@ export const PlayerContent: FC<Props> = ({ video }) => {
   const episodeParam = searchParams.get("e");
   const seriesPick = useMemo(() => {
     if (data.mediaType !== "TV_SHOWS") return null;
-    const seasons: ReadonlyArray<SeasonInput> = data.seasons.map((s) => ({
+    const showSeasons = data.show?.seasons ?? [];
+    const seasons: ReadonlyArray<SeasonInput> = showSeasons.map((s) => ({
       seasonNumber: s.seasonNumber,
       episodes: s.episodes.map((ep) => ({
         episodeNumber: ep.episodeNumber,
@@ -64,7 +67,7 @@ export const PlayerContent: FC<Props> = ({ video }) => {
       seasonParam !== null ? Number(seasonParam) : null,
       episodeParam !== null ? Number(episodeParam) : null
     );
-  }, [data.mediaType, data.seasons, seasonParam, episodeParam]);
+  }, [data.mediaType, data.show, seasonParam, episodeParam]);
 
   const [chromeHidden, setChromeHidden] = useState(false);
   const [panelOpen, setPanelOpen] = useState(false);

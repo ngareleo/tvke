@@ -38,6 +38,7 @@ function makeHarness(): RetryHarness {
       getVideoId: () => "video-1",
       getVideoDurationS: () => 1800,
       startTranscodeChunk,
+      cancelTranscodeChunks: vi.fn(),
       recordSession: vi.fn(),
     },
     {
@@ -177,6 +178,7 @@ describe("PlaybackController MSE recovery", () => {
         getVideoId: () => "v-1",
         getVideoDurationS: () => 1800,
         startTranscodeChunk: vi.fn(),
+        cancelTranscodeChunks: vi.fn(),
         recordSession: vi.fn(),
       },
       { onStatusChange, onError, onJobCreated: vi.fn() }

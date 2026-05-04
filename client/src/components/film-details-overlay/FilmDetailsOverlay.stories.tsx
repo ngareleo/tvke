@@ -41,7 +41,7 @@ const movie = {
     posterUrl: "https://picsum.photos/seed/blade/1920/1080",
   },
   videoStream: { codec: "HEVC" },
-  seasons: [],
+  show: null,
 };
 
 const series = {
@@ -60,26 +60,28 @@ const series = {
     posterUrl: "https://picsum.photos/seed/severance/1920/1080",
   },
   videoStream: { codec: "HEVC" },
-  seasons: [
-    {
-      seasonNumber: 1,
-      episodes: Array.from({ length: 9 }, (_, i) => ({
-        episodeNumber: i + 1,
-        title: `Episode ${i + 1}`,
-        durationSeconds: 2820,
-        onDisk: true,
-      })),
-    },
-    {
-      seasonNumber: 2,
-      episodes: Array.from({ length: 10 }, (_, i) => ({
-        episodeNumber: i + 1,
-        title: `Episode ${i + 1}`,
-        durationSeconds: 2820,
-        onDisk: i < 4,
-      })),
-    },
-  ],
+  show: {
+    seasons: [
+      {
+        seasonNumber: 1,
+        episodes: Array.from({ length: 9 }, (_, i) => ({
+          episodeNumber: i + 1,
+          title: `Episode ${i + 1}`,
+          durationSeconds: 2820,
+          onDisk: true,
+        })),
+      },
+      {
+        seasonNumber: 2,
+        episodes: Array.from({ length: 10 }, (_, i) => ({
+          episodeNumber: i + 1,
+          title: `Episode ${i + 1}`,
+          durationSeconds: 2820,
+          onDisk: i < 4,
+        })),
+      },
+    ],
+  },
 };
 
 const meta: Meta<WrapperProps> = {

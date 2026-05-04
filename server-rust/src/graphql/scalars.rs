@@ -122,6 +122,37 @@ impl JobStatus {
 }
 
 #[derive(Enum, Copy, Clone, Eq, PartialEq, Debug)]
+#[graphql(name = "ProfileStatus")]
+pub enum ProfileStatus {
+    /// Library path is reachable and is a directory — content is
+    /// playable. Set by `services::profile_availability` after a
+    /// successful probe.
+    #[graphql(name = "ONLINE")]
+    Online,
+    /// Library path is missing, denied, or no longer a directory.
+    /// Existing rows stay catalogued (so the user can still browse) but
+    /// playback is blocked at the picker.
+    #[graphql(name = "OFFLINE")]
+    Offline,
+    /// Default for fresh rows — the probe has not run yet (it lands one
+    /// cycle after server start). Treated as "trust nothing" by the
+    /// client.
+    #[graphql(name = "UNKNOWN")]
+    Unknown,
+}
+
+impl ProfileStatus {
+    pub fn from_internal(s: &str) -> Option<Self> {
+        Some(match s {
+            "online" => ProfileStatus::Online,
+            "offline" => ProfileStatus::Offline,
+            "unknown" => ProfileStatus::Unknown,
+            _ => return None,
+        })
+    }
+}
+
+#[derive(Enum, Copy, Clone, Eq, PartialEq, Debug)]
 #[graphql(name = "PlaybackErrorCode")]
 pub enum PlaybackErrorCode {
     /// The server hit MAX_CONCURRENT_JOBS. Recoverable — retry after retryAfterMs.

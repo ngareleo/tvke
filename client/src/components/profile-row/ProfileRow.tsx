@@ -15,6 +15,8 @@ const LIBRARY_FRAGMENT = graphql`
     id
     name
     path
+    status
+    lastSeenAt
     stats {
       totalCount
       matchedCount
@@ -62,7 +64,26 @@ export const ProfileRow: FC<ProfileRowProps> = ({
         </span>
         <div>
           <div className={styles.name}>{data.name}</div>
-          <div className={styles.path}>{data.path}</div>
+          <div className={styles.path}>
+            {data.path}
+            <span
+              className={mergeClasses(
+                styles.statusPill,
+                data.status === "ONLINE"
+                  ? styles.statusOnline
+                  : data.status === "OFFLINE"
+                    ? styles.statusOffline
+                    : styles.statusUnknown
+              )}
+              title={data.lastSeenAt ? `last seen ${data.lastSeenAt}` : "not yet probed"}
+            >
+              {data.status === "ONLINE"
+                ? "● online"
+                : data.status === "OFFLINE"
+                  ? "○ offline"
+                  : "○ unknown"}
+            </span>
+          </div>
         </div>
 
         <div>

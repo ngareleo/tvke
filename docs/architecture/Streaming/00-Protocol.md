@@ -121,7 +121,7 @@ The MSE `SourceBuffer` has strict rules:
 
 ## Seeking Protocol
 
-Seeks anchor a fresh ffmpeg encode at the user's seek position. The chunk runs from `seekTime` to the next 300-second grid line (so the *prefetched* continuation chunk lands back on the canonical grid and is cache-friendly for forward play).
+Seeks anchor a fresh ffmpeg encode at the user's exact seek position and reset the `RampController` so the next chunks follow the cold-start curve.
 
 1. `"seeking"` event fires on the `<video>` element.
 2. `StreamingService.cancel()` — aborts the current fetch.
@@ -131,11 +131,12 @@ Seeks anchor a fresh ffmpeg encode at the user's seek position. The chunk runs f
    - `await waitForUpdateEnd()`
    - Reset append queue, flags, and `afterAppendCb`
    - Set `video.currentTime = seekTime` (the user's intended position, not a snapped boundary)
-4. `startChunkSeries(res, seekTime, buffer)` — fires a new `startTranscode` mutation for `[seekTime, nextSnap)` where `nextSnap = Math.ceil(seekTime / 300) * 300`. The server runs ffmpeg with `-ss seekTime`, so segment 0 of the produced fMP4 *is* the user's first useful frame.
-5. On every init append, `BufferManager.setTimestampOffset(chunkStartS)` shifts MSE placement so segments land at their absolute source-time position.
-6. Server streams init segment + media segments as ffmpeg produces them.
+4. `RampController.reset()` — rewind the ramp cursor so the seek benefits from the cold-start curve.
+5. `startChunkSeries(res, seekTime, buffer)` — fires a new `startTranscode` mutation. The first duration comes from the (now-reset) ramp (e.g., `chunkRampS[0]` = 10 s). The server runs ffmpeg with `-ss seekTime`, so segment 0 of the produced fMP4 *is* the user's first useful frame.
+6. On every init append, `BufferManager.setTimestampOffset(chunkStartS)` shifts MSE placement so segments land at their absolute source-time position.
+7. Server streams init segment + media segments as ffmpeg produces them.
 
-Trade-off: re-seeking to the same exact second misses the chunk cache (the `jobId` hash is keyed on `start_s`). Acceptable — interactive scrubbing dominates, and the seek-to-ready latency benefit (sub-5 s vs. 16–60 s pre-refactor) is the load-bearing UX win.
+Trade-off: seek chunks may not cache across re-seeks (the ramp duration model means the `end` boundary may differ on the second seek). Acceptable — interactive scrubbing dominates, and the seek-to-ready latency benefit (sub-5 s, same as initial play) is the load-bearing UX win.
 
 **Seek accuracy:** the first appended segment starts at the keyframe ffmpeg's `-ss` lands on (typically within ~1 s of `seekTime`); the video element resumes at `seekTime` once `bufferedAhead ≥ clientConfig.playback.startupBufferS[res]`.
 
@@ -143,18 +144,7 @@ Trade-off: re-seeking to the same exact second misses the chunk cache (the `jobI
 
 ## Startup Buffer
 
-`useChunkedPlayback` waits until `bufferedEnd >= clientConfig.playback.startupBufferS[res]` before calling `video.play()`. This keeps the loading spinner up long enough for smooth initial playback, calibrated per resolution:
-
-| Resolution | Startup threshold |
-|---|---|
-| `240p` | 2s |
-| `360p` | 2s |
-| `480p` | 3s |
-| `720p` | 4s |
-| `1080p` | 6s |
-| `4k` | 5s |
-
-The 4K threshold was lowered from 10 s after a Seq cold-start trace showed the startup-buffer fill phase accounted for ~69 % of TTFF (~2.1 s of a ~3.1 s total). 5 s gives ~1 s back to the user; immediate post-`play()` stalls are surfaced by the existing `playback.stalled` span.
+`BufferManager` waits until `bufferedEnd >= clientConfig.playback.startupBufferS` before calling `video.play()`. The threshold is **uniform across all resolutions: 2 seconds**. This simplification is safe because `clientConfig.playback.chunkRampS[0]` = 10 seconds — the first chunk of every session (and seek, MSE recovery, resolution switch) is 10 seconds of encoded media. Once the buffer holds 2 seconds, the playhead would have to fall **more than 8 seconds behind** the encoding rate for the decoder to starve. That 8 s window is itself a signal worth surfacing via `playback.stalled` rather than masking with a larger startup-buffer gate. The uniform 2 s value was previously per-resolution (2–6 s for 240p–4K); per-resolution stratification was driven by the old fixed 300 s chunk grid and is no longer load-bearing under the ramp model.
 
 Detection is driven by `BufferManager.setAfterAppend(tryStart)` — a callback that fires synchronously inside `drainQueue` after every real `appendBuffer` call. This works correctly in headless environments (Playwright, CI) where `requestAnimationFrame` fires slowly or not at all between segment appends. A RAF loop is also started as a fallback for slow live-transcode paths where no new segment arrives for several seconds.
 
@@ -266,13 +256,15 @@ Easy to conflate, but each knob affects a different part of the pipeline:
 
 | Lever | Default | What it controls |
 |---|---|---|
-| `clientConfig.playback.chunkDurationS` (`client/src/config/appConfig.ts`) | 300s | ffmpeg transcode unit — one ffmpeg process produces one chunk. Affects first-byte latency (smaller = faster start) and chunk-cutover cost (smaller = more frequent cutovers) |
+| `clientConfig.playback.chunkRampS` (`client/src/config/appConfig.ts`) | `[10, 15, 20, 30, 45, 60]` | ffmpeg cold-start ramp (seconds per chunk). Each session/seek/recovery/resolution-switch resets the cursor, so every fresh playhead follows the ramp from the head. Smaller initial chunks cut time-to-first-frame; steady growth balances orphan-job overhead with responsive seeking. Once the tail is exhausted, see `chunkSteadyStateS`. |
+| `clientConfig.playback.chunkSteadyStateS` (`client/src/config/appConfig.ts`) | 60s | ffmpeg steady-state unit after the ramp tail is exhausted. One ffmpeg process produces one chunk. Affects pause/seek responsiveness (smaller = faster seek) and orphan-job overhead (smaller = less wasted work on pause). |
 | Segment duration (ffmpeg `-seg_duration`) | 2s | Wire framing unit — each `.m4s` is 2 seconds of fMP4. Affects append cadence and `appendBuffer` throughput |
 | `clientConfig.buffer.forwardTargetS` (`client/src/config/appConfig.ts`) | 60s | Client-side buffer ceiling — how much media is resident in the SourceBuffer. Independent of ffmpeg; the network can deliver hundreds of segments but the client only keeps `forwardTargetS` ahead of the playhead |
 
 If playback feels choppy at 4K, the right lever depends on the symptom:
-- Long time-to-first-frame → shrink `clientConfig.playback.chunkDurationS` (documented in `docs/todo.md` CHUNK-001)
+- Long time-to-first-frame → tweak `clientConfig.playback.chunkRampS[0]` (smaller first element = faster start, but may hurt backpressure if too small)
 - Decoder underruns mid-stream → raise `forwardResumeS` (more cushion when stream resumes)
 - Out-of-memory on a low-spec client → lower `forwardTargetS`
+- Slow pause/seek responsiveness → shrink `clientConfig.playback.chunkSteadyStateS` (smaller = more frequent chunk boundaries)
 
 Don't reach for a bigger chunk size to "stream more over the wire" — the stream is already continuous; segments are emitted as ffmpeg produces them. A larger chunk just delays the first byte.

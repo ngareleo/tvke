@@ -67,6 +67,7 @@ chrono = { version = "0.4", default-features = false, features = ["clock", "serd
 thiserror = "2"
 sha1 = "0.10"
 tokio-stream = { version = "0.1", features = ["sync"] }
+tokio-util = { version = "0.7", features = ["io"] }
 
 [dev-dependencies]
 tempfile = "3"
