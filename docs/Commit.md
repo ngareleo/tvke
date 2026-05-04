@@ -15,6 +15,13 @@ Entry shape (each entry ends with the divider line described above):
 
 <!-- ENTRIES BELOW — newest first; each ends with a bare `---` line. The architect's next invocation will treat the no-entries state as the first-run case and prepend a bootstrap entry at HEAD. -->
 
+## [pending-commit] — 2026-05-04 — Probe-cache: ffprobe result caching per video_id (same-session curation)
+
+**Files:** `docs/server/Config/00-AppConfig.md`, `docs/architecture/Streaming/06-FfmpegPool.md`, `docs/architecture/Observability/server/00-Spans.md`
+**Why:** Curator sync for feat/library-film-entity PR #59 (probe-cache slice): Seq trace 354eefb4… showed seek latency dominated by ~2.4 s ffmpeg cold-start; ~150–200 ms per chunk was a fresh ffprobe on the same source file. Within a session, the same file is ffprobed 5–10 times (ramp + each seek). Cache + lazy-fill per `video_id` eliminates ~1 s cumulative server work; per-seek win is ~150–200 ms. Three doc files updated: AppConfig (new AppContext §Probe cache subsection documenting keying, lazy fill, no-explicit-invalidation policy, miss-path error handling), Streaming/06-FfmpegPool (new paragraph in "Why a separate module" linking the two sibling caches), Observability server spans (transcode.job row expanded with probe performance note re cache hits/misses).
+
+---
+
 ## [pending-commit] — 2026-05-04 — Seek-cancel latency reduction: serial-lookahead gate + pool cap 3→5 (same-session curation)
 
 **Files:** `docs/server/GraphQL-Schema/00-Surface.md`, `docs/architecture/Streaming/01-Playback-Scenarios.md`, `docs/architecture/Streaming/02-Chunk-Pipeline-Invariants.md`, `docs/architecture/Streaming/06-FfmpegPool.md`, `docs/server/Config/00-AppConfig.md`, `docs/architecture/Observability/server/00-Spans.md`, `docs/architecture/Observability/client/00-Spans.md`

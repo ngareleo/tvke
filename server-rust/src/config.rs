@@ -12,6 +12,7 @@ use crate::services::ffmpeg_path::FfmpegPaths;
 use crate::services::ffmpeg_pool::FfmpegPool;
 use crate::services::job_store::JobStore;
 use crate::services::omdb::OmdbClient;
+use crate::services::ffmpeg_file::FileMetadata;
 use crate::services::scan_state::ScanState;
 
 /// Per-source VAAPI capability state, learned from prior failures. Lives on
@@ -26,6 +27,17 @@ pub enum VaapiVideoState {
 }
 
 pub type VaapiVideoStateMap = Arc<DashMap<String, VaapiVideoState>>;
+
+/// Per-source ffprobe results, cached for the server's lifetime. Each
+/// chunk's `run_cascade` calls `ffprobe` to discover the source's HDR/SDR
+/// state, codec, and stream layout — but the answer is stable for any
+/// given file, so re-running ffprobe per chunk burns ~150-200ms of
+/// wall-clock that lands directly in the seek-to-first-frame budget. The
+/// cache is keyed by `video_id` (matches `vaapi_state`) so library re-scan
+/// rotates entries naturally as `video_id` lifecycle. No explicit
+/// invalidation: a user replacing a file on disk + rescanning is a
+/// server-restart event today.
+pub type ProbeMetadataCache = Arc<DashMap<String, FileMetadata>>;
 
 /// Encode-pipeline tunables — concurrency cap, kill grace windows, retry
 /// hints. All fields default-constructible; override via builder pattern
@@ -204,6 +216,7 @@ pub struct AppContext {
     pub ffmpeg_paths: Arc<FfmpegPaths>,
     pub hw_accel: HwAccelConfig,
     pub vaapi_state: VaapiVideoStateMap,
+    pub probe_cache: ProbeMetadataCache,
     pub job_store: JobStore,
     pub scan_state: ScanState,
     /// `Some` when an `OMDB_API_KEY` is configured (env or DB setting).
@@ -237,6 +250,7 @@ impl AppContext {
             ffmpeg_paths,
             hw_accel,
             vaapi_state: Arc::new(DashMap::<String, VaapiVideoState>::new()),
+            probe_cache: Arc::new(DashMap::<String, FileMetadata>::new()),
             job_store: JobStore::new(),
             scan_state: ScanState::new(),
             omdb,

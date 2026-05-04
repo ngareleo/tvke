@@ -6,6 +6,8 @@
 
 Before the pool existed the cap state (`live`, `dying`, `inflight`) lived inside the chunker. Rapid back-to-back seeks deterministically exhausted the 3-slot cap because SIGTERM'd 4K-software encodes held their slot for up to 20 s while flushing (trace `1ac6637ead86d6b65df08637cbabfacd`, 2026-04-27). Extracting the pool allowed the cap formula to exclude dying jobs immediately and enforce a 2 s SIGKILL escalation. Today `PoolInner` (in `server-rust/src/services/ffmpeg_pool.rs`) owns five fields: `live: DashMap<String, LivePid>`, `inflight: DashSet<String>`, `dying: DashSet<String>`, `kill_reasons: DashMap<String, KillReason>`, and `escalation_cancel: DashMap<String, Arc<Notify>>` (the per-job notifier the SIGKILL escalation task awaits).
 
+The pool works alongside two sibling per-server-lifetime caches on `AppContext`: `vaapi_state` (per-source VAAPI capability state, keyed by `video_id`) and `probe_cache` (per-source ffprobe results, keyed by `video_id`). Both are populated lazily and cleared only on server restart. See [`../../server/Config/00-AppConfig.md#probe-cache`](../../server/Config/00-AppConfig.md#probe-cache) for the ffprobe cache design.
+
 ## Cap formula
 
 ```

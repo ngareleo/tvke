@@ -412,30 +412,45 @@ async fn run_cascade(
         JobStatusUpdate::default(),
     );
 
-    // Probe — cache the metadata once, reuse across cascade tiers.
-    let mut file = FfmpegFile::new(&input_path);
-    let probe_result = file.probe(&ctx.ffmpeg_paths.ffprobe).await;
-    let metadata = match probe_result {
-        Ok(m) => m.clone(),
-        Err(err) => {
-            initial_reservation.release();
-            let msg = format!("ffprobe failed: {err}");
-            error!(error = %err, "ffprobe failed");
-            job.with_inner_mut(|i| {
-                i.status = JobStatus::Error;
-                i.error = Some(msg.clone());
-                i.error_code = Some(PlaybackErrorCode::ProbeFailed);
-            });
-            let _ = update_job_status(
-                &ctx.db,
-                &job_id_owned,
-                "error",
-                JobStatusUpdate {
-                    error: Some(&msg),
-                    ..Default::default()
-                },
-            );
-            return;
+    // Probe — first look up the per-source cache on `AppContext`, populated
+    // lazily by the first chunk for each `video_id`. ffprobe is stable per
+    // file (HDR/SDR detection, codec, stream layout don't drift between
+    // chunks of the same source), and rerunning it adds ~150-200ms to
+    // every chunk's wall-clock that lands directly in the seek-to-first-
+    // frame budget. Cache miss → run ffprobe + insert; cache hit →
+    // skip the subprocess. Within a single cascade we keep `metadata` in
+    // a local so retries across tiers don't re-key the map.
+    let video_id = job.with_inner(|i| i.video_id.clone());
+    let metadata = if let Some(cached) = ctx.probe_cache.get(&video_id) {
+        cached.clone()
+    } else {
+        let mut file = FfmpegFile::new(&input_path);
+        match file.probe(&ctx.ffmpeg_paths.ffprobe).await {
+            Ok(m) => {
+                let owned = m.clone();
+                ctx.probe_cache.insert(video_id.clone(), owned.clone());
+                owned
+            }
+            Err(err) => {
+                initial_reservation.release();
+                let msg = format!("ffprobe failed: {err}");
+                error!(error = %err, "ffprobe failed");
+                job.with_inner_mut(|i| {
+                    i.status = JobStatus::Error;
+                    i.error = Some(msg.clone());
+                    i.error_code = Some(PlaybackErrorCode::ProbeFailed);
+                });
+                let _ = update_job_status(
+                    &ctx.db,
+                    &job_id_owned,
+                    "error",
+                    JobStatusUpdate {
+                        error: Some(&msg),
+                        ..Default::default()
+                    },
+                );
+                return;
+            }
         }
     };
 
@@ -444,8 +459,8 @@ async fn run_cascade(
     let watcher_handle = spawn_segment_watcher(ctx.clone(), job.clone(), segment_dir.clone());
 
     // Cascade tier sequencing. Per-source state cache promotes a known-bad
-    // video straight to the right tier on subsequent chunks.
-    let video_id = job.with_inner(|i| i.video_id.clone());
+    // video straight to the right tier on subsequent chunks. `video_id` was
+    // hoisted above for the probe-cache lookup.
     let mut tier = match (ctx.vaapi_state.get(&video_id).map(|r| *r), &ctx.hw_accel) {
         (Some(VaapiVideoState::HwUnsafe), _) | (_, HwAccelConfig::Software) => {
             CascadeTier::Software
@@ -1040,5 +1055,61 @@ mod tests {
         assert_eq!(cache.get("v4").map(|r| *r), Some(VaapiVideoState::NeedsSwPad));
         decide_cascade_next_tier(CascadeTier::SwPadVaapi, false, "v4", &cache);
         assert_eq!(cache.get("v4").map(|r| *r), Some(VaapiVideoState::HwUnsafe));
+    }
+
+    // ── probe_cache ───────────────────────────────────────────────────────
+    //
+    // The full cache-aware path inside `run_cascade` requires a real ffprobe
+    // binary + a real source file, so it lives in `cascade_integration.rs`
+    // territory rather than this unit suite. Here we assert the cache's
+    // shape: AppContext initialises an empty map, FileMetadata round-trips
+    // through it, and lookups by `video_id` are cheap (DashMap, lock-free).
+
+    use crate::config::ProbeMetadataCache;
+    use crate::services::ffmpeg_file::FileMetadata;
+
+    fn synthetic_metadata(is_hdr: bool) -> FileMetadata {
+        FileMetadata {
+            duration_seconds: 7200.0,
+            file_size_bytes: 1_000_000_000,
+            bitrate_kbps: 12_000,
+            video_streams: Vec::new(),
+            audio_streams: Vec::new(),
+            subtitle_stream_count: 0,
+            is_high_bit_depth: is_hdr,
+            is_hdr,
+        }
+    }
+
+    #[test]
+    fn probe_cache_returns_inserted_metadata_by_video_id() {
+        let cache: ProbeMetadataCache = Arc::new(DashMap::new());
+        let meta = synthetic_metadata(false);
+        cache.insert("video-1".into(), meta.clone());
+        let hit = cache.get("video-1").expect("present");
+        assert_eq!(hit.duration_seconds, 7200.0);
+        assert_eq!(hit.is_hdr, false);
+    }
+
+    #[test]
+    fn probe_cache_distinguishes_hdr_from_sdr_per_video_id() {
+        // The cascade picks SDR vs HDR filter chain off `is_hdr`; cache
+        // entries must not collide between sibling videos.
+        let cache: ProbeMetadataCache = Arc::new(DashMap::new());
+        cache.insert("sdr-video".into(), synthetic_metadata(false));
+        cache.insert("hdr-video".into(), synthetic_metadata(true));
+        assert_eq!(cache.get("sdr-video").map(|m| m.is_hdr), Some(false));
+        assert_eq!(cache.get("hdr-video").map(|m| m.is_hdr), Some(true));
+    }
+
+    #[test]
+    fn probe_cache_overwrites_on_repeat_insert() {
+        // Library re-scan that replaces a video's metadata entry should
+        // surface the new probe result on the next chunk; DashMap.insert
+        // overwrites by default, which is what we want.
+        let cache: ProbeMetadataCache = Arc::new(DashMap::new());
+        cache.insert("v".into(), synthetic_metadata(false));
+        cache.insert("v".into(), synthetic_metadata(true));
+        assert_eq!(cache.get("v").map(|m| m.is_hdr), Some(true));
     }
 }
