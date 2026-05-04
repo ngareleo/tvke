@@ -1,4 +1,6 @@
 import { mergeClasses } from "@griffel/react";
+import { NovaEventingInterceptor } from "@nova/react";
+import type { EventWrapper } from "@nova/types";
 import { type FC, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { graphql, useLazyLoadQuery } from "react-relay";
 import { useSearchParams } from "react-router-dom";
@@ -12,6 +14,12 @@ import { SearchSlide } from "~/components/search-slide/SearchSlide";
 import { ShowDetailsOverlay } from "~/components/show-details-overlay/ShowDetailsOverlay";
 import { ShowTile } from "~/components/show-tile/ShowTile";
 import { resolvePosterUrl } from "~/config/rustOrigin";
+import {
+  isFilterClosedEvent,
+  isFilterOpenRequestedEvent,
+  isFiltersClearedEvent,
+  isSearchClearedEvent,
+} from "~/events/search.events";
 import { IconClose, IconSearch } from "~/lib/icons";
 import type { HomePageContentQuery } from "~/relay/__generated__/HomePageContentQuery.graphql";
 import { EMPTY_FILTERS } from "~/utils/filters";
@@ -197,6 +205,19 @@ export const HomePageContent: FC = () => {
     }
   }, [search, searchFocused]);
 
+  const searchInterceptor = async (wrapper: EventWrapper): Promise<EventWrapper> => {
+    if (isFilterOpenRequestedEvent(wrapper)) {
+      setFilterOpen(true);
+    } else if (isSearchClearedEvent(wrapper)) {
+      clearAll();
+    } else if (isFilterClosedEvent(wrapper)) {
+      setFilterOpen(false);
+    } else if (isFiltersClearedEvent(wrapper)) {
+      setFilters(EMPTY_FILTERS);
+    }
+    return wrapper;
+  };
+
   const openFilm = useCallback(
     (id: string): void => {
       const next = new URLSearchParams(params);
@@ -359,27 +380,27 @@ export const HomePageContent: FC = () => {
             </>
           )}
           {heroMode === "searching" && (
-            <SearchSlide
-              query={search}
-              resultCount={searchResults.length}
-              totalMatched={queryMatched.length}
-              profilesMatched={1}
-              activeFilterCount={activeFilterCount}
-              onOpenFilter={() => setFilterOpen(true)}
-              onClear={clearAll}
-            />
+            <NovaEventingInterceptor interceptor={searchInterceptor}>
+              <SearchSlide
+                query={search}
+                resultCount={searchResults.length}
+                totalMatched={queryMatched.length}
+                profilesMatched={1}
+                activeFilterCount={activeFilterCount}
+              />
+            </NovaEventingInterceptor>
           )}
           {heroMode === "filtering" && (
-            <FilterSlide
-              query={search}
-              filters={filters}
-              setFilters={setFilters}
-              resultCount={searchResults.length}
-              totalMatched={queryMatched.length}
-              profileCount={1}
-              onClose={() => setFilterOpen(false)}
-              onClearFilters={() => setFilters(EMPTY_FILTERS)}
-            />
+            <NovaEventingInterceptor interceptor={searchInterceptor}>
+              <FilterSlide
+                query={search}
+                filters={filters}
+                setFilters={setFilters}
+                resultCount={searchResults.length}
+                totalMatched={queryMatched.length}
+                profileCount={1}
+              />
+            </NovaEventingInterceptor>
           )}
         </div>
       </div>

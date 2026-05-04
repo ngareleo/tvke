@@ -1,6 +1,7 @@
-import { fn } from "storybook/test";
 import { expect, within } from "storybook/test";
 import type { Meta, StoryObj } from "storybook-react-rsbuild";
+
+import { withNovaEventing } from "~/storybook/withNovaEventing.js";
 
 import { AccountMenu } from "./AccountMenu.js";
 
@@ -8,8 +9,6 @@ interface WrapperProps {
   initials: string;
   name: string;
   email: string;
-  onSettings: () => void;
-  onSignOut: () => void;
 }
 
 const AccountMenuWrapper = (props: WrapperProps): JSX.Element => (
@@ -22,12 +21,11 @@ const meta: Meta<WrapperProps> = {
   title: "Components/AccountMenu",
   component: AccountMenuWrapper,
   parameters: { layout: "centered" },
+  decorators: [withNovaEventing],
   args: {
     initials: "DG",
     name: "Dag Mwenda",
     email: "dag@xstream.local",
-    onSettings: fn(),
-    onSignOut: fn(),
   },
 };
 
@@ -49,7 +47,5 @@ export const LongName: Story = {
     initials: "AB",
     name: "Anastasia Beauregard-Williamson",
     email: "anastasia.beauregard.williamson@example.org",
-    onSettings: fn(),
-    onSignOut: fn(),
   },
 };

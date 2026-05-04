@@ -1,16 +1,15 @@
 import type { Meta, StoryObj } from "storybook-react-rsbuild";
 
+import { withNovaEventing } from "~/storybook/withNovaEventing.js";
+
 import { SearchSlide } from "./SearchSlide.js";
 
 const meta: Meta<typeof SearchSlide> = {
   title: "Components/SearchSlide",
   component: SearchSlide,
   parameters: { layout: "padded" },
-  args: {
-    onOpenFilter: () => {},
-    onClear: () => {},
-  },
   decorators: [
+    withNovaEventing,
     (Story) => (
       <div style={{ width: 720, minHeight: 360 }}>
         <Story />

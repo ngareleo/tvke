@@ -1,7 +1,14 @@
 import { mergeClasses } from "@griffel/react";
+import { NovaEventingInterceptor } from "@nova/react";
+import type { EventWrapper } from "@nova/types";
 import { type FC, useState } from "react";
 import { Link } from "react-router-dom";
 
+import {
+  type DirectorySelectedData,
+  isDirectoryBrowserCancelledEvent,
+  isDirectorySelectedEvent,
+} from "~/components/directory-browser/DirectoryBrowser.events.js";
 import { DirectoryBrowser } from "~/components/directory-browser/DirectoryBrowser.js";
 import { IconFolder } from "~/lib/icons.js";
 
@@ -81,6 +88,19 @@ export const ProfileForm: FC<ProfileFormProps> = ({
     onSubmit({ name: name.trim(), path: path.trim(), mediaType, extensions });
   };
 
+  const directoryInterceptor = async (wrapper: EventWrapper): Promise<EventWrapper> => {
+    if (isDirectorySelectedEvent(wrapper)) {
+      const data = wrapper.event.data?.() as DirectorySelectedData | undefined;
+      if (data) {
+        setPath(data.path);
+        setBrowseOpen(false);
+      }
+    } else if (isDirectoryBrowserCancelledEvent(wrapper)) {
+      setBrowseOpen(false);
+    }
+    return wrapper;
+  };
+
   return (
     <div className={styles.shell}>
       <div className={styles.breadcrumb}>
@@ -140,14 +160,9 @@ export const ProfileForm: FC<ProfileFormProps> = ({
               </div>
               {browseOpen && (
                 <div className={styles.browserFloat}>
-                  <DirectoryBrowser
-                    initialPath={path.trim() || "/"}
-                    onCancel={() => setBrowseOpen(false)}
-                    onSelect={(picked) => {
-                      setPath(picked);
-                      setBrowseOpen(false);
-                    }}
-                  />
+                  <NovaEventingInterceptor interceptor={directoryInterceptor}>
+                    <DirectoryBrowser initialPath={path.trim() || "/"} />
+                  </NovaEventingInterceptor>
                 </div>
               )}
             </div>

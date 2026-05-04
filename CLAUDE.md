@@ -72,6 +72,7 @@ xstream/
     ├── lib/icons.tsx               # icon exports
     ├── pages/                      # XxxPage.tsx (Suspense shell) + XxxPageContent.tsx (data + layout)
     ├── components/                 # one kebab-case directory per component — colocated .styles.ts, .strings.ts, .events.ts, .stories.tsx
+    ├── events/                     # cross-cutting Nova event domains — playback, overlay, detail-pane, profiles, search, error
     ├── hooks/                      # useChunkedPlayback, useVideoPlayback, useVideoSync, useJobSubscription, useSplitResize
     ├── services/                   # StreamingService, BufferManager, StreamingLogger
     ├── storybook/                  # withNovaEventing, withLayout, withRelay decorators
@@ -105,6 +106,7 @@ Most domain knowledge lives in skills, subagents, or `docs/`. The main agent sho
 | Streaming protocol + playback scenarios | `docs/architecture/Streaming/` |
 | Observability (spans, logging policy, Seq) | `docs/architecture/Observability/` |
 | Relay fragment contract | `docs/architecture/Relay/` |
+| Nova eventing rule + event taxonomy + exceptions | `docs/code-style/Client-Conventions/02-Nova-Eventing.md` |
 | Tauri bundling, code-signing, auto-updates, ffmpeg distribution | `docs/architecture/Deployment/` |
 | Config (AppConfig, library configuration, resolution profiles) | `docs/server/Config/` |
 | GraphQL schema surface | `docs/server/GraphQL-Schema/` |

@@ -1,7 +1,9 @@
-import { useRef, useState } from "react";
+import { useRef } from "react";
 import { RelayEnvironmentProvider } from "react-relay";
 import { createMockEnvironment, MockPayloadGenerator } from "relay-test-utils";
 import type { Meta, StoryObj } from "storybook-react-rsbuild";
+
+import { withNovaEventing } from "~/storybook/withNovaEventing.js";
 
 import { DirectoryBrowser } from "./DirectoryBrowser.js";
 
@@ -24,7 +26,6 @@ const DirectoryBrowserWrapper = ({ initialPath }: WrapperProps): JSX.Element => 
     const env = createMockEnvironment();
     env.mock.queueOperationResolver((operation) =>
       MockPayloadGenerator.generate(operation, {
-        // Return a small synthetic listing; the story is presentational.
         DirectoryEntry: () => ({
           name: "example",
           path: "/example",
@@ -34,27 +35,10 @@ const DirectoryBrowserWrapper = ({ initialPath }: WrapperProps): JSX.Element => 
     envRef.current = env;
   }
 
-  const [picked, setPicked] = useState<string | null>(null);
-  const [cancelled, setCancelled] = useState(false);
-
   return (
     <RelayEnvironmentProvider environment={envRef.current}>
       <div style={{ width: 360, padding: 24, background: "#050706" }}>
-        <DirectoryBrowser
-          initialPath={initialPath}
-          onSelect={(p) => setPicked(p)}
-          onCancel={() => setCancelled(true)}
-        />
-        <p
-          style={{
-            marginTop: 16,
-            fontFamily: "ui-monospace, monospace",
-            fontSize: 11,
-            color: "#9aa6a0",
-          }}
-        >
-          {picked ? `picked: ${picked}` : cancelled ? "cancelled" : "—"}
-        </p>
+        <DirectoryBrowser initialPath={initialPath} />
       </div>
     </RelayEnvironmentProvider>
   );
@@ -63,6 +47,7 @@ const DirectoryBrowserWrapper = ({ initialPath }: WrapperProps): JSX.Element => 
 const meta: Meta<WrapperProps> = {
   title: "Components/DirectoryBrowser",
   component: DirectoryBrowserWrapper,
+  decorators: [withNovaEventing],
   parameters: { layout: "centered" },
 };
 

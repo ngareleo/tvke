@@ -78,6 +78,27 @@ Design lab uses `useSearchParams` for pane state. In production, same pattern ap
 - Pages (`*Page.tsx` / `*PageContent.tsx`) are the only files that call `useLazyLoadQuery`.
 - Components receive fragment `$key` props, never raw data.
 
+### Event handling — Nova events, never callback props
+
+Design-lab JSX commonly wires actions through callback props (`<Button onClick={() => parent.thing()}>`, `<Sidebar onClose={...}>`, `<EpisodeRow onSelect={...}>`). **Do not copy those prop signatures into production.** The xstream client routes all cross-component user actions through `@nova/react` instead, because callback props create reference-stability bugs across re-renders.
+
+When porting:
+
+1. Pick the events file location.
+   - **Domain file** at `client/src/events/<domain>.events.ts` if the event is cross-cutting or has multiple emitters (`playback`, `overlay`, `detailPane`, `profiles`, `search`, `error`).
+   - **Colocated** `<ComponentName>.events.ts` if a single component owns the event end-to-end.
+2. Define `ORIGINATOR`, `EventTypes`, factory (`createXxxEvent`), and type guard (`isXxxEvent`).
+3. In the component, replace `props.onX(args)` with `useNovaEventing().bubble(createXxxEvent(args))`.
+4. In the parent (usually a `*PageContent.tsx`), wrap the subtree with `NovaEventingInterceptor` and switch on `is…Event(wrapper)` guards.
+5. Stories use `withNovaEventing` from `~/storybook/withNovaEventing` — never inline a manual provider.
+
+**Exceptions** (codified — copy these patterns verbatim from the design lab without converting):
+- Form-input components mirroring native HTML semantics: `SettingsToggle.onChange`, `NumberInput.onChange`, controlled `value` / `onChange` pairs.
+- Native intrinsic handlers on raw HTML elements (`<button onClick>` for purely local effect).
+- Third-party library callbacks: Relay's `useMutation({ onCompleted, onError })`, React Router's `useNavigate`.
+
+Full rule, decision tree, and rationale: [`docs/code-style/Client-Conventions/02-Nova-Eventing.md`](../../../docs/code-style/Client-Conventions/02-Nova-Eventing.md).
+
 ### UX invariants to preserve (from `design/README.md`)
 
 1. **Pane state in URL search params.** Never `useState` for pane open/closed.

@@ -1,8 +1,14 @@
 import { mergeClasses } from "@griffel/react";
+import { NovaEventingInterceptor } from "@nova/react";
+import type { EventWrapper } from "@nova/types";
 import { type FC, useEffect, useRef, useState } from "react";
 import { graphql, useMutation } from "react-relay";
 import { Link, NavLink, useNavigate } from "react-router-dom";
 
+import {
+  isAccountMenuSettingsRequestedEvent,
+  isAccountMenuSignOutRequestedEvent,
+} from "~/components/account-menu/AccountMenu.events.js";
 import { AccountMenu } from "~/components/account-menu/AccountMenu.js";
 import { IconRefresh } from "~/lib/icons.js";
 import type { AppHeaderScanMutation } from "~/relay/__generated__/AppHeaderScanMutation.graphql.js";
@@ -72,14 +78,15 @@ export const AppHeader: FC = () => {
     };
   }, [menuOpen]);
 
-  const handleSettings = (): void => {
-    setMenuOpen(false);
-    navigate("/settings");
-  };
-
-  const handleSignOut = (): void => {
-    setMenuOpen(false);
-    navigate("/goodbye");
+  const interceptor = async (wrapper: EventWrapper): Promise<EventWrapper> => {
+    if (isAccountMenuSettingsRequestedEvent(wrapper)) {
+      setMenuOpen(false);
+      navigate("/settings");
+    } else if (isAccountMenuSignOutRequestedEvent(wrapper)) {
+      setMenuOpen(false);
+      navigate("/goodbye");
+    }
+    return wrapper;
   };
 
   return (
@@ -131,13 +138,9 @@ export const AppHeader: FC = () => {
             {USER.initials}
           </button>
           {menuOpen && (
-            <AccountMenu
-              initials={USER.initials}
-              name={USER.name}
-              email={USER.email}
-              onSettings={handleSettings}
-              onSignOut={handleSignOut}
-            />
+            <NovaEventingInterceptor interceptor={interceptor}>
+              <AccountMenu initials={USER.initials} name={USER.name} email={USER.email} />
+            </NovaEventingInterceptor>
           )}
         </div>
       </div>

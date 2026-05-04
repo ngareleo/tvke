@@ -7,7 +7,7 @@
 - **No base64 / text encoding** of video data — binary framing (length-prefixed raw bytes) stays; JSON overhead at 4K is unacceptable.
 - **Don't call `appendBuffer` in a loop without awaiting `updateend`** — queue via `BufferManager.appendSegment()`.
 - **No non-null assertions (`!`).** Use `?.` or explicit `if` guards.
-- **No callback props for user actions.** Use `@nova/react` eventing. Data-flow props (fragment keys, `resolution`, `status`) are still plain props.
+- **No callback props for user actions.** Use `@nova/react` eventing. Data-flow props (fragment keys, `resolution`, `status`) are still plain props. See [`../Client-Conventions/02-Nova-Eventing.md`](../Client-Conventions/02-Nova-Eventing.md) for the rationale, decision tree, event taxonomy, and codified exceptions.
 - **One `NovaEventingProvider` at the app root** — deeper providers fragment the event graph. Intermediate parents intercept.
 - **No literal `className` strings.** All styles go through Griffel; consume via `const styles = useComponentNameStyles()`.
 - **No duplicate resolver definitions.** async-graphql catches this at compile time, so duplicates are impossible.
