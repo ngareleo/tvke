@@ -1,6 +1,11 @@
 import { mergeClasses } from "@griffel/react";
-import { type FC } from "react";
+import { useNovaEventing } from "@nova/react";
+import { type FC, type MouseEvent } from "react";
 
+import {
+  createAccountMenuSettingsRequestedEvent,
+  createAccountMenuSignOutRequestedEvent,
+} from "./AccountMenu.events.js";
 import { strings } from "./AccountMenu.strings.js";
 import { useAccountMenuStyles } from "./AccountMenu.styles.js";
 
@@ -8,18 +13,20 @@ interface AccountMenuProps {
   initials: string;
   name: string;
   email: string;
-  onSettings: () => void;
-  onSignOut: () => void;
 }
 
-export const AccountMenu: FC<AccountMenuProps> = ({
-  initials,
-  name,
-  email,
-  onSettings,
-  onSignOut,
-}) => {
+export const AccountMenu: FC<AccountMenuProps> = ({ initials, name, email }) => {
   const styles = useAccountMenuStyles();
+  const { bubble } = useNovaEventing();
+
+  const handleSettings = (e: MouseEvent<HTMLButtonElement>): void => {
+    void bubble({ reactEvent: e, event: createAccountMenuSettingsRequestedEvent() });
+  };
+
+  const handleSignOut = (e: MouseEvent<HTMLButtonElement>): void => {
+    void bubble({ reactEvent: e, event: createAccountMenuSignOutRequestedEvent() });
+  };
+
   return (
     <div className={styles.menu} role="menu">
       <div className={styles.identity}>
@@ -32,7 +39,7 @@ export const AccountMenu: FC<AccountMenuProps> = ({
         </div>
       </div>
       <div className={styles.list}>
-        <button type="button" role="menuitem" className={styles.item} onClick={onSettings}>
+        <button type="button" role="menuitem" className={styles.item} onClick={handleSettings}>
           {strings.settings}
           <span className={styles.itemArrow}>→</span>
         </button>
@@ -40,7 +47,7 @@ export const AccountMenu: FC<AccountMenuProps> = ({
           type="button"
           role="menuitem"
           className={mergeClasses(styles.item, styles.itemDanger)}
-          onClick={onSignOut}
+          onClick={handleSignOut}
         >
           {strings.signOut}
         </button>

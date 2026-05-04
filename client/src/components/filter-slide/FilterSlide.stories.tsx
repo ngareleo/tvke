@@ -1,6 +1,7 @@
 import { useState } from "react";
 import type { Meta, StoryObj } from "storybook-react-rsbuild";
 
+import { withNovaEventing } from "~/storybook/withNovaEventing.js";
 import { EMPTY_FILTERS, type Filters } from "~/utils/filters";
 
 import { FilterSlide } from "./FilterSlide.js";
@@ -30,8 +31,6 @@ const Wrapper = ({
         resultCount={resultCount}
         totalMatched={totalMatched}
         profileCount={profileCount}
-        onClose={() => {}}
-        onClearFilters={() => setFilters(EMPTY_FILTERS)}
       />
     </div>
   );
@@ -40,6 +39,7 @@ const Wrapper = ({
 const meta: Meta<WrapperProps> = {
   title: "Components/FilterSlide",
   component: Wrapper,
+  decorators: [withNovaEventing],
   parameters: { layout: "padded" },
 };
 

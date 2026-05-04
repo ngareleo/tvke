@@ -66,18 +66,21 @@ export function MyComponent({ id, title }: { id: string; title: string }) { ... 
 
 ### Nova eventing — for components that raise events
 
-If the component raises events (user interactions that propagate up to an ancestor), use `@nova/react` instead of callback props:
+> **Rule.** Never accept callback props (`onClick`, `onSelect`, `onClose`, `onChange`, …) for cross-component user actions. Always emit via `useNovaEventing().bubble()`. Callback props create reference-identity bugs across re-renders; Nova decouples child and parent lifecycles. See [`docs/code-style/Client-Conventions/02-Nova-Eventing.md`](../../../docs/code-style/Client-Conventions/02-Nova-Eventing.md) for the rationale, decision tree, event taxonomy, and the small set of codified exceptions (form-input shapes, native intrinsic handlers, third-party library callbacks).
 
-1. Create a colocated `<ComponentName>.events.ts` file with:
-   - `ORIGINATOR` constant (`"ComponentName"`)
+If the component raises events (user interactions that propagate up to an ancestor), use `@nova/react`:
+
+1. Decide where the events file lives:
+   - **Domain file** at `client/src/events/<domain>.events.ts` — when multiple components emit the same logical event, or the event represents a cross-cutting concern (`playback`, `overlay`, `detailPane`, `profiles`, `search`, `error`, `telemetry`, …). Originator is a camelCase domain noun (`"playback"`).
+   - **Colocated** at `<ComponentName>.events.ts` — when one component owns the event end-to-end. Originator is the PascalCase component name (`"AppHeader"`).
+2. The events file contains:
+   - `ORIGINATOR` constant
    - `EventTypes` const object with event name strings
    - Factory functions: `createXxxEvent(payload): NovaEvent<PayloadType>`
    - Type guards: `isXxxEvent(wrapper: EventWrapper): boolean`
-2. In the component, call `useNovaEventing().bubble()` with the factory function — never build event objects inline
-3. In the parent that handles events, use `NovaEventingInterceptor` with a `useCallback` interceptor that always `return wrapper` (forward) unless forwarding causes a specific unwanted side effect
-4. Stories for components using `useNovaEventing()` must add `withNovaEventing` from `~/storybook/withNovaEventing.js` to `meta.decorators` — do not inline a manual provider in the story file.
-
-Do not use callback props (`onPlay`, `onChange`) for events that should propagate — use `bubble()`.
+3. In the component, call `useNovaEventing().bubble()` with the factory function — never build event objects inline.
+4. In the parent that handles events, use `NovaEventingInterceptor` with a `useCallback` interceptor that always `return wrapper` (forward) unless forwarding causes a specific unwanted side effect.
+5. Stories for components using `useNovaEventing()` must add `withNovaEventing` from `~/storybook/withNovaEventing.js` to `meta.decorators` — do not inline a manual provider in the story file.
 
 ## Common pitfalls — see `docs/client/Debugging-Playbooks/00-Common-Issues.md`
 
@@ -99,9 +102,9 @@ If you hit one of these symptoms while writing a component, read the matching pl
 - [ ] Formatting helpers in `src/utils/`, not in the component
 - [ ] Side-effect logic in `src/hooks/`, not in the component
 - [ ] Run `bun relay` from `client/` if any graphql tag was added or changed
-- [ ] If the component raises events: colocated `.events.ts` file exists with factory functions + type guards
-- [ ] If the component raises events: uses `bubble()` not callback props
-- [ ] If the component raises events: stories wrap with no-op `NovaEventingProvider`
+- [ ] If the component raises events: events file exists (domain `client/src/events/<domain>.events.ts` or colocated `<ComponentName>.events.ts`) with factory functions + type guards
+- [ ] If the component raises events: uses `bubble()` not callback props — `onX` callback props on the public API are forbidden for cross-component signals
+- [ ] If the component raises events: stories add `withNovaEventing` decorator (no inline provider)
 
 ## Stories — every component must have a story
 

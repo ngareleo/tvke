@@ -1,6 +1,8 @@
 import { mergeClasses } from "@griffel/react";
-import { type FC, type ReactNode } from "react";
+import { useNovaEventing } from "@nova/react";
+import { type FC, type MouseEvent, type ReactNode } from "react";
 
+import { createFilterClosedEvent, createFiltersClearedEvent } from "~/events/search.events";
 import {
   CODECS,
   DECADES,
@@ -21,8 +23,6 @@ interface FilterSlideProps {
   resultCount: number;
   totalMatched: number;
   profileCount: number;
-  onClose: () => void;
-  onClearFilters: () => void;
 }
 
 export const FilterSlide: FC<FilterSlideProps> = ({
@@ -32,12 +32,19 @@ export const FilterSlide: FC<FilterSlideProps> = ({
   resultCount,
   totalMatched,
   profileCount,
-  onClose,
-  onClearFilters,
 }) => {
   const styles = useFilterSlideStyles();
+  const { bubble } = useNovaEventing();
   const hasQuery = query.trim().length > 0;
   const active = filtersActive(filters);
+
+  const handleClose = (e: MouseEvent<HTMLButtonElement>): void => {
+    void bubble({ reactEvent: e, event: createFilterClosedEvent() });
+  };
+
+  const handleClearFilters = (e: MouseEvent<HTMLButtonElement>): void => {
+    void bubble({ reactEvent: e, event: createFiltersClearedEvent() });
+  };
 
   return (
     <div className={styles.panel}>
@@ -116,13 +123,13 @@ export const FilterSlide: FC<FilterSlideProps> = ({
       </div>
 
       <div className={styles.actions}>
-        <button type="button" className={styles.primary} onClick={onClose}>
+        <button type="button" className={styles.primary} onClick={handleClose}>
           {strings.actionDone}
         </button>
         <button
           type="button"
           className={styles.secondary}
-          onClick={onClearFilters}
+          onClick={handleClearFilters}
           disabled={active === 0}
           aria-disabled={active === 0}
         >

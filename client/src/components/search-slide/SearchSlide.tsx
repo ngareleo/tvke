@@ -1,4 +1,7 @@
-import type { FC } from "react";
+import { useNovaEventing } from "@nova/react";
+import { type FC, type MouseEvent } from "react";
+
+import { createFilterOpenRequestedEvent, createSearchClearedEvent } from "~/events/search.events";
 
 import { strings } from "./SearchSlide.strings";
 import { useSearchSlideStyles } from "./SearchSlide.styles";
@@ -9,8 +12,6 @@ interface SearchSlideProps {
   totalMatched: number;
   profilesMatched: number;
   activeFilterCount: number;
-  onOpenFilter: () => void;
-  onClear: () => void;
 }
 
 export const SearchSlide: FC<SearchSlideProps> = ({
@@ -19,10 +20,9 @@ export const SearchSlide: FC<SearchSlideProps> = ({
   totalMatched,
   profilesMatched,
   activeFilterCount,
-  onOpenFilter,
-  onClear,
 }) => {
   const styles = useSearchSlideStyles();
+  const { bubble } = useNovaEventing();
   const hasQuery = query.trim().length > 0;
   const hasFilters = activeFilterCount > 0;
 
@@ -34,6 +34,14 @@ export const SearchSlide: FC<SearchSlideProps> = ({
   } else {
     eyebrow = strings.eyebrowSearch;
   }
+
+  const handleOpenFilter = (e: MouseEvent<HTMLButtonElement>): void => {
+    void bubble({ reactEvent: e, event: createFilterOpenRequestedEvent() });
+  };
+
+  const handleClear = (e: MouseEvent<HTMLButtonElement>): void => {
+    void bubble({ reactEvent: e, event: createSearchClearedEvent() });
+  };
 
   return (
     <div className={styles.panel}>
@@ -95,10 +103,10 @@ export const SearchSlide: FC<SearchSlideProps> = ({
       </div>
 
       <div className={styles.actions}>
-        <button type="button" className={styles.primary} onClick={onOpenFilter}>
+        <button type="button" className={styles.primary} onClick={handleOpenFilter}>
           {strings.actionFilter}
         </button>
-        <button type="button" className={styles.secondary} onClick={onClear}>
+        <button type="button" className={styles.secondary} onClick={handleClear}>
           {strings.actionClear}
         </button>
       </div>

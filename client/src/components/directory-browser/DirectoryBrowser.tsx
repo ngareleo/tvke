@@ -1,5 +1,14 @@
 import { mergeClasses } from "@griffel/react";
-import { type FC, Fragment, useCallback, useEffect, useMemo, useState } from "react";
+import { useNovaEventing } from "@nova/react";
+import {
+  type FC,
+  Fragment,
+  type MouseEvent,
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
 import { fetchQuery, graphql, useRelayEnvironment } from "react-relay";
 
 import { IconFolder } from "~/lib/icons.js";
@@ -8,6 +17,10 @@ import type {
   DirectoryBrowserQuery$data,
 } from "~/relay/__generated__/DirectoryBrowserQuery.graphql.js";
 
+import {
+  createDirectoryBrowserCancelledEvent,
+  createDirectorySelectedEvent,
+} from "./DirectoryBrowser.events.js";
 import { strings } from "./DirectoryBrowser.strings.js";
 import { useDirectoryBrowserStyles } from "./DirectoryBrowser.styles.js";
 
@@ -24,8 +37,6 @@ type DirectoryEntry = DirectoryBrowserQuery$data["listDirectory"][number];
 
 interface DirectoryBrowserProps {
   initialPath?: string;
-  onSelect: (path: string) => void;
-  onCancel: () => void;
 }
 
 function parentPath(path: string): string {
@@ -51,13 +62,18 @@ function buildCrumbs(path: string): Crumb[] {
   return crumbs;
 }
 
-export const DirectoryBrowser: FC<DirectoryBrowserProps> = ({
-  initialPath = "/",
-  onSelect,
-  onCancel,
-}) => {
+export const DirectoryBrowser: FC<DirectoryBrowserProps> = ({ initialPath = "/" }) => {
   const styles = useDirectoryBrowserStyles();
   const environment = useRelayEnvironment();
+  const { bubble } = useNovaEventing();
+
+  const handleCancel = (e: MouseEvent<HTMLButtonElement>): void => {
+    void bubble({ reactEvent: e, event: createDirectoryBrowserCancelledEvent() });
+  };
+
+  const handleSelect = (e: MouseEvent<HTMLButtonElement>): void => {
+    void bubble({ reactEvent: e, event: createDirectorySelectedEvent(path) });
+  };
 
   const [path, setPath] = useState<string>(initialPath || "/");
   const [entries, setEntries] = useState<DirectoryEntry[]>([]);
@@ -147,10 +163,10 @@ export const DirectoryBrowser: FC<DirectoryBrowserProps> = ({
         <span className={styles.actionsHint} title={path}>
           {path}
         </span>
-        <button type="button" className={styles.cancelBtn} onClick={onCancel}>
+        <button type="button" className={styles.cancelBtn} onClick={handleCancel}>
           {strings.cancel}
         </button>
-        <button type="button" className={styles.selectBtn} onClick={() => onSelect(path)}>
+        <button type="button" className={styles.selectBtn} onClick={handleSelect}>
           {strings.select}
         </button>
       </div>
