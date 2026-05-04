@@ -1,11 +1,4 @@
-//! ffprobe wrapper + encode-argv builders.
-//!
-//! `FfmpegFile::probe` runs `ffprobe -of json` and caches the parsed
-//! metadata. The argv-builder functions turn that metadata + a
-//! `ResolutionProfile` + a `HwAccelConfig` into the exact `Vec<String>` the
-//! chunker passes to `tokio::process::Command`. Pure value-producing
-//! functions — no module-global state, every input is explicit, every
-//! branch is tested.
+//! ffprobe wrapper and encode-argv builders from metadata + profile + HW config.
 
 use std::path::{Path, PathBuf};
 

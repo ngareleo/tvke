@@ -49,7 +49,6 @@ export class BufferManager {
   private seekAbort = false;
   private videoDurationS: number;
 
-  // Buffer memory tracking — estimated byte-level accounting.
   // Browser MSE APIs only expose TimeRanges (seconds), not bytes, so
   // bytesInBuffer is an approximation: we add exact segment sizes on append
   // and subtract proportionally (by time fraction) on eviction.
@@ -58,10 +57,7 @@ export class BufferManager {
   private evictionCount = 0;
   private segmentsAppended = 0;
 
-  // Mirrors `sourceBuffer.timestampOffset` so callers can skip a no-op assign.
-  // ChunkPipeline.processSegment writes this on every chunk's init append to
-  // shift the chunk's relative tfdt (0+) into source-time playback position
-  // (chunkStart + tfdt). See setTimestampOffset for the full rationale.
+  // See setTimestampOffset for the full rationale.
   private timestampOffsetS = 0;
 
   constructor(
@@ -131,8 +127,7 @@ export class BufferManager {
         () => {
           try {
             this.sourceBuffer = ms.addSourceBuffer(mimeType);
-            // `mode = "segments"` is required by the chunk PTS contract — see
-            // docs/architecture/Streaming/02-Chunk-Pipeline-Invariants.md §1.
+            // See docs/architecture/Streaming/02-Chunk-Pipeline-Invariants.md §1.
             this.sourceBuffer.mode = "segments";
             // Pre-seed duration so seeks beyond the buffered end aren't clamped
             // by the browser. Without this, currentTime is silently truncated to
@@ -141,9 +136,8 @@ export class BufferManager {
               ms.duration = this.videoDurationS;
             }
             this.videoEl.addEventListener("timeupdate", this.handleTimeUpdate);
-            // Log the UA-accepted mode (not the value we set). A `sequence`
-            // value here means a stale client bundle is loaded — see
-            // docs/architecture/Streaming/02-Chunk-Pipeline-Invariants.md §1.
+            // Log the UA-accepted mode: a `sequence` value means a stale client bundle is loaded.
+            // See docs/architecture/Streaming/02-Chunk-Pipeline-Invariants.md §1.
             log.info(`MSE ready — sourceBuffer added (${mimeType})`, {
               mime_type: mimeType,
               source_buffer_mode: this.sourceBuffer.mode,
@@ -157,10 +151,7 @@ export class BufferManager {
         { once: true }
       );
 
-      // Chromium can flip MS to `ended` without our endStream() being called.
-      // `stream_done = false` distinguishes that internal transition from our
-      // own seal. Recovery + background:
-      // docs/architecture/Streaming/02-Chunk-Pipeline-Invariants.md §1a.
+      // See docs/architecture/Streaming/02-Chunk-Pipeline-Invariants.md §1a.
       ms.addEventListener(
         "sourceended",
         () => {
@@ -200,8 +191,6 @@ export class BufferManager {
         { once: true }
       );
 
-      // Distinguishes `open → closed` (src reassigned, MS GC'd) from
-      // `open → ended` (the recovery path above). Diagnostic only.
       ms.addEventListener(
         "sourceclose",
         () => {
@@ -214,11 +203,6 @@ export class BufferManager {
         { once: true }
       );
 
-      // The async decoder-error path: a decode failure that arrives AFTER
-      // appendBuffer resolved cleanly surfaces here, not via appendBuffer
-      // throw. Pairs with the sourceended diagnostic to attribute MS-ended
-      // transitions to the "decoder gave up" branch vs the "presentation
-      // probe timeout" branch.
       this.videoEl.addEventListener(
         "error",
         () => {
@@ -293,9 +277,6 @@ export class BufferManager {
         resolve();
         break;
       }
-      // Bail immediately if the MediaSource is no longer open — every subsequent
-      // appendBuffer call would throw InvalidStateError, producing a cascade of
-      // identical errors for every segment still in the queue.
       if (this.mediaSource?.readyState !== "open") {
         log.warn("MediaSource not open — aborting append queue", {
           ready_state: this.mediaSource?.readyState ?? "null",
@@ -311,25 +292,16 @@ export class BufferManager {
         resolve();
         break;
       }
-      // Retry loop: on QuotaExceededError, evict progressively more buffer space
-      // and try again. Without a retry the segment is silently dropped and every
-      // subsequent append also fails because the SourceBuffer stays full.
-      //
-      // Eviction strategy per attempt:
-      //   1 — normal back-buffer eviction (currentTime - config.backBufferKeepS)
-      //   2 — aggressive: remove everything behind currentTime (no keep window)
-      //   3 — nuclear: remove all buffered content
+      // On QuotaExceededError, retry with progressively aggressive eviction.
+      // See docs/architecture/Streaming/02-Chunk-Pipeline-Invariants.md for eviction strategy.
       let appended = false;
       let fatalError = false;
       for (let attempt = 0; attempt <= 3 && !appended && !this.seekAbort; attempt++) {
         if (attempt > 0) {
-          // Capture SB state at the moment quota was hit. Distinguishes
-          // "quota with N MB legitimately buffered" from "quota with empty
-          // buffered ranges" — the latter would point at Chrome's hidden
-          // per-SB cap rather than our own back-buffer leak.
+          // Capture SB state at the moment quota was hit to distinguish between
+          // legitimate buffering vs Chrome's hidden per-SB cap (trace 65ef5d6c…).
           const quotaBufLen = sb.buffered.length;
-          // Sentinel: -1 means "no buffered range" (paired with buffered_range_count=0).
-          // Keeps the attribute schema flat (number) — logger rejects nulls.
+          // Use -1 as sentinel for no buffered range to keep attribute schema flat (no nulls).
           const quotaBufStart = quotaBufLen > 0 ? parseFloat(sb.buffered.start(0).toFixed(2)) : -1;
           const quotaBufEnd =
             quotaBufLen > 0 ? parseFloat(sb.buffered.end(quotaBufLen - 1).toFixed(2)) : -1;
@@ -349,7 +321,6 @@ export class BufferManager {
           if (attempt === 1) {
             await this.evictBackBuffer();
           } else if (attempt === 2) {
-            // Remove everything strictly behind currentTime.
             if (sb.buffered.length > 0) {
               const bufStart = sb.buffered.start(0);
               const evictTo = this.videoEl.currentTime;
@@ -362,7 +333,6 @@ export class BufferManager {
               }
             }
           } else {
-            // Nuclear: remove everything — drastic but better than infinite failure.
             await this.waitForUpdateEnd();
             if (!this.seekAbort) {
               sb.remove(0, Infinity);
@@ -381,22 +351,10 @@ export class BufferManager {
           this.segmentsAppended++;
         } catch (err) {
           if ((err as DOMException).name === "QuotaExceededError" && attempt < 3) {
-            continue; // retry after eviction
+            continue;
           }
-          // Capture state-at-error so the next failure trace tells us which
-          // InvalidStateError variant fired (closed MediaSource, removed
-          // SourceBuffer, in-flight `updating` race, …) without a code
-          // change. See trace ac249ef0… — 90 identical errors over 36 s with
-          // only `message` made the root cause indistinguishable.
+          // See trace ac249ef0… for state-at-error rationale and trace 65ef5d6c… for sbInMsList.
           const domErr = err as DOMException;
-          // `source_buffer_in_ms_list`: distinguishes "browser detached our
-          // SourceBuffer under memory pressure" (false) from any other
-          // InvalidStateError cause (true). Trace 65ef5d6c… narrowed the
-          // cause to "SB removed from sourceBuffers while we still hold the
-          // ref"; this field nails the final attribution. Cumulative bytes
-          // helps confirm Chromium's MSE-budget hypothesis (typically
-          // ~150–300 MB before forced eviction; we hit InvalidStateError at
-          // 2.1 GB cumulative).
           const sbInMsList =
             this.mediaSource !== null && Array.from(this.mediaSource.sourceBuffers).includes(sb);
           log.error("appendBuffer error", {
@@ -412,10 +370,7 @@ export class BufferManager {
             total_bytes_appended: this.totalBytesAppended,
             attempt,
           });
-          // SB-detached-by-Chrome pattern (trace 65ef5d6c…): InvalidStateError +
-          // SB no longer in mediaSource.sourceBuffers. Fire the recovery hook
-          // before draining so PlaybackController can rebuild the MediaSource
-          // and resume from currentTime instead of surfacing a hard failure.
+          // See trace 65ef5d6c… for SB-detached-by-Chrome recovery pattern.
           if (domErr.name === "InvalidStateError" && !sbInMsList && this.onMseDetached) {
             log.warn("SourceBuffer detached from MediaSource — invoking recovery hook", {
               segments_appended: this.segmentsAppended,
@@ -428,9 +383,6 @@ export class BufferManager {
         }
       }
       resolve();
-      // A non-recoverable append error (e.g. InvalidStateError from a closed
-      // MediaSource) means every remaining segment will also fail. Drain the
-      // queue immediately so callers don't block, then stop.
       if (fatalError || this.seekAbort) {
         for (const remaining of this.appendQueue) remaining.resolve();
         this.appendQueue = [];
@@ -441,13 +393,7 @@ export class BufferManager {
       this.afterAppendCb?.();
       if (this.segmentsAppended % this.config.healthLogIntervalSegments === 0) {
         const stats = this.bufferStats;
-        // Snapshot the actual SourceBuffer ranges so the next trace shows
-        // empirically *where* segments are landing — not just bufferedSeconds
-        // (which only reads the LAST range and hides chunk-stacking bugs).
-        // Trace b37fc612… showed end(last) plateauing at ~300 while chunk 2
-        // streamed in cleanly with TFDT 300 — needed range visibility to
-        // tell whether chunk 2 created a separate range, overlapped chunk 1,
-        // or landed somewhere else entirely.
+        // See trace b37fc612… for why we snapshot actual SourceBuffer ranges.
         const ranges: Array<[number, number]> = [];
         for (let i = 0; i < sb.buffered.length; i++) {
           ranges.push([
@@ -517,11 +463,6 @@ export class BufferManager {
     const bufStart = sb.buffered.start(0);
 
     if (bufStart < evictEnd) {
-      // Diagnostic: dump full SB range state on every eviction so the
-      // post-seek stuck-buffer trace can pinpoint *why* the eviction math
-      // matched (legitimate back-buffer growth vs racing currentTime vs
-      // segments landing behind the playhead). Safe in steady state — only
-      // fires when there's actually back-buffer to evict.
       const ranges: Array<[number, number]> = [];
       for (let i = 0; i < sb.buffered.length; i++) {
         ranges.push([
@@ -542,7 +483,6 @@ export class BufferManager {
           back_buffer_keep_s: this.config.backBufferKeepS,
         }
       );
-      // Proportional byte estimate: evicted fraction of total buffered duration.
       const totalBufferedS = sb.buffered.end(sb.buffered.length - 1) - sb.buffered.start(0);
       const evictDurationS = evictEnd - bufStart;
       if (totalBufferedS > 0) {
@@ -721,15 +661,10 @@ export class BufferManager {
   async seek(timeSeconds: number): Promise<void> {
     const sb = this.sourceBuffer;
     if (!sb) return;
-    // Signal drainQueue to stop at its next checkpoint and drain the queue
-    // immediately so drainQueue exits its while loop rather than picking up
-    // more items while we wait for the SourceBuffer to finish its current op.
     this.seekAbort = true;
     for (const item of this.appendQueue) item.resolve();
     this.appendQueue = [];
     this.afterAppendCb = null;
-    // Wait for any in-progress appendBuffer/remove to complete before calling
-    // sb.remove() — calling it while updating=true throws InvalidStateError.
     await this.waitForUpdateEnd();
     this.seekAbort = false;
     this.isAppending = false;
@@ -741,16 +676,7 @@ export class BufferManager {
     this.bytesInBuffer = 0;
     sb.remove(0, Infinity);
     await this.waitForUpdateEnd();
-    // No explicit timestampOffset reset here — the next chunk's init append
-    // (via ChunkPipeline.processSegment → BufferManager.setTimestampOffset)
-    // re-anchors the offset to the new chunk's chunkStartS before its first
-    // media segment lands. Resetting to 0 here would just churn for no win.
     this.videoEl.currentTime = timeSeconds;
-    // Anchor for the MS-ended diagnostic: time-delta between this log and
-    // a subsequent `MediaSource sourceended fired` log measures the Chromium
-    // internal end-of-presentation probe window. Empty buffer at this point
-    // means the decoder has nothing to make progress on while it waits for
-    // segment 0 of the new chunk.
     log.info(`Buffer flushed — seek to ${timeSeconds.toFixed(2)}s`, {
       seek_target_s: parseFloat(timeSeconds.toFixed(2)),
       ms_ready_state: this.mediaSource?.readyState ?? "null",
@@ -769,8 +695,6 @@ export class BufferManager {
     if (clearVideoEl) {
       this.videoEl.src = "";
     }
-    // Clear the offscreen element before revoking the URL to avoid a brief
-    // period where the element holds a reference to a revoked blob URL.
     if (this.offscreenVideoEl) {
       this.offscreenVideoEl.src = "";
       this.offscreenVideoEl = null;
@@ -781,7 +705,6 @@ export class BufferManager {
     }
     this.mediaSource = null;
     this.sourceBuffer = null;
-    // Resolve any pending segment promises so callers don't hang after teardown.
     for (const item of this.appendQueue) item.resolve();
     this.appendQueue = [];
     this.afterAppendCb = null;

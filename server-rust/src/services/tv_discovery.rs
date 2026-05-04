@@ -1,32 +1,4 @@
-//! TV-show discovery — walks a `tvShows` library and rebuilds the
-//! `shows` / `seasons` / `episodes` rows from the canonical
-//! `<library>/<Show>/<Season>/<Episode>` layout.
-//!
-//! Series identity lives in the `shows` table (not in `videos`); episode
-//! files are regular `videos` rows linked back to a Show by
-//! `(show_id, show_season, show_episode)`. Two libraries indexing the
-//! same series fold into one Show; two libraries indexing the same
-//! episode file produce two `videos` rows pointing at the same
-//! `(show_id, season, episode)` coordinate (axis-2 dedup — the picker
-//! shows them as variants).
-//!
-//! Per-show flow:
-//! 1. `resolve_show_for_directory` — Show keyed on parsed_title_key.
-//! 2. Walk local files; for each parseable episode, `assign_video_to_show`.
-//! 3. OMDb best-effort: `search_series` → `series_details` →
-//!    `season_episodes` per season.
-//! 4. On match: `link_show_to_imdb` (which may merge into a canonical
-//!    show) + `upsert_show_metadata`.
-//! 5. Merge local + OMDb episode trees; write seasons + episodes rows.
-//!
-//! Failure isolation:
-//! - OMDb miss → fall back to regex-only persistence (local episodes
-//!   still land, no canonical titles).
-//! - Per-season fetch failure → log warn, continue.
-//! - DB write failure → log error, abort that show, continue.
-//!
-//! See `docs/architecture/Library-Scan/03-Show-Entity.md` for the
-//! architectural picture.
+//! TV-show discovery via local filesystem walk + OMDb matching. See docs/architecture/Library-Scan/03-Show-Entity.md.
 
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::path::{Path, PathBuf};

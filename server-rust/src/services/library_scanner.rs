@@ -1,23 +1,4 @@
-//! Library scanner.
-//!
-//! One sweep walks every library row in the DB, fingerprints each video
-//! file, ffprobes it for streams + duration, and upserts the
-//! `videos` + `video_streams` rows. Per-library progress flows through
-//! [`crate::services::scan_state::ScanState`] so the GraphQL
-//! `library_scan_progress` subscription can drive the dashboard.
-//!
-//! Triggers:
-//! - GraphQL `scan_libraries` mutation (resolver spawns this).
-//! - GraphQL `create_library` mutation (chains a fire-and-forget scan so
-//!   adding a profile auto-indexes it — the user-visible "click Scan All
-//!   did nothing" symptom this guards against).
-//! - [`spawn_periodic_scan`] background loop, started at boot from
-//!   `lib.rs::run`. Re-entry-guarded by
-//!   [`crate::services::scan_state::ScanState::mark_started`].
-//!
-//! OMDb auto-match runs after each library finishes its file walk: any
-//! video without a `video_metadata` row gets searched against OMDb (if
-//! `OMDB_API_KEY` is configured) — see [`auto_match_library`].
+//! Library scanner: file fingerprinting, ffprobe, and OMDb auto-match.
 
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
@@ -47,14 +28,7 @@ use crate::services::tv_discovery;
 
 const FINGERPRINT_BYTES: usize = 65_536;
 
-/// One full sweep across every library row in the DB. Idempotent — a
-/// re-scan upserts the same rows. Skips silently if a scan is already
-/// in progress (the `ScanState` guard makes this race-safe).
-///
-/// Errors are NEVER swallowed: per-file probe failures `tracing::warn!`
-/// and continue (one bad file does not abort a library); per-library
-/// path-access failures emit a `library_skipped` warning and continue;
-/// DB write failures abort that library's pass with a `tracing::error!`.
+/// Scan all libraries in the DB, re-indexing with idempotent upserts.
 pub async fn scan_libraries(ctx: &AppContext) {
     if !ctx.scan_state.mark_started() {
         info!("library.scan skipped — already in progress");
@@ -140,9 +114,7 @@ pub async fn scan_libraries(ctx: &AppContext) {
     ctx.scan_state.mark_ended();
 }
 
-/// Walk + probe + upsert one library. Per-file errors are logged and the
-/// scan continues; DB-write failures abort the per-file unit but keep the
-/// rest of the library going.
+/// Scan a single library, walking and probing all video files.
 pub async fn scan_one_library(ctx: &AppContext, library: &LibraryRow) {
     let extensions = parse_extensions(library);
     let library_path = PathBuf::from(&library.path);
@@ -784,10 +756,7 @@ fn resolve_films_for_library(ctx: &AppContext, library: &LibraryRow) {
     }
 }
 
-/// Spawn the periodic background re-scan loop. Every `interval_ms`
-/// ticks, a scan is kicked off if one is not already running. The
-/// re-entry guard lives in `scan_libraries` → `ScanState::mark_started`,
-/// so this loop never has to check itself.
+/// Spawn the periodic background library scan loop.
 pub fn spawn_periodic_scan(ctx: AppContext) {
     let interval = Duration::from_millis(ctx.config.scan.interval_ms);
     tokio::spawn(async move {
@@ -883,8 +852,7 @@ fn strip_scene_tokens(normalized: &str) -> String {
     out.join(" ")
 }
 
-/// Parse a torrent-style filename into `(title, year)`.
-/// Public so the OMDb match path can call it directly.
+/// Parse torrent-style filename to extract title and year.
 pub fn parse_title_from_filename(filename: &str) -> (String, Option<i32>) {
     let stem = match filename.rsplit_once('.') {
         Some((stem, _ext)) => stem,

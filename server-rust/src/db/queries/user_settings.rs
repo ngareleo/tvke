@@ -1,5 +1,4 @@
-//! Key/value settings (the `user_settings` table backs the client's flag
-//! registry persistence).
+//! Key/value settings — the `user_settings` table backs the client's flag registry.
 
 use rusqlite::{params, OptionalExtension};
 

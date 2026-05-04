@@ -8,12 +8,12 @@ The default is **no comment**. The bar to add one is *"a future reader needs con
 
 ### Type and interface documentation
 
-`/** ... */` (TypeScript) and `///` / `//!` (Rust) on **public surface** are always acceptable and often required:
+`/** ... */` (TypeScript) and `///` (Rust) on **public surface** are always acceptable and often required:
 
 - TS: every exported type, interface, function signature, hook, service method.
-- Rust: every `pub` item; every module entry (`//!` at the top of `mod.rs` / `lib.rs`).
+- Rust: every `pub` item.
 
-Keep them terse. One sentence on what the symbol *is* — not how it's used, not why it exists, not the history of its design.
+Keep them terse — one short sentence on what the symbol *is*. Not how it's used, not why it exists, not the history of its design. Anything beyond that belongs in `docs/`.
 
 ```ts
 /** Decoded transcode-job ID. Numeric local ID, not the Relay global ID. */
@@ -22,11 +22,29 @@ export type LocalJobId = number;
 
 ```rust
 /// Reads the trailing fragment of an in-progress fMP4 file produced by ffmpeg.
-///
-/// Designed for ffmpeg's `+frag_keyframe` output where the file is appended
-/// to in real time and the tail is the only readable region.
 pub struct FmP4TailReader { /* ... */ }
 ```
+
+If the API needs a paragraph of explanation, the explanation lives in `docs/` and the rustdoc / TSDoc carries a one-line cross-ref:
+
+```rust
+/// fmp4 muxer args. See docs/server/FFmpeg-Caveats/02-Tfdt-Sample-Mismatch.md.
+fn fmp4_muxer_options(profile: &ResolutionProfile, output_path: &str) -> Vec<String> { /* ... */ }
+```
+
+### File-top documentation
+
+Module-level `//!` (Rust) and file-top `/** ... */` blocks (TypeScript) follow the same rule as type docs: **one short sentence**, no prose. The file's purpose belongs in `docs/`, not in a paragraph at the top of the source.
+
+```rust
+//! ffprobe wrapper + encode-argv builders.
+```
+
+```rust
+//! Library scanner. See docs/architecture/Library-Scan/.
+```
+
+If the module needs a longer story, write the story in `docs/architecture/<area>/` and reference it. Don't put a multi-paragraph `//!` block at the top.
 
 ### "Why" comments at non-obvious points
 
@@ -92,7 +110,7 @@ Delete. Git history is the archive. If you might need it back, write it as a TOD
 
 ### File-top boilerplate
 
-No copyright headers. No "this file…" prologues. The file's name and its rustdoc / TSDoc on its main export do that work.
+No copyright headers. No "this file…" prologues. No multi-paragraph `//!` or file-top `/** */` blocks describing the module's design. One sentence at most — the rest goes in `docs/`.
 
 ### Multi-paragraph narrative prose
 
@@ -107,6 +125,26 @@ If a `//` comment runs longer than ~3 lines and reads like documentation, it is 
 ### Comments that reference the current task or PR
 
 `// added for the watchlist feature`, `// fix for issue #42` — these are PR-description content. Comments that point at "now" rot the moment "now" passes.
+
+## Discovery workflow — surface to architect, leave a one-line cross-ref
+
+When you discover something during implementation that a future reader will need to know — a non-obvious gotcha, a workaround, a protocol quirk, a hardware-acceleration fallback condition — your first instinct should **not** be to write a long comment in the code. Comments are not the right surface for institutional knowledge.
+
+Instead:
+
+1. Notify the `architect` subagent with the finding (file, function, the discovery itself, why it matters).
+2. The architect updates the appropriate `docs/` doc — extending an existing one or creating a new one under the matching subtree.
+3. You leave a minimal in-code comment that points at the doc:
+
+```ts
+// Captured at construction — see docs/architecture/Streaming/02-Chunk-Pipeline-Invariants.md.
+```
+
+This applies even when the comment "feels" small. The cost of a paragraph of prose at the call site is that the next reader has to re-derive the structure of the project from the comment instead of from `docs/`. Push the prose into `docs/`; keep code lean.
+
+The same loop runs after a postmortem or a traced incident — the trace ID and the recovery path go in the doc; a one-line code comment references the doc and (optionally) the trace ID.
+
+This is the same protocol described in [`../../../CLAUDE.md`](../../../CLAUDE.md) under "Update protocol — notify the curator after changes." The commenting policy is its in-code mirror: when an architectural fact would otherwise show up as a comment, it shows up as a `docs/` entry instead.
 
 ## Relocate, don't delete, when prose is valuable
 
@@ -139,10 +177,11 @@ Move it:
 
 | Surface | TypeScript | Rust |
 |---|---|---|
-| Module-level docs | First-export TSDoc / file purpose at top of `index.ts` if needed | `//!` at top of `mod.rs` / `lib.rs` |
+| File-top / module docs | One-sentence `/** */` block at most | One-sentence `//!` at most |
 | Public type / function | `/** terse description */` | `/// terse description` |
 | `unsafe { }` | n/a | `// SAFETY: ...` (mandatory) |
 | Why-comment in body | `// short why-only sentence` | `// short why-only sentence` |
+| New discovery / workaround | Notify architect; leave `// See docs/...` | Notify architect; leave `// See docs/...` |
 | Banner separators | none | none |
 | Commented-out code | none | none |
 | Long-form prose | move to `docs/`, leave one-line xref | move to `docs/`, leave one-line xref |

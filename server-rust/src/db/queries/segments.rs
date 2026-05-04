@@ -1,8 +1,4 @@
-//! Segment queries.
-//!
-//! Segments belong to a transcode job (FK CASCADE). The chunker writes one
-//! row per encoded segment as ffmpeg flushes it; the stream route reads
-//! them back when the in-memory job state has been evicted.
+//! Segment queries — written by chunker, read by stream route.
 
 use rusqlite::{params, OptionalExtension, Row};
 

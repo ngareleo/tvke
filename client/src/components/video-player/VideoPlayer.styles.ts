@@ -3,8 +3,7 @@ import { makeStyles } from "@griffel/react";
 import { tokens } from "~/styles/tokens";
 
 export const useVideoPlayerStyles = makeStyles({
-  // Transparent so VideoArea's backdrop poster shows through before playback.
-  // Once the <video> element receives frames it paints its own pixels.
+  // Transparent until video element receives frames.
   root: {
     position: "relative",
     width: "100%",
@@ -20,8 +19,7 @@ export const useVideoPlayerStyles = makeStyles({
     backgroundColor: "transparent",
   },
 
-  // Full-area click-to-play scrim — no visible button. The primary play
-  // affordance is the green disc in the ControlBar.
+  // Full-area click-to-play scrim; play affordance is green disc in ControlBar.
   idleOverlay: {
     position: "absolute",
     top: 0,
