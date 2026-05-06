@@ -337,6 +337,18 @@ pub async fn purge_legacy_cache(ctx: &AppContext) {
         .map(|s| s.suffix().to_string())
         .collect();
 
+    let mut purged_orphan_files: u64 = 0;
+    for (root, present) in &roots_on_disk {
+        for suffix in present.difference(&required) {
+            let path = poster_dir.join(format!("{root}.{suffix}.webp"));
+            if let Err(err) = tokio::fs::remove_file(&path).await {
+                warn!(path = %path.display(), error = %err, "purge_legacy_cache: remove orphan failed");
+            } else {
+                purged_orphan_files += 1;
+            }
+        }
+    }
+
     let db_recorded_roots: Vec<String> = ctx
         .db
         .with(|c| {
@@ -419,12 +431,14 @@ pub async fn purge_legacy_cache(ctx: &AppContext) {
         }
     };
     if purged_legacy_files > 0
+        || purged_orphan_files > 0
         || purged_incomplete_files > 0
         || videos_nulled > 0
         || shows_nulled > 0
     {
         info!(
             legacy_files = purged_legacy_files,
+            orphan_files = purged_orphan_files,
             incomplete_files = purged_incomplete_files,
             incomplete_roots = incomplete_roots.len(),
             video_rows = videos_nulled,
@@ -478,8 +492,8 @@ mod tests {
             "abc123.w240.webp"
         );
         assert_eq!(
-            variant_basename("abc123", PosterSize::W1600),
-            "abc123.w1600.webp"
+            variant_basename("abc123", PosterSize::W3200),
+            "abc123.w3200.webp"
         );
     }
 

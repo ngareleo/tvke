@@ -161,8 +161,6 @@ pub enum PosterSize {
     W400,
     #[graphql(name = "W800")]
     W800,
-    #[graphql(name = "W1600")]
-    W1600,
     #[graphql(name = "W3200")]
     W3200,
 }
@@ -176,7 +174,6 @@ impl PosterSize {
             PosterSize::W240 => 240,
             PosterSize::W400 => 400,
             PosterSize::W800 => 800,
-            PosterSize::W1600 => 1600,
             PosterSize::W3200 => 3200,
         }
     }
@@ -187,7 +184,6 @@ impl PosterSize {
             PosterSize::W240 => "w240",
             PosterSize::W400 => "w400",
             PosterSize::W800 => "w800",
-            PosterSize::W1600 => "w1600",
             PosterSize::W3200 => "w3200",
         }
     }
@@ -196,7 +192,6 @@ impl PosterSize {
         PosterSize::W240,
         PosterSize::W400,
         PosterSize::W800,
-        PosterSize::W1600,
         PosterSize::W3200,
     ];
 }
