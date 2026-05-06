@@ -294,32 +294,10 @@ pub fn is_sized_variant_name(name: &str) -> bool {
     !digits.is_empty() && digits.chars().all(|c| c.is_ascii_digit())
 }
 
-/// One-shot startup hook. Two reaping passes share a single function so
-/// the disk walk and DB pull stay colocated:
-///
-/// 1. **Pre-`PosterSize` files** — anything not matching
-///    `<hex>.w<digits>.webp` is a leftover from the single-file cache
-///    (raw `<sha>.<ext>`). Delete the file; null the DB row whose
-///    `poster_local_path` still contains a `.` so the worker re-fetches.
-/// 2. **Incomplete required-set** — when `PosterSize::ALL` grows (e.g.
-///    a new `W3200` for hero) the existing variant sets become N-1 of
-///    the now-N required suffixes. Equivalent symptom when the cache
-///    directory is wiped externally (manual `rm`, dev wipe) but the DB
-///    still records a `poster_local_path` — that row points at a root
-///    with zero on-disk files. Both shapes are caught here: pull every
-///    DB-recorded bare-hex root, cross-check against the on-disk
-///    suffix set, null + delete partials whenever the on-disk view
-///    fails to satisfy `PosterSize::ALL`. Without this the GraphQL
-///    resolver hands the client a path to a file that doesn't exist
-///    and the `<img>` 404s silently, but the worker never re-fetches
-///    because `poster_local_path IS NOT NULL`.
-///
-/// Both passes are idempotent — once every recorded root has the full
-/// variant set on disk, this is a no-op.
+/// Idempotent startup reconciler — see docs/architecture/Library-Scan/05-Poster-Caching.md §"Startup purge".
 pub async fn purge_legacy_cache(ctx: &AppContext) {
     let poster_dir = &ctx.config.poster_dir;
 
-    // Pass 1: legacy file purge + collect on-disk variants by root.
     let mut purged_legacy_files: u64 = 0;
     let mut roots_on_disk: HashMap<String, HashSet<String>> = HashMap::new();
     match tokio::fs::read_dir(poster_dir).await {
@@ -354,10 +332,6 @@ pub async fn purge_legacy_cache(ctx: &AppContext) {
         Err(_) => {}
     }
 
-    // Pass 2: detect required-set incompleteness from two angles:
-    //   (a) roots present on disk with a partial suffix set, and
-    //   (b) DB-recorded bare-hex roots whose on-disk set is missing
-    //       entirely (cache dir was wiped externally).
     let required: HashSet<String> = PosterSize::ALL
         .iter()
         .map(|s| s.suffix().to_string())
@@ -410,11 +384,8 @@ pub async fn purge_legacy_cache(ctx: &AppContext) {
         }
     }
 
-    // Null DB rows so the worker re-fetches: legacy `<sha>.<ext>` rows
-    // are caught by the LIKE; rows pointing to incomplete roots are
-    // caught by the per-root UPDATE. Per-root rather than IN-clause to
-    // avoid building dynamic SQL — typical libraries have ≤ a few
-    // hundred posters and this only fires once per cache-schema bump.
+    // Per-row UPDATE rather than dynamic-SQL IN-clause: this fires once per
+    // cache-schema bump for ≤ a few hundred rows, so the cost is bounded.
     let result = ctx.db.with(|c| {
         let mut v = c.execute(
             "UPDATE video_metadata SET poster_local_path = NULL \
