@@ -12,8 +12,7 @@ import { RelayEnvironmentProvider } from "react-relay";
 import { RouterProvider } from "react-router-dom";
 
 import { ErrorBoundary } from "./components/error-boundary/ErrorBoundary.js";
-import { hydrateFlags } from "./config/featureFlags.js";
-import { graphqlHttpUrl } from "./config/rustOrigin.js";
+import { bootstrapFlagsFromServer } from "./config/featureFlags.js";
 import { FeatureFlagsProvider } from "./contexts/FeatureFlagsContext.js";
 import { environment } from "./relay/environment.js";
 import { router } from "./router.js";
@@ -38,26 +37,7 @@ const AppEventing: FC<{ children: ReactNode }> = ({ children }) => {
   );
 };
 
-async function bootstrapTelemetryFlag(): Promise<void> {
-  if (!IS_DEV_BUILD) return;
-  try {
-    const resp = await fetch(graphqlHttpUrl(), {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        query: "query BootstrapFlags($keys: [String!]!) { settings(keys: $keys) { key value } }",
-        variables: { keys: ["flag.useAxiomExporter"] },
-      }),
-    });
-    const json: { data?: { settings?: { key: string; value: string | null }[] } } =
-      await resp.json();
-    hydrateFlags(json?.data?.settings ?? []);
-  } catch {
-    // Best-effort — falls back to default endpoint on failure.
-  }
-}
-
-void bootstrapTelemetryFlag().finally(() => {
+void bootstrapFlagsFromServer().finally(() => {
   initTelemetry();
 
   const rootEl = document.getElementById("root");

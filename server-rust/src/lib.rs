@@ -55,6 +55,7 @@ pub fn build_router(state: AppState) -> AppResult<Router> {
         .route("/graphql", graphql_method)
         .route("/stream/:job_id", get(routes::stream::stream_handler))
         .route("/poster/:basename", get(routes::poster::get_poster))
+        .route("/settings", get(routes::settings::get_settings))
         // Pass AppContext via Extension rather than State so we don't have
         // to thread an `S` type parameter through every router builder.
         .layer(axum::Extension(ctx))
