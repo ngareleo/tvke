@@ -106,8 +106,8 @@ impl JwksCache {
 
         let mut validation = Validation::new(Algorithm::RS256);
         validation.validate_aud = false;
-        let data = decode::<Claims>(token, &key, &validation)
-            .map_err(AuthError::SignatureOrClaims)?;
+        let data =
+            decode::<Claims>(token, &key, &validation).map_err(AuthError::SignatureOrClaims)?;
         Ok(data.claims)
     }
 
@@ -140,10 +140,13 @@ impl JwksCache {
                 url: self.inner.jwks_url.clone(),
                 source,
             })?;
-        let jwks: JwkSet = response.json().await.map_err(|source| AuthError::JwksParse {
-            url: self.inner.jwks_url.clone(),
-            source,
-        })?;
+        let jwks: JwkSet = response
+            .json()
+            .await
+            .map_err(|source| AuthError::JwksParse {
+                url: self.inner.jwks_url.clone(),
+                source,
+            })?;
 
         let mut decoded = HashMap::with_capacity(jwks.keys.len());
         for jwk in jwks.keys {
@@ -151,10 +154,8 @@ impl JwksCache {
                 continue;
             };
             let key = match &jwk.algorithm {
-                AlgorithmParameters::RSA(rsa) => {
-                    DecodingKey::from_rsa_components(&rsa.n, &rsa.e)
-                        .map_err(AuthError::KeyConversion)?
-                }
+                AlgorithmParameters::RSA(rsa) => DecodingKey::from_rsa_components(&rsa.n, &rsa.e)
+                    .map_err(AuthError::KeyConversion)?,
                 _ => continue,
             };
             decoded.insert(kid, key);

@@ -24,7 +24,10 @@ pub async fn graphql_post(
         Ok(b) => b,
         Err(err) => {
             tracing::warn!(error = %err, "rejected GraphQL request — body read failed");
-            return (StatusCode::BAD_REQUEST, "request body too large or unreadable")
+            return (
+                StatusCode::BAD_REQUEST,
+                "request body too large or unreadable",
+            )
                 .into_response();
         }
     };
@@ -33,8 +36,7 @@ pub async fn graphql_post(
         Ok(req) => req,
         Err(err) => {
             tracing::warn!(error = %err, "rejected GraphQL request — malformed JSON");
-            return (StatusCode::BAD_REQUEST, "malformed GraphQL request body")
-                .into_response();
+            return (StatusCode::BAD_REQUEST, "malformed GraphQL request body").into_response();
         }
     };
 

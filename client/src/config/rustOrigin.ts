@@ -37,6 +37,10 @@ export function streamUrl(jobId: string): string {
   return `${HTTP_ORIGIN}/stream/${jobId}`;
 }
 
+export function settingsUrl(keys: readonly string[]): string {
+  return `${HTTP_ORIGIN}/settings?keys=${encodeURIComponent(keys.join(","))}`;
+}
+
 /**
  * Rewrite a `posterUrl` from GraphQL into a fetchable URL. The server
  * returns `/poster/<basename>` for locally cached posters; we prepend

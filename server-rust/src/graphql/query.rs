@@ -23,17 +23,11 @@ pub struct Query;
 
 #[Object]
 impl Query {
-    /// Verified identity for the current request. `Some` when the caller
-    /// presented a valid Supabase JWT (RS256, verified via JWKS).
-    /// `None` for unauthenticated callers or when SUPABASE_JWKS_URL is
-    /// unset — alpha doesn't gate any other resolver on this; it exists
-    /// for the client to render the signed-in state.
+    /// Verified identity. See `docs/architecture/Identity/`.
     async fn current_user(&self, ctx: &Context<'_>) -> Option<CurrentUser> {
         let req_ctx = ctx.data_opt::<RequestContext>()?;
         let user_id = req_ctx.user_id.clone()?;
-        Some(CurrentUser {
-            id: ID(user_id),
-        })
+        Some(CurrentUser { id: ID(user_id) })
     }
 
     async fn node(&self, ctx: &Context<'_>, id: ID) -> async_graphql::Result<Option<Node>> {

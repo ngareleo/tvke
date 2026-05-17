@@ -61,6 +61,27 @@ if (IS_DEV_BUILD) {
   }
 }
 
+/**
+ * Fetch every registered flag from the server and hydrate the cache before
+ * React mounts. Called from `main.tsx` before `initTelemetry()` so the
+ * exporter can read the right flag values. Noop in prod builds — the cache
+ * is no-op there and `getFlag` returns caller fallbacks.
+ */
+export async function bootstrapFlagsFromServer(): Promise<void> {
+  if (!IS_DEV_BUILD) return;
+  const { settingsUrl } = await import("./rustOrigin.js");
+  const keys = FLAG_REGISTRY.map((f) => f.key);
+  if (keys.length === 0) return;
+  try {
+    const resp = await fetch(settingsUrl(keys), { method: "GET" });
+    if (!resp.ok) return;
+    const entries = (await resp.json()) as { key: string; value: string | null }[];
+    hydrateFlags(entries);
+  } catch {
+    // Best-effort. Cache stays empty → callers fall back to registry defaults.
+  }
+}
+
 /** Hydrate cache from server; local overrides always win. Noop in prod builds. */
 export function hydrateFlags(
   entries: readonly { key: string; value: string | null | undefined }[]
