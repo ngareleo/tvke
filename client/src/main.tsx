@@ -1,7 +1,5 @@
-// initTelemetry() must run before any fetch call so that FetchInstrumentation
-// patches window.fetch before Relay or StreamingService make their first request.
-import { initTelemetry } from "./telemetry.js";
-initTelemetry();
+// Bootstrap order: flag fetch → initTelemetry → render. See
+// docs/architecture/Deployment/04-Axiom-Production-Backend.md § "Bootstrap timing".
 
 import "./styles/global.css";
 import "./styles/shared.css";
@@ -14,9 +12,11 @@ import { RelayEnvironmentProvider } from "react-relay";
 import { RouterProvider } from "react-router-dom";
 
 import { ErrorBoundary } from "./components/error-boundary/ErrorBoundary.js";
+import { bootstrapFlagsFromServer } from "./config/featureFlags.js";
 import { FeatureFlagsProvider } from "./contexts/FeatureFlagsContext.js";
 import { environment } from "./relay/environment.js";
 import { router } from "./router.js";
+import { initTelemetry } from "./telemetry.js";
 
 /**
  * Root eventing handler. Terminal handler for any event not consumed by an
@@ -37,21 +37,25 @@ const AppEventing: FC<{ children: ReactNode }> = ({ children }) => {
   );
 };
 
-const rootEl = document.getElementById("root");
-if (!rootEl) throw new Error("Root element #root not found");
+void bootstrapFlagsFromServer().finally(() => {
+  initTelemetry();
 
-ReactDOM.createRoot(rootEl).render(
-  <React.StrictMode>
-    <ErrorBoundary>
-      <RelayEnvironmentProvider environment={environment}>
-        <Suspense fallback={null}>
-          <FeatureFlagsProvider>
-            <AppEventing>
-              <RouterProvider router={router} />
-            </AppEventing>
-          </FeatureFlagsProvider>
-        </Suspense>
-      </RelayEnvironmentProvider>
-    </ErrorBoundary>
-  </React.StrictMode>
-);
+  const rootEl = document.getElementById("root");
+  if (!rootEl) throw new Error("Root element #root not found");
+
+  ReactDOM.createRoot(rootEl).render(
+    <React.StrictMode>
+      <ErrorBoundary>
+        <RelayEnvironmentProvider environment={environment}>
+          <Suspense fallback={null}>
+            <FeatureFlagsProvider>
+              <AppEventing>
+                <RouterProvider router={router} />
+              </AppEventing>
+            </FeatureFlagsProvider>
+          </Suspense>
+        </RelayEnvironmentProvider>
+      </ErrorBoundary>
+    </React.StrictMode>
+  );
+});

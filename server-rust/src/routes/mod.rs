@@ -1,4 +1,5 @@
-//! HTTP routes — `/stream/:job_id` and `/poster/:basename`. GraphQL is in `graphql/`.
+//! HTTP routes. GraphQL is in `graphql/`.
 
 pub mod poster;
+pub mod settings;
 pub mod stream;
