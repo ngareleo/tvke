@@ -2,6 +2,7 @@
 
 import { createClient, type Session, type SupabaseClient, type User } from "@supabase/supabase-js";
 
+import { env } from "~/config/env.js";
 import { getClientLogger } from "~/telemetry.js";
 
 import { clearUserContext, setUserContext } from "./userContext.js";
@@ -10,19 +11,16 @@ function log() {
   return getClientLogger("auth");
 }
 
-const SUPABASE_URL = import.meta.env.PUBLIC_SUPABASE_URL as string | undefined;
-const SUPABASE_ANON_KEY = import.meta.env.PUBLIC_SUPABASE_ANON_KEY as string | undefined;
-
 let _client: SupabaseClient | null = null;
 
 function getSupabase(): SupabaseClient {
   if (_client) return _client;
-  if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
+  if (!env.supabaseUrl || !env.supabaseAnonKey) {
     throw new Error(
       "Supabase is not configured: set PUBLIC_SUPABASE_URL and PUBLIC_SUPABASE_ANON_KEY at build time."
     );
   }
-  _client = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+  _client = createClient(env.supabaseUrl, env.supabaseAnonKey, {
     auth: {
       persistSession: true,
       autoRefreshToken: true,
