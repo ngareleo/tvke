@@ -13,3 +13,14 @@ export function getUserContext(): string | null {
 export function clearUserContext(): void {
   currentUserId = null;
 }
+
+/**
+ * Sync check used by router loaders. The user id is populated by
+ * `restoreSession()` before React mounts (see main.tsx) and kept in
+ * lockstep via `subscribeToAuthChanges`, so this is the canonical
+ * client-side answer to "is a session present?" without paying for a
+ * Web Lock + microtask hop per navigation.
+ */
+export function hasActiveSession(): boolean {
+  return currentUserId !== null;
+}

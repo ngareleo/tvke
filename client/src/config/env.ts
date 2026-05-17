@@ -1,7 +1,7 @@
 /** Single source of truth for `PUBLIC_*` build-time env vars. */
 
 /** Parse "Key1=Val1,Key2=Val2" into a plain object, ignoring malformed pairs. */
-function parseHeadersEnv(raw: string | undefined): Record<string, string> {
+export function parseHeadersEnv(raw: string | undefined): Record<string, string> {
   if (!raw) return {};
   return Object.fromEntries(
     raw.split(",").flatMap((pair) => {
@@ -12,9 +12,13 @@ function parseHeadersEnv(raw: string | undefined): Record<string, string> {
   );
 }
 
-function readString(key: string): string | undefined {
-  const value = import.meta.env[key] as string | undefined;
+/** Normalise a raw env value: undefined or empty → undefined; otherwise return as-is. */
+export function readEnvString(value: string | undefined): string | undefined {
   return value && value.length > 0 ? value : undefined;
+}
+
+function readString(key: string): string | undefined {
+  return readEnvString(import.meta.env[key] as string | undefined);
 }
 
 export interface ClientEnv {

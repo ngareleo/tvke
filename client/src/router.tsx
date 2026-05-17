@@ -4,7 +4,7 @@ import { createBrowserRouter, Outlet, redirect } from "react-router-dom";
 import { AppShell } from "~/components/app-shell/AppShell.js";
 import { AuthLayout } from "~/components/auth-layout/AuthLayout.js";
 import { ErrorBoundary } from "~/components/error-boundary/ErrorBoundary.js";
-import { getSession } from "~/services/auth.js";
+import { hasActiveSession } from "~/services/userContext.js";
 
 import {
   CreateProfilePage,
@@ -32,14 +32,12 @@ const ShellLayout: FC = () => (
   </AppShell>
 );
 
-async function requireSession(): Promise<Response | null> {
-  const session = await getSession();
-  return session ? null : redirect("/signin");
+function requireSession(): Response | null {
+  return hasActiveSession() ? null : redirect("/signin");
 }
 
-async function requireSignedOut(): Promise<Response | null> {
-  const session = await getSession();
-  return session ? redirect("/") : null;
+function requireSignedOut(): Response | null {
+  return hasActiveSession() ? redirect("/") : null;
 }
 
 export const router: ReturnType<typeof createBrowserRouter> = createBrowserRouter([
